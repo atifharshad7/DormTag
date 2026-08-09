@@ -153,7 +153,7 @@ export const T = {
   },
   aboutLead2:      {
     de: "Jede Reparatur wird dem Raum und dem Objekt zugeordnet. Nach einem Jahr sieht die Verwaltung nicht elf Beschwerden, sondern ein Rohr.",
-    en: "Every repair is logged to the room and the fixture it happened to. After a year the operator doesn't see eleven complaints — they see one pipe.",
+    en: "Every repair is logged to the room and the fixture it happened to. After a year the operator doesn't see eleven complaints, they see one pipe.",
   },
   aboutResident:   { de: "Du wohnst hier?",          en: "Living here?" },
   aboutResidentTxt:{
@@ -167,10 +167,11 @@ export const T = {
   },
   aboutOperator:   { de: "Du verwaltest mehrere Häuser?", en: "Managing several buildings?" },
   aboutOperatorTxt:{
-    de: "Zahlen, die man anklicken kann: was offen ist, was auf Teile wartet, wie oft niemand da war — und welcher Strang immer wieder Ärger macht.",
-    en: "Numbers you can click into: what's open, what's waiting on parts, how often nobody was home — and which riser keeps causing trouble.",
+    de: "Zahlen, die man anklicken kann: was offen ist, was auf Teile wartet, wie oft niemand da war, und welcher Strang immer wieder Ärger macht.",
+    en: "Numbers you can click into: what's open, what's waiting on parts, how often nobody was home, and which riser keeps causing trouble.",
   },
-  aboutFooter:     { de: "Studentenwohnheime · Deutsch und Englisch", en: "Student halls · German and English" },
+  // Footer text intentionally blank: Auth.tsx still renders this slot.
+  aboutFooter:     { de: "", en: "" },
   aboutTag1:       { de: "Scannen.",                 en: "Scan it." },
   aboutTag2:       { de: "Termin. Erledigt.",        en: "Book it. Done." },
 
