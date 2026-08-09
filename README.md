@@ -239,9 +239,17 @@ A number you can't interrogate is a number nobody trusts.
 
 The trend chart is hand-rolled from divs — reported per month as the outline,
 fixed as the filled portion — because a charting library would have cost more
-bundle than the chart is worth. The tests assert that `fixed` never exceeds
-`reported` in any bucket and that the drill-down counts match the metric cards
-exactly, which is the invariant most likely to break silently.
+bundle than the chart is worth. Each bar carries its count and is a real button:
+tapping a month opens a panel with that month's reported / fixed / still-open
+counts and median fix time, plus breakdowns by building, by object and by cause,
+and the tickets themselves.
+
+The chart and the panel share one SQL expression for the month bucket
+(`MONTH_BUCKET`), so a bar and its detail are computed the same way rather than
+nearly the same way. A test asserts the panel total equals the bar it came from,
+which is the invariant most likely to drift silently, along with the building
+split summing to the month total and the metric-card drill-downs matching their
+cards exactly.
 
 ### Analytics are per-object, never per-person
 

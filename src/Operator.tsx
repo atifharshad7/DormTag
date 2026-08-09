@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, Package, AlertTriangle, Clock, X, Building, Check } from "lucide-react";
 import {
-  api, objLabel, roomLabel, fmtDay, fmtDT, STATE_TONE, tradeLabel, escReason,
+  api, objLabel, roomLabel, causeLabel, fmtDay, fmtDT, STATE_TONE, tradeLabel, escReason,
   type Locale, type StrKey,
 } from "./lib";
 
@@ -11,37 +11,139 @@ type T = (k: StrKey) => string;
 /* trend chart — hand-rolled SVG, no charting dependency              */
 /* ------------------------------------------------------------------ */
 
-function TrendChart({ l, t, data }: { l: Locale; t: T; data: any[] }) {
+function monthName(bucket: string, l: Locale) {
+  const [y, m] = bucket.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(l === "de" ? "de-DE" : "en-GB", { month: "short" });
+}
+
+function TrendChart({ l, t, data, selected, onSelect }: {
+  l: Locale; t: T; data: any[]; selected: string | null; onSelect: (b: string | null) => void;
+}) {
   if (data.length === 0) return <p className="muted">{t("noData")}</p>;
-
   const max = Math.max(...data.map((d) => d.reported), 1);
-  const W = 100;                      // percentage-based, scales to container
-  const barW = W / data.length;
-
-  const monthName = (bucket: string) => {
-    const [y, m] = bucket.split("-").map(Number);
-    return new Date(y, m - 1, 1).toLocaleDateString(l === "de" ? "de-DE" : "en-GB", { month: "short" });
-  };
 
   return (
     <div>
-      <div className="chart" role="img"
-        aria-label={`${t("reportedVsFixed")}: ${data.map((d) => `${d.bucket} ${d.reported}/${d.fixed}`).join(", ")}`}>
-        {data.map((d) => (
-          <div className="chartcol" key={d.bucket} style={{ width: `${barW}%` }}>
-            <div className="barstack">
-              <div className="barreported" style={{ height: `${(d.reported / max) * 100}%` }}>
-                <div className="barfixed" style={{ height: `${(d.fixed / Math.max(d.reported, 1)) * 100}%` }} />
-              </div>
-            </div>
-            <span className="chartlabel">{monthName(d.bucket)}</span>
-          </div>
-        ))}
+      <div className="chart">
+        {data.map((d) => {
+          const on = selected === d.bucket;
+          return (
+            <button key={d.bucket}
+              className={"chartcol" + (on ? " chartcol-on" : "")}
+              style={{ width: `${100 / data.length}%` }}
+              aria-pressed={on}
+              aria-label={`${monthName(d.bucket, l)}: ${d.reported} ${t("reported")}, ${d.fixed} ${t("fixed")}`}
+              onClick={() => onSelect(on ? null : d.bucket)}>
+              <span className="chartvalue">{d.reported}</span>
+              <span className="barstack">
+                <span className="barreported" style={{ height: `${(d.reported / max) * 100}%` }}>
+                  <span className="barfixed"
+                    style={{ height: `${(d.fixed / Math.max(d.reported, 1)) * 100}%` }} />
+                </span>
+              </span>
+              <span className="chartlabel">{monthName(d.bucket, l)}</span>
+            </button>
+          );
+        })}
       </div>
       <div className="legend">
         <span><i className="swatch swatch-fixed" /> {t("fixed")}</span>
         <span><i className="swatch swatch-open" /> {t("stillOpen")}</span>
+        {!selected && <span className="legendhint">{t("tapMonth")}</span>}
       </div>
+    </div>
+  );
+}
+
+/** Bars for a small ranked breakdown. Used three times in the month panel. */
+function MiniBars({ rows, label }: { rows: { key: string; n: number }[]; label: (k: string) => string }) {
+  const max = Math.max(...rows.map((r) => r.n), 1);
+  return (
+    <>
+      {rows.map((r) => (
+        <div className="typerow" key={r.key}>
+          <span className="typename">{label(r.key)}</span>
+          <div className="typebar"><div style={{ width: `${(r.n / max) * 100}%` }} /></div>
+          <span className="mono typecount">{r.n}</span>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function MonthPanel({ l, t, bucket, building, onClose }: {
+  l: Locale; t: T; bucket: string; building: string | null; onClose: () => void;
+}) {
+  const [d, setD] = useState<any>(null);
+  const [err, setErr] = useState("");
+  const [showList, setShowList] = useState(false);
+
+  useEffect(() => {
+    setD(null); setErr("");
+    api.dashboardMonth(bucket, building).then(setD).catch((e) => setErr(e.message));
+  }, [bucket, building]);
+
+  const [y, m] = bucket.split("-").map(Number);
+  const title = new Date(y, m - 1, 1)
+    .toLocaleDateString(l === "de" ? "de-DE" : "en-GB", { month: "long", year: "numeric" });
+
+  return (
+    <div className="card monthpanel">
+      <div className="rowspread">
+        <p className="cardtitle">{title}</p>
+        <button className="iconbtn" onClick={onClose} aria-label={t("closeMonth")}><X size={16} /></button>
+      </div>
+
+      {err && <div className="err">{err}</div>}
+      {!d && !err && <p className="muted">…</p>}
+
+      {d && (
+        <>
+          <div className="monthstats">
+            <div><span className="mono big2">{d.totals.reported}</span><span className="muted">{t("reported")}</span></div>
+            <div><span className="mono big2">{d.totals.fixed}</span><span className="muted">{t("fixed")}</span></div>
+            <div><span className="mono big2">{d.totals.stillOpen}</span><span className="muted">{t("stillOpenN")}</span></div>
+            <div>
+              <span className="mono big2">{d.totals.medianDays ?? "–"}{d.totals.medianDays ? " d" : ""}</span>
+              <span className="muted">{t("medianFix")}</span>
+            </div>
+          </div>
+
+          {d.byBuilding.length > 1 && (
+            <>
+              <p className="steplabel">{t("perBuilding")}</p>
+              <MiniBars rows={d.byBuilding.map((x: any) => ({ key: x.building_code, n: x.n }))}
+                label={(k) => `Haus ${k}`} />
+            </>
+          )}
+
+          <p className="steplabel">{t("byObject")}</p>
+          <MiniBars rows={d.byType.map((x: any) => ({ key: x.object_type, n: x.n }))}
+            label={(k) => objLabel(k, l)} />
+
+          <p className="steplabel">{t("perCause")}</p>
+          {d.byCause.length === 0
+            ? <p className="muted">{t("noCauseYet")}</p>
+            : <MiniBars rows={d.byCause.map((x: any) => ({ key: x.cause, n: x.n }))}
+                label={(k) => causeLabel(k, l)} />}
+
+          <button className="btn" onClick={() => setShowList((v) => !v)}>
+            {showList ? t("hideTickets") : `${t("showTickets")} (${d.tickets.length})`}
+          </button>
+
+          {showList && d.tickets.map((r: any) => (
+            <div className="monthrow" key={r.ticket_id}>
+              <span className="plate plate-sm">
+                {r.building_code}-{r.unit_code} · {roomLabel(r.room_type, l)}
+              </span>
+              <span className="monthobj">{objLabel(r.object_type, l)}</span>
+              <span className={"pill pill-" + (STATE_TONE[r.state] || "neutral")}>
+                {t(("st_" + r.state) as StrKey)}
+              </span>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -158,9 +260,11 @@ export function OperatorView({ l, t }: { l: Locale; t: T }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
   const [drill, setDrill] = useState<string | null>(null);
+  const [month, setMonth] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setD(null); setErr("");
+    setMonth(null);   // a new period or building invalidates the open month
     api.dashboard(months, building).then(setD).catch((e) => setErr(e.message));
   }, [months, building]);
 
@@ -234,8 +338,12 @@ export function OperatorView({ l, t }: { l: Locale; t: T }) {
 
           <div className="card">
             <p className="cardtitle">{t("reportedVsFixed")}</p>
-            <TrendChart l={l} t={t} data={d.trend} />
+            <TrendChart l={l} t={t} data={d.trend} selected={month} onSelect={setMonth} />
           </div>
+
+          {month && (
+            <MonthPanel l={l} t={t} bucket={month} building={building} onClose={() => setMonth(null)} />
+          )}
 
           <div className="card">
             <p className="cardtitle">{t("byObject")}</p>

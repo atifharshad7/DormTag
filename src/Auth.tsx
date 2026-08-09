@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import {
   User, Wrench, ArrowRight, Database, QrCode, Printer, ChevronLeft, Copy, Check,
+  LayoutDashboard, HelpCircle,
 } from "lucide-react";
 import {
   api, roomLabel, objLabel, objIcon, symptomLabel, SYMPTOMS_FOR,
@@ -11,10 +12,53 @@ import {
 type T = (k: StrKey) => string;
 
 /* ================================================================== */
+/* About — a short explanation, reachable from the sign-in screen      */
+/* ================================================================== */
+
+export function About({ t, onBack }: { t: T; onBack: () => void }) {
+  return (
+    <div className="col about">
+      <button className="linkback" onClick={onBack}>
+        <ChevronLeft size={16} /> {t("back")}
+      </button>
+
+      <div className="aboutmark">
+        <QrCode size={34} strokeWidth={1.25} aria-hidden />
+      </div>
+      <h2 className="abouttitle">{t("aboutTitle")}</h2>
+
+      <p className="aboutlead">{t("aboutLead")}</p>
+      <p className="aboutlead">{t("aboutLead2")}</p>
+
+      <div className="aboutcard">
+        <p className="aboutcardtitle"><User size={15} strokeWidth={1.75} aria-hidden /> {t("aboutResident")}</p>
+        <p className="muted">{t("aboutResidentTxt")}</p>
+      </div>
+
+      <div className="aboutcard">
+        <p className="aboutcardtitle"><Wrench size={15} strokeWidth={1.75} aria-hidden /> {t("aboutStaff")}</p>
+        <p className="muted">{t("aboutStaffTxt")}</p>
+      </div>
+
+      <div className="aboutcard">
+        <p className="aboutcardtitle">
+          <LayoutDashboard size={15} strokeWidth={1.75} aria-hidden /> {t("aboutOperator")}
+        </p>
+        <p className="muted">{t("aboutOperatorTxt")}</p>
+      </div>
+
+      <p className="aboutfooter">{t("aboutFooter")}</p>
+      <p className="abouttag">{t("aboutTag1")}<br />{t("aboutTag2")}</p>
+    </div>
+  );
+}
+
+/* ================================================================== */
 /* Sign in — two real credential paths, no role switching             */
 /* ================================================================== */
 
 export function SignIn({ l, t, session, onDone }: { l: Locale; t: T; session: any; onDone: () => Promise<void> }) {
+  const [showAbout, setShowAbout] = useState(false);
   const [tab, setTab] = useState<"resident" | "staff">("resident");
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
@@ -36,6 +80,8 @@ export function SignIn({ l, t, session, onDone }: { l: Locale; t: T; session: an
     setBusy(true); setErr("");
     try { await api.seed(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
+
+  if (showAbout) return <About t={t} onBack={() => setShowAbout(false)} />;
 
   return (
     <div className="col signin">
@@ -84,6 +130,10 @@ export function SignIn({ l, t, session, onDone }: { l: Locale; t: T; session: an
 
       <button className="btn btn-primary btn-big" disabled={busy} onClick={submit}>
         {t("signInBtn")} <ArrowRight size={16} />
+      </button>
+
+      <button className="aboutlink" onClick={() => setShowAbout(true)}>
+        <HelpCircle size={14} aria-hidden /> {t("aboutLink")}
       </button>
 
       {hints && (

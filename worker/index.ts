@@ -1042,6 +1042,12 @@ route("POST", "/api/tickets/:id/consent", async ({ env, req, p, params }) => {
 
 const RANGE_MONTHS = [1, 3, 6, 12];
 
+/**
+ * One expression for the month bucket, used by the trend chart and by the
+ * per-month drill-down, so a bar and its detail can never disagree.
+ */
+const MONTH_BUCKET = `strftime('%Y-%m', vtl.reported_at / 1000, 'unixepoch')`;
+
 /** Shared filter parsing for the dashboard and its drill-down lists. */
 function dashboardFilter(url: URL) {
   const months = RANGE_MONTHS.includes(Number(url.searchParams.get("months")))
@@ -1109,9 +1115,10 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
 
     // Monthly reported vs. fixed, for the trend chart.
     env.DB.prepare(
-      `SELECT strftime('%Y-%m', vtl.reported_at / 1000, 'unixepoch') AS bucket,
+      `SELECT ${MONTH_BUCKET} AS bucket,
               COUNT(*) AS reported,
-              SUM(CASE WHEN vtl.state = 'done' THEN 1 ELSE 0 END) AS fixed
+              SUM(CASE WHEN vtl.state = 'done' THEN 1 ELSE 0 END) AS fixed,
+              SUM(CASE WHEN vtl.state NOT IN ('done','cancelled') THEN 1 ELSE 0 END) AS still_open
          FROM v_ticket_location vtl
         WHERE vtl.reported_at >= ? ${bc}
         GROUP BY bucket ORDER BY bucket`
@@ -1156,6 +1163,87 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
     byType: byType.results,
     repeats: repeats.results,
     buildings: buildings.results,
+  });
+});
+
+/**
+ * Everything behind one bar of the trend chart.
+ *
+ * Same month expression as the chart itself, so the numbers on the bar and the
+ * numbers in the panel are computed the same way rather than nearly the same way.
+ */
+route("GET", "/api/dashboard/month", async ({ env, p, url }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+  const bucket = url.searchParams.get("bucket") || "";
+  if (!/^\d{4}-\d{2}$/.test(bucket)) return bad("bucket must look like 2026-08");
+
+  const { building } = dashboardFilter(url);
+  const bBind = building ? [building] : [];
+  const bc = buildingClause(building);
+
+  const [totals, closed, byBuilding, byType, byCause, tickets] = await Promise.all([
+    env.DB.prepare(
+      `SELECT COUNT(*) AS reported,
+              SUM(CASE WHEN vtl.state = 'done' THEN 1 ELSE 0 END) AS fixed,
+              SUM(CASE WHEN vtl.state NOT IN ('done','cancelled') THEN 1 ELSE 0 END) AS still_open
+         FROM v_ticket_location vtl
+        WHERE ${MONTH_BUCKET} = ? ${bc}`
+    ).bind(bucket, ...bBind).first<any>(),
+
+    env.DB.prepare(
+      `SELECT (vtl.closed_at - vtl.reported_at) AS ms
+         FROM v_ticket_location vtl
+        WHERE ${MONTH_BUCKET} = ? AND vtl.closed_at IS NOT NULL ${bc}
+        ORDER BY ms`
+    ).bind(bucket, ...bBind).all<any>(),
+
+    env.DB.prepare(
+      `SELECT vtl.building_code, COUNT(*) AS n
+         FROM v_ticket_location vtl
+        WHERE ${MONTH_BUCKET} = ? ${bc}
+        GROUP BY vtl.building_code ORDER BY n DESC`
+    ).bind(bucket, ...bBind).all<any>(),
+
+    env.DB.prepare(
+      `SELECT vtl.object_type, COUNT(*) AS n
+         FROM v_ticket_location vtl
+        WHERE ${MONTH_BUCKET} = ? ${bc}
+        GROUP BY vtl.object_type ORDER BY n DESC LIMIT 6`
+    ).bind(bucket, ...bBind).all<any>(),
+
+    env.DB.prepare(
+      `SELECT vtl.cause, COUNT(*) AS n
+         FROM v_ticket_location vtl
+        WHERE ${MONTH_BUCKET} = ? AND vtl.cause IS NOT NULL ${bc}
+        GROUP BY vtl.cause ORDER BY n DESC LIMIT 6`
+    ).bind(bucket, ...bBind).all<any>(),
+
+    env.DB.prepare(
+      `SELECT vtl.ticket_id, vtl.building_code, vtl.unit_code, vtl.room_code, vtl.room_type,
+              vtl.object_type, vtl.state, vtl.reported_at, vtl.closed_at, vtl.cause
+         FROM v_ticket_location vtl
+        WHERE ${MONTH_BUCKET} = ? ${bc}
+        ORDER BY vtl.reported_at DESC LIMIT 40`
+    ).bind(bucket, ...bBind).all<any>(),
+  ]);
+
+  const ms = closed.results.map((r: any) => r.ms);
+  const median = ms.length ? ms[Math.floor(ms.length / 2)] / DAY : null;
+
+  return json({
+    bucket,
+    building,
+    totals: {
+      reported: totals?.reported ?? 0,
+      fixed: totals?.fixed ?? 0,
+      stillOpen: totals?.still_open ?? 0,
+      medianDays: median === null ? null : median.toFixed(1),
+      closedCount: ms.length,
+    },
+    byBuilding: byBuilding.results,
+    byType: byType.results,
+    byCause: byCause.results,
+    tickets: tickets.results,
   });
 });
 

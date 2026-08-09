@@ -118,6 +118,16 @@ export const T = {
   visits:          { de: "Besuche",                  en: "visits" },
   reportedOn:      { de: "gemeldet",                 en: "reported" },
   daysOpen:        { de: "Tage offen",               en: "days open" },
+  reported:        { de: "gemeldet",                 en: "reported" },
+  stillOpenN:      { de: "noch offen",               en: "still open" },
+  tapMonth:        { de: "Monat antippen für Details", en: "Tap a month for details" },
+  inMonth:         { de: "in diesem Monat",          en: "in this month" },
+  perBuilding:     { de: "Nach Gebäude",             en: "By building" },
+  perCause:        { de: "Nach Ursache",             en: "By cause" },
+  noCauseYet:      { de: "Noch keine Ursachen erfasst.", en: "No causes recorded yet." },
+  showTickets:     { de: "Meldungen anzeigen",       en: "Show the tickets" },
+  hideTickets:     { de: "Meldungen ausblenden",     en: "Hide the tickets" },
+  closeMonth:      { de: "Monat schließen",          en: "Close month" },
 
   st_reported:   { de: "Gemeldet",                        en: "Reported" },
   st_accepted:   { de: "Angenommen",                      en: "Accepted" },
@@ -135,6 +145,35 @@ export const T = {
   emailLabel:     { de: "E-Mail",                    en: "Email" },
   passwordLabel:  { de: "Passwort",                  en: "Password" },
   signInBtn:      { de: "Anmelden",                  en: "Sign in" },
+  aboutLink:       { de: "Was ist DormTag?",         en: "What is DormTag?" },
+  aboutTitle:      { de: "DormTag",                  en: "DormTag" },
+  aboutLead:       {
+    de: "Im Wohnheim ist etwas kaputt. Aufkleber scannen, antippen was es ist, Termin wählen. Keine Mail, kein Warten auf eine Antwort, die nie kommt.",
+    en: "Something's broken in the halls. Scan the sticker, tap what it is, pick a time. No email, no waiting for a reply that never comes.",
+  },
+  aboutLead2:      {
+    de: "Jede Reparatur wird dem Raum und dem Objekt zugeordnet. Nach einem Jahr sieht die Verwaltung nicht elf Beschwerden, sondern ein Rohr.",
+    en: "Every repair is logged to the room and the fixture it happened to. After a year the operator doesn't see eleven complaints — they see one pipe.",
+  },
+  aboutResident:   { de: "Du wohnst hier?",          en: "Living here?" },
+  aboutResidentTxt:{
+    de: "Melden in zwanzig Sekunden, auf Deutsch oder Englisch. Termin selbst wählen, damit niemand klingelt, während du in der Vorlesung sitzt. Und du siehst, wenn ein Ersatzteil unterwegs ist.",
+    en: "Report it in twenty seconds, in German or English. Pick the appointment yourself so nobody rings the bell while you're in a lecture. And you can see when a part is on order.",
+  },
+  aboutStaff:      { de: "Du betreust das Haus?",    en: "Looking after the building?" },
+  aboutStaffTxt:   {
+    de: "Eine Warteschlange statt eines Postfachs. Zeiten anbieten, mit einer Ursache abschließen, Elektroarbeiten an einen Fachbetrieb geben. Vier Fingertipps, kein Tippen.",
+    en: "One queue instead of a mailbox. Offer times, close a job with a cause, hand electrical work to a qualified firm. Four taps, no typing.",
+  },
+  aboutOperator:   { de: "Du verwaltest mehrere Häuser?", en: "Managing several buildings?" },
+  aboutOperatorTxt:{
+    de: "Zahlen, die man anklicken kann: was offen ist, was auf Teile wartet, wie oft niemand da war — und welcher Strang immer wieder Ärger macht.",
+    en: "Numbers you can click into: what's open, what's waiting on parts, how often nobody was home — and which riser keeps causing trouble.",
+  },
+  aboutFooter:     { de: "Studentenwohnheime · Deutsch und Englisch", en: "Student halls · German and English" },
+  aboutTag1:       { de: "Scannen.",                 en: "Scan it." },
+  aboutTag2:       { de: "Termin. Erledigt.",        en: "Book it. Done." },
+
   demoCreds:      { de: "Demo-Zugangsdaten",         en: "Demo credentials" },
   useThese:       { de: "Einsetzen",                 en: "Use these" },
   signInToReport: { de: "Für dein Zimmer musst du angemeldet sein.", en: "Sign in to report your own room." },
@@ -441,6 +480,8 @@ export const api = {
 
   dashboard:        (months: number, building: string | null) =>
                       call(`/dashboard?months=${months}${building ? `&building=${building}` : ""}`),
+  dashboardMonth:   (bucket: string, building: string | null) =>
+                      call(`/dashboard/month?bucket=${bucket}${building ? `&building=${building}` : ""}`),
   dashboardTickets: (which: string, months: number, building: string | null) =>
                       call(`/dashboard/tickets?filter=${which}&months=${months}${building ? `&building=${building}` : ""}`),
 };

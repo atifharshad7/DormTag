@@ -252,9 +252,51 @@ section("dashboard: charts");
 ok("trend has monthly buckets", dash.trend.every((x) => /^\d{4}-\d{2}$/.test(x.bucket)),
   JSON.stringify(dash.trend.slice(0, 2)));
 ok("fixed never exceeds reported in a bucket", dash.trend.every((x) => x.fixed <= x.reported));
+ok("each bucket splits into fixed and still open",
+  dash.trend.every((x) => x.fixed + x.still_open <= x.reported));
 ok("object breakdown is ranked", dash.byType.every((x, i, a) => i === 0 || a[i - 1].n >= x.n),
   JSON.stringify(dash.byType.map((x) => x.n)));
 ok("object breakdown names real types", dash.byType.every((x) => !!x.object_type));
+
+section("dashboard: month drill-down");
+const bucketWithData = dash.trend[dash.trend.length - 1].bucket;
+const mo = await req(`/api/dashboard/month?bucket=${bucketWithData}`, { cookie: operator });
+ok("a month can be opened", mo.status === 200, JSON.stringify(mo.json).slice(0, 120));
+ok("the bucket is echoed back", mo.json.bucket === bucketWithData);
+
+const barForMonth = dash.trend.find((x) => x.bucket === bucketWithData);
+ok("the panel total matches the bar it came from",
+  mo.json.totals.reported === barForMonth.reported,
+  `panel ${mo.json.totals.reported} vs bar ${barForMonth.reported}`);
+ok("fixed matches the bar too", mo.json.totals.fixed === barForMonth.fixed);
+ok("reported splits into fixed, open and cancelled",
+  mo.json.totals.fixed + mo.json.totals.stillOpen <= mo.json.totals.reported);
+
+ok("the building split adds up to the total",
+  mo.json.byBuilding.reduce((a, x) => a + x.n, 0) === mo.json.totals.reported,
+  JSON.stringify(mo.json.byBuilding));
+ok("object breakdown is ranked",
+  mo.json.byType.every((x, i, a) => i === 0 || a[i - 1].n >= x.n));
+ok("causes are only counted where recorded",
+  mo.json.byCause.every((x) => !!x.cause));
+ok("the ticket list is capped", mo.json.tickets.length <= 40);
+ok("listed tickets carry a location",
+  mo.json.tickets.every((x) => !!x.building_code && !!x.unit_code));
+
+const moC = await req(`/api/dashboard/month?bucket=${bucketWithData}&building=C`, { cookie: operator });
+ok("the month panel respects the building filter",
+  moC.json.byBuilding.every((x) => x.building_code === "C"), JSON.stringify(moC.json.byBuilding));
+ok("filtering a month cannot increase its total",
+  moC.json.totals.reported <= mo.json.totals.reported);
+
+ok("a malformed bucket is refused",
+  (await req("/api/dashboard/month?bucket=august", { cookie: operator })).status === 400);
+ok("a bucket with no data returns zeroes, not an error", await (async () => {
+  const r = await req("/api/dashboard/month?bucket=1999-01", { cookie: operator });
+  return r.status === 200 && r.json.totals.reported === 0;
+})());
+ok("a caretaker cannot open a month",
+  (await req(`/api/dashboard/month?bucket=${bucketWithData}`, { cookie: staff })).status === 403);
 
 section("dashboard: drill-downs");
 const openList = (await req("/api/dashboard/tickets?filter=open&months=12", { cookie: operator })).json;
