@@ -586,6 +586,41 @@ ok("a corridor needs no appointment", await (async () => {
   return !(await req(`/api/tickets/${r.json.id}`, { cookie: staff })).json.ticket.needs_access;
 })());
 
+section("retention");
+const ticketsBefore = (await req("/api/tickets", { cookie: staff })).json.tickets.length;
+const ret = await req("/api/dev/retention", { method: "POST", cookie: operator });
+ok("retention runs", ret.status === 200, JSON.stringify(ret.json));
+ok("a resident cannot run it", (await req("/api/dev/retention", { method: "POST", cookie: tenant })).status === 403);
+ok("a caretaker cannot run it", (await req("/api/dev/retention", { method: "POST", cookie: staff })).status === 403);
+
+const ticketsAfter = (await req("/api/tickets", { cookie: staff })).json.tickets.length;
+ok("no ticket is ever deleted", ticketsAfter === ticketsBefore, `${ticketsBefore} -> ${ticketsAfter}`);
+ok("history survives housekeeping",
+  (await req("/api/dashboard?months=12", { cookie: operator })).json.repeats
+    .some((r) => r.object_type === "DRAIN"));
+
+// Reporter links younger than the window must be left alone.
+const fresh2 = await req("/api/tickets", { method: "POST", cookie: tenant,
+  body: { objectId: "u-B-312-Z2-WINDOW", symptom: "COLD" } });
+await req("/api/dev/retention", { method: "POST", cookie: operator });
+ok("a recent reporter link is preserved",
+  (await req(`/api/tickets/${fresh2.json.id}`, { cookie: tenant })).status === 200);
+
+ok("closing a ticket revokes its capability token", await (async () => {
+  const id = await mkTicket("u-B-312-KU-FRIDGE", tenant);
+  const made = await req("/api/tickets", { method: "POST", cookie: tenant,
+    body: { objectId: "u-B-312-KU-FRIDGE", symptom: "NOISE" } });
+  const token = made.json.token;
+  await req(`/api/tickets/${id}/accept`, { method: "POST", cookie: staff });
+  await req(`/api/tickets/${id}/done`, { method: "POST", cookie: staff, body: { cause: "CONSUMABLE" } });
+  // The token no longer resolves to a principal, so the ticket isn't reachable.
+  const viaToken = await req(`/api/tickets/${id}?t=${token}`);
+  return viaToken.status === 404;
+})());
+
+ok("the resident window is published to the client",
+  (await req("/api/session", { cookie: tenant })).json.retention.residentRecentDays === 90);
+
 section("static assets");
 const page = await fetch(BASE + "/");
 ok("SPA index is served", page.status === 200 && (await page.text()).includes("DormTag"));

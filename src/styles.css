@@ -597,3 +597,18 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 @media (prefers-color-scheme: dark) {
   .aboutlead { color: #c9cdd0; }
 }
+
+/* --- grouped report list -------------------------------------------- */
+
+.grpcount {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  background: rgba(22,25,27,.09); color: var(--muted);
+  padding: 1px 6px; border-radius: 99px; margin-left: 4px; letter-spacing: 0;
+}
+.linkmore {
+  align-self: flex-start; background: none; border: 0; padding: 6px 0;
+  font: inherit; font-size: 13px; color: var(--blue); cursor: pointer;
+}
+@media (prefers-color-scheme: dark) {
+  .grpcount { background: rgba(232,232,227,.12); }
+}

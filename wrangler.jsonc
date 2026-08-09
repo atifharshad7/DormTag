@@ -18,5 +18,7 @@
   "vars": {
     "DEMO_MODE": "true"
   },
+  // Daily at 03:00 UTC: anonymise old reporter links, purge expired sessions.
+  "triggers": { "crons": ["0 3 * * *"] },
   "observability": { "enabled": true }
 }

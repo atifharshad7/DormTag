@@ -170,7 +170,8 @@ async function resolvePrincipal(req: Request, env: Env): Promise<Principal> {
   const tok = url.searchParams.get("t");
   if (tok) {
     const row = await env.DB.prepare(
-      `SELECT id, ticket_id, is_primary, locale FROM ticket_reporters WHERE token = ?1`
+      `SELECT id, ticket_id, is_primary, locale FROM ticket_reporters
+        WHERE token = ?1 AND token NOT LIKE 'revoked-%' AND token NOT LIKE 'expired-%'`
     ).bind(tok).first<any>();
     if (row) return { kind: "token", ticketId: row.ticket_id, reporterId: row.id, isPrimary: !!row.is_primary, locale: row.locale };
   }
@@ -319,6 +320,18 @@ const SLOT_MINUTES = 60;
 const TRADES = ["ELECTRICAL", "PLUMBING", "HEATING", "LOCKSMITH", "GLAZING", "PEST", "LIFT", "OTHER"];
 const ESCALATION_REASONS = ["QUALIFICATION", "TOO_BIG", "SYSTEMIC", "SAFETY", "WARRANTY"];
 
+/**
+ * Retention.
+ *
+ * Closed tickets are never deleted: the room-and-cause history is the whole
+ * reason the operator dashboard is worth anything, and once the reporter link is
+ * gone it isn't personal data. What does expire is the link to the person —
+ * storage limitation applies to that, not to "the drain in C-204 blocked twice".
+ */
+const RETAIN_REPORTER_DAYS = 365;   // then the reporter link is anonymised
+const RETAIN_ATTEMPTS_DAYS = 30;    // login throttling records
+const RESIDENT_RECENT_DAYS = 90;    // how long "done" stays in a resident's list
+
 const MAX_OFFERS = 4;
 const OFFER_HORIZON_DAYS = 14;
 
@@ -433,6 +446,7 @@ route("GET", "/api/session", async ({ p, env }) => {
       maxOffers: MAX_OFFERS,
       horizonDays: OFFER_HORIZON_DAYS,
     },
+    retention: { residentRecentDays: RESIDENT_RECENT_DAYS },
   });
 });
 
@@ -1069,6 +1083,13 @@ route("POST", "/api/tickets/:id/done", async ({ env, req, p, params }) => {
     env.DB.prepare(`UPDATE tickets SET cause = ?1 WHERE id = ?2`).bind(cause, t.id),
     env.DB.prepare(`UPDATE escalations SET closed_at = ?1 WHERE ticket_id = ?2 AND closed_at IS NULL`)
       .bind(now(), t.id),
+    // A live link into a finished ticket is risk with no upside. There's no
+    // expiry column, and there doesn't need to be: overwriting the token is what
+    // actually revokes it, and the value stays unique per row.
+    env.DB.prepare(
+      `UPDATE ticket_reporters SET token = 'revoked-' || id
+        WHERE ticket_id = ?1 AND token NOT LIKE 'revoked-%' AND token NOT LIKE 'expired-%'`
+    ).bind(t.id),
     env.DB.prepare(`UPDATE appointments SET status='completed', resolved_at=?1 WHERE ticket_id=?2 AND status='booked'`)
       .bind(now(), t.id),
     env.DB.prepare(`UPDATE slot_offers SET expires_at = ?1 WHERE ticket_id = ?2 AND expires_at > ?1`).bind(now(), t.id),
@@ -1367,6 +1388,66 @@ route("POST", "/api/dev/seed", async ({ env }) => {
 });
 
 /* ================================================================ */
+/* housekeeping — runs daily on a cron, never deletes a ticket       */
+/* ================================================================ */
+
+async function runRetention(env: Env) {
+  const reporterCutoff = now() - RETAIN_REPORTER_DAYS * DAY;
+  const attemptCutoff = now() - RETAIN_ATTEMPTS_DAYS * DAY;
+
+  const results = await env.DB.batch([
+    // Anonymise, don't delete: the ticket keeps its reporter count, loses the
+    // identities. `token` has a UNIQUE constraint, so it gets a fresh dead value
+    // rather than NULL for every row.
+    env.DB.prepare(
+      `UPDATE ticket_reporters
+          SET tenant_id = NULL, email = NULL, token = 'expired-' || id
+        WHERE tenant_id IS NOT NULL
+          AND ticket_id IN (SELECT id FROM tickets WHERE closed_at IS NOT NULL AND closed_at < ?1)`
+    ).bind(reporterCutoff),
+
+    // Tenancies that ended long ago no longer need the person attached either.
+    env.DB.prepare(
+      `UPDATE ticket_reporters
+          SET tenant_id = NULL, email = NULL, token = 'expired-' || id
+        WHERE tenant_id IS NOT NULL
+          AND tenant_id IN (
+            SELECT tenant_id FROM tenancies
+             WHERE ends_on IS NOT NULL AND ends_on < ?1)`
+    ).bind(reporterCutoff),
+
+    env.DB.prepare(`DELETE FROM login_attempts WHERE attempted_at < ?1`).bind(attemptCutoff),
+
+    env.DB.prepare(
+      `DELETE FROM staff_sessions WHERE expires_at < ?1 OR revoked_at IS NOT NULL`
+    ).bind(now()),
+    env.DB.prepare(
+      `DELETE FROM tenant_sessions WHERE expires_at < ?1 OR revoked_at IS NOT NULL`
+    ).bind(now()),
+
+    // Offers nobody took, long past. The appointment history stays.
+    env.DB.prepare(
+      `DELETE FROM slot_offers
+        WHERE expires_at < ?1
+          AND id NOT IN (SELECT slot_offer_id FROM appointments WHERE slot_offer_id IS NOT NULL)`
+    ).bind(now() - 90 * DAY),
+  ]);
+
+  return {
+    anonymisedByClosure: results[0].meta.changes,
+    anonymisedByMoveOut: results[1].meta.changes,
+    loginAttemptsPurged: results[2].meta.changes,
+    sessionsPurged: results[3].meta.changes + results[4].meta.changes,
+    staleOffersPurged: results[5].meta.changes,
+  };
+}
+
+route("POST", "/api/dev/retention", async ({ env, p }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+  return json(await runRetention(env));
+});
+
+/* ================================================================ */
 /* 6. seed — locations, accounts, and 12 months of history with a    */
 /*    deliberately planted drain pattern on Haus C riser 2.          */
 /* ================================================================ */
@@ -1616,6 +1697,11 @@ async function seed(env: Env) {
 /* ================================================================ */
 
 export default {
+  /** Daily housekeeping. Anonymises old reporter links; never drops a ticket. */
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runRetention(env).then((r) => console.log("retention", r)));
+  },
+
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 

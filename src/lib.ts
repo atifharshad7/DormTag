@@ -39,6 +39,13 @@ export const T = {
   newReport:     { de: "Neue Meldung",                    en: "New report" },
   noReports:     { de: "Noch keine Meldungen.",           en: "No reports yet." },
   noReportsCta:  { de: "Melde etwas, das kaputt ist.",    en: "Report something that's broken." },
+  grpAction:       { de: "Termin wählen",            en: "Pick a time" },
+  grpBooked:       { de: "Termin steht",             en: "Appointment booked" },
+  grpParts:        { de: "Wartet auf Teil",          en: "Waiting on a part" },
+  grpOpen:         { de: "Gemeldet",                 en: "Reported" },
+  grpDone:         { de: "Erledigt",                 en: "Done" },
+  showOlder:       { de: "Ältere anzeigen",          en: "Show older" },
+  hideOlder:       { de: "Ältere ausblenden",        en: "Hide older" },
 
   pickSlot:      { de: "Termin wählen",                   en: "Pick a time" },
   pickSlotHint:  { de: "Der Hausmeister hat diese Zeiten angeboten.", en: "The caretaker offered these times." },

@@ -352,6 +352,39 @@ operator dashboard wants the width.
 
 ---
 
+## Retention
+
+Closed tickets are **never deleted**. The room-and-cause history is the entire
+reason the operator dashboard is worth anything — repeat-fault detection needs a
+year minimum, and the case for replacing a riser rests on three. Once the
+reporter link is gone, "the drain in C-204 blocked twice" isn't personal data.
+
+So the record and the person are separated, and only the person expires:
+
+| | Kept |
+| --- | --- |
+| Ticket: room, fixture, symptom, cause, dates | Indefinitely |
+| Reporter link (`tenant_id`, email, token) | 365 days after closure, or after the tenancy ends |
+| Capability tokens | Revoked the moment the ticket closes |
+| Login attempts | 30 days |
+| Expired sessions, unclaimed old offers | Purged |
+
+A Cron Trigger runs `runRetention` daily at 03:00; the same function is exposed
+at `POST /api/dev/retention` for the operator so it can be tested rather than
+taken on faith. It anonymises rather than deletes — the ticket keeps its reporter
+*count*, loses the identities. There's a test asserting the ticket total is
+unchanged after a run, and another that the planted drain pattern still shows on
+the dashboard afterwards, because the failure mode here is housekeeping quietly
+eating the thing the product is for.
+
+Tokens are revoked by overwriting the value rather than by an expiry column: the
+column is already `UNIQUE NOT NULL`, so `'revoked-' || id` invalidates the link
+without a migration, and principal resolution refuses anything matching that
+shape.
+
+Residents see finished reports for 90 days, then they collapse behind *Show
+older* — hidden, not gone.
+
 ## What's deliberately missing
 
 - **Email/push notifications.** A slot offer nobody sees is worthless, so this

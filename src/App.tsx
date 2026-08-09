@@ -46,7 +46,7 @@ function Err({ msg, onClose }: any) {
 /* resident                                                         */
 /* ---------------------------------------------------------------- */
 
-function TenantView({ l, t, tickets, reload, home, onScan }: { l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>; home: any; onScan: () => void }) {
+function TenantView({ l, t, tickets, reload, home, onScan, recentDays }: { l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>; home: any; onScan: () => void; recentDays: number }) {
   const [screen, setScreen] = useState<"list" | "scan" | "object" | "symptom">("list");
   const [rows, setRows] = useState<any[]>([]);
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -55,6 +55,7 @@ function TenantView({ l, t, tickets, reload, home, onScan }: { l: Locale; t: (k:
   const [note, setNote] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [flash, setFlash] = useState("");
+  const [showOlder, setShowOlder] = useState(false);
   const [err, setErr] = useState("");
 
   useEffect(() => { api.myRooms().then((d) => setRows(d.rows)).catch(() => {}); }, []);
@@ -168,6 +169,36 @@ function TenantView({ l, t, tickets, reload, home, onScan }: { l: Locale; t: (k:
     );
   }
 
+  const Card = ({ x }: any) => (
+    <button key={x.ticket_id} className="card cardlink" onClick={() => setOpenId(x.ticket_id)}>
+      <div className="rowspread">
+        <Plate sm>{plate(x, l)}</Plate>
+        <Pill tone={STATE_TONE[x.state]}>{t(("st_" + x.state) as StrKey)}</Pill>
+      </div>
+      <p className="cardtitle">{title(x, x.symptom, l)}</p>
+      {x.appt_at && <p className="mono muted"><Calendar size={13} /> {fmtDT(x.appt_at, l)}</p>}
+      {x.part_what && (
+        <p className="mono muted">
+          <Package size={13} /> {x.part_what}{x.part_eta ? ` · ${t("supplierEta")}: ${x.part_eta}` : ""}
+        </p>
+      )}
+      {x.trade && <p className="muted">{t("externalNote")}</p>}
+      {x.state === "slots_offered" && <p className="cta">{t("pickSlot")} →</p>}
+    </button>
+  );
+
+  // Grouped by what the resident needs to know, not by database state:
+  // something to do first, then things in motion, then what's finished.
+  const recentCut = Date.now() - (recentDays * 864e5);
+  const groups = [
+    { key: "grpAction",  rows: tickets.filter((x: any) => x.state === "slots_offered") },
+    { key: "grpBooked",  rows: tickets.filter((x: any) => x.state === "scheduled") },
+    { key: "grpParts",   rows: tickets.filter((x: any) => x.state === "waiting_for_parts") },
+    { key: "grpOpen",    rows: tickets.filter((x: any) => x.state === "reported" || x.state === "accepted") },
+    { key: "grpDone",    rows: tickets.filter((x: any) => x.state === "done" && (x.closed_at ?? 0) >= recentCut) },
+  ];
+  const older = tickets.filter((x: any) => x.state === "done" && (x.closed_at ?? 0) < recentCut);
+
   return (
     <div className="col">
       <div className="rowspread">
@@ -175,21 +206,26 @@ function TenantView({ l, t, tickets, reload, home, onScan }: { l: Locale; t: (k:
         <button className="btn btn-primary" onClick={() => setScreen("scan")}><Plus size={16} /> {t("newReport")}</button>
       </div>
       {flash && <div className="flash" onClick={() => setFlash("")}>{flash}</div>}
+
       {tickets.length === 0 && (
         <div className="empty"><p>{t("noReports")}</p><p className="muted">{t("noReportsCta")}</p></div>
       )}
-      {tickets.map((x: any) => (
-        <button key={x.ticket_id} className="card cardlink" onClick={() => setOpenId(x.ticket_id)}>
-          <div className="rowspread">
-            <Plate sm>{plate(x, l)}</Plate>
-            <Pill tone={STATE_TONE[x.state]}>{t(("st_" + x.state) as StrKey)}</Pill>
-          </div>
-          <p className="cardtitle">{title(x, x.symptom, l)}</p>
-          {x.appt_at && <p className="mono muted"><Calendar size={13} /> {fmtDT(x.appt_at, l)}</p>}
-          {x.part_what && <p className="mono muted"><Package size={13} /> {x.part_what} · {t("supplierEta")}: {x.part_eta}</p>}
-          {x.state === "slots_offered" && <p className="cta">{t("pickSlot")} →</p>}
-        </button>
+
+      {groups.filter((g) => g.rows.length > 0).map((g) => (
+        <React.Fragment key={g.key}>
+          <p className="eyebrow">{t(g.key as StrKey)} <span className="grpcount">{g.rows.length}</span></p>
+          {g.rows.map((x: any) => <Card key={x.ticket_id} x={x} />)}
+        </React.Fragment>
       ))}
+
+      {older.length > 0 && (
+        <>
+          <button className="linkmore" onClick={() => setShowOlder((v) => !v)}>
+            {showOlder ? t("hideOlder") : `${t("showOlder")} (${older.length})`}
+          </button>
+          {showOlder && older.map((x: any) => <Card key={x.ticket_id} x={x} />)}
+        </>
+      )}
     </div>
   );
 }
@@ -635,7 +671,8 @@ export default function App() {
         ) : kind === "anonymous" ? (
           <SignIn l={l} t={t} session={session} onDone={loadSession} />
         ) : kind === "tenant" ? (
-          <TenantView key={homeKey} l={l} t={t} tickets={tickets} reload={reload} home={session.home} onScan={() => setScanning(true)} />
+          <TenantView key={homeKey} l={l} t={t} tickets={tickets} reload={reload} home={session.home}
+            onScan={() => setScanning(true)} recentDays={session.retention?.residentRecentDays ?? 90} />
         ) : kind === "staff" ? (
           <StaffView key={homeKey} l={l} t={t} tickets={tickets} reload={reload} rules={session.slotRules} />
         ) : (
