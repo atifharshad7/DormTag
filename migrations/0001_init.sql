@@ -1,0 +1,204 @@
+-- DormTag — D1 (SQLite) schema
+--
+-- Adapted from the Postgres design. Two things changed and both are
+-- documented rather than hidden:
+--   1. No btree_gist, so staff double-booking is guarded by a unique index on
+--      (staff_id, starts_at). Slots are generated on a fixed hourly grid so
+--      exact-time collision is the only realistic case.
+--   2. No row-level security in D1, so scoping is enforced in the worker only.
+--      Every query goes through scope() in worker/index.ts.
+--
+-- Timestamps are epoch milliseconds (INTEGER) so JS needs no parsing.
+
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE buildings (
+  id          TEXT PRIMARY KEY,
+  code        TEXT NOT NULL UNIQUE,
+  name        TEXT NOT NULL,
+  room_count  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE units (
+  id          TEXT PRIMARY KEY,
+  building_id TEXT NOT NULL REFERENCES buildings,
+  code        TEXT NOT NULL,
+  floor       INTEGER NOT NULL,
+  kind        TEXT NOT NULL CHECK (kind IN ('studio','wg')),
+  UNIQUE (building_id, code)
+);
+
+CREATE TABLE rooms (
+  id        TEXT PRIMARY KEY,
+  unit_id   TEXT NOT NULL REFERENCES units,
+  code      TEXT NOT NULL,
+  room_type TEXT NOT NULL,
+  kind      TEXT NOT NULL CHECK (kind IN ('private','shared')),
+  UNIQUE (unit_id, code)
+);
+
+CREATE TABLE objects (
+  id          TEXT PRIMARY KEY,
+  room_id     TEXT NOT NULL REFERENCES rooms,
+  object_type TEXT NOT NULL,
+  ordinal     INTEGER NOT NULL DEFAULT 1,
+  qr_slug     TEXT NOT NULL UNIQUE,
+  riser       TEXT,
+  UNIQUE (room_id, object_type, ordinal)
+);
+CREATE INDEX idx_objects_room ON objects(room_id);
+
+CREATE TABLE tenants (
+  id           TEXT PRIMARY KEY,
+  email        TEXT NOT NULL UNIQUE,
+  locale       TEXT NOT NULL DEFAULT 'de' CHECK (locale IN ('de','en')),
+  activated_at INTEGER
+);
+
+CREATE TABLE staff (
+  id           TEXT PRIMARY KEY,
+  email        TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  locale       TEXT NOT NULL DEFAULT 'de' CHECK (locale IN ('de','en')),
+  is_operator  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE staff_buildings (
+  staff_id    TEXT NOT NULL REFERENCES staff ON DELETE CASCADE,
+  building_id TEXT NOT NULL REFERENCES buildings ON DELETE CASCADE,
+  PRIMARY KEY (staff_id, building_id)
+);
+
+CREATE TABLE tenancies (
+  id        TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants,
+  room_id   TEXT NOT NULL REFERENCES rooms,
+  starts_on INTEGER NOT NULL,
+  ends_on   INTEGER
+);
+CREATE INDEX idx_tenancies_tenant ON tenancies(tenant_id) WHERE ends_on IS NULL;
+
+CREATE TABLE staff_sessions (
+  id           TEXT PRIMARY KEY,
+  staff_id     TEXT NOT NULL REFERENCES staff ON DELETE CASCADE,
+  token_hash   TEXT NOT NULL UNIQUE,
+  issued_at    INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL,
+  revoked_at   INTEGER
+);
+
+CREATE TABLE tenant_sessions (
+  id           TEXT PRIMARY KEY,
+  tenant_id    TEXT NOT NULL REFERENCES tenants ON DELETE CASCADE,
+  token_hash   TEXT NOT NULL UNIQUE,
+  issued_at    INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL,
+  revoked_at   INTEGER
+);
+
+CREATE TABLE tickets (
+  id               TEXT PRIMARY KEY,
+  object_id        TEXT NOT NULL REFERENCES objects,
+  symptom          TEXT NOT NULL,
+  state            TEXT NOT NULL DEFAULT 'reported' CHECK (state IN
+                     ('reported','accepted','slots_offered','scheduled',
+                      'waiting_for_parts','done','cancelled')),
+  reported_at      INTEGER NOT NULL,
+  closed_at        INTEGER,
+  needs_access     INTEGER NOT NULL DEFAULT 1,
+  access_consent   INTEGER NOT NULL DEFAULT 0,
+  note             TEXT,
+  note_locale      TEXT,
+  cause            TEXT,
+  reschedule_count INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_tickets_state ON tickets(state);
+CREATE INDEX idx_tickets_object ON tickets(object_id, reported_at DESC);
+
+-- Deduplication: at most one live ticket per physical object.
+CREATE UNIQUE INDEX one_open_ticket_per_object
+  ON tickets(object_id) WHERE state NOT IN ('done','cancelled');
+
+CREATE TABLE ticket_reporters (
+  id         TEXT PRIMARY KEY,
+  ticket_id  TEXT NOT NULL REFERENCES tickets ON DELETE CASCADE,
+  tenant_id  TEXT REFERENCES tenants,
+  email      TEXT,
+  locale     TEXT NOT NULL DEFAULT 'de',
+  token      TEXT NOT NULL UNIQUE,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX one_reporter_row_per_person
+  ON ticket_reporters(ticket_id, tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX idx_reporters_ticket ON ticket_reporters(ticket_id);
+
+CREATE TABLE slot_offers (
+  id         TEXT PRIMARY KEY,
+  ticket_id  TEXT NOT NULL REFERENCES tickets ON DELETE CASCADE,
+  staff_id   TEXT NOT NULL REFERENCES staff,
+  starts_at  INTEGER NOT NULL,
+  ends_at    INTEGER NOT NULL,
+  offered_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX idx_slots_ticket ON slot_offers(ticket_id, starts_at);
+
+-- Append-only. A change inserts a row and cancels the previous one.
+CREATE TABLE appointments (
+  id            TEXT PRIMARY KEY,
+  ticket_id     TEXT NOT NULL REFERENCES tickets ON DELETE CASCADE,
+  slot_offer_id TEXT REFERENCES slot_offers,
+  staff_id      TEXT NOT NULL REFERENCES staff,
+  starts_at     INTEGER NOT NULL,
+  ends_at       INTEGER NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'booked' CHECK (status IN
+                  ('booked','completed','cancelled_by_tenant',
+                   'cancelled_by_staff','no_access')),
+  booked_by     TEXT NOT NULL CHECK (booked_by IN ('tenant','staff','system')),
+  created_at    INTEGER NOT NULL,
+  resolved_at   INTEGER
+);
+
+-- The three concurrency guards. Enforced by the database, not by hope.
+CREATE UNIQUE INDEX one_booked_appt_per_ticket
+  ON appointments(ticket_id) WHERE status = 'booked';
+CREATE UNIQUE INDEX slot_claimed_once
+  ON appointments(slot_offer_id) WHERE status = 'booked';
+CREATE UNIQUE INDEX staff_not_double_booked
+  ON appointments(staff_id, starts_at) WHERE status = 'booked';
+
+CREATE TABLE parts_orders (
+  id           TEXT PRIMARY KEY,
+  ticket_id    TEXT NOT NULL REFERENCES tickets ON DELETE CASCADE,
+  description  TEXT NOT NULL,
+  ordered_at   INTEGER NOT NULL,
+  supplier_eta TEXT,
+  arrived_at   INTEGER
+);
+CREATE INDEX idx_parts_ticket ON parts_orders(ticket_id);
+
+CREATE TABLE ticket_events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id  TEXT NOT NULL REFERENCES tickets ON DELETE CASCADE,
+  from_state TEXT,
+  to_state   TEXT NOT NULL,
+  actor_kind TEXT NOT NULL CHECK (actor_kind IN ('tenant','staff','system')),
+  actor_id   TEXT,
+  reason     TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX idx_events_ticket ON ticket_events(ticket_id, created_at);
+
+CREATE VIEW v_ticket_location AS
+SELECT
+  t.id AS ticket_id, t.state, t.reported_at, t.closed_at, t.cause,
+  o.id AS object_id, o.object_type, o.riser, o.ordinal,
+  r.id AS room_id, r.code AS room_code, r.room_type, r.kind AS room_kind,
+  u.id AS unit_id, u.code AS unit_code, u.floor, u.kind AS unit_kind,
+  b.id AS building_id, b.code AS building_code, b.name AS building_name
+FROM tickets t
+JOIN objects   o ON o.id = t.object_id
+JOIN rooms     r ON r.id = o.room_id
+JOIN units     u ON u.id = r.unit_id
+JOIN buildings b ON b.id = u.building_id;

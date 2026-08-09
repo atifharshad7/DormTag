@@ -1,0 +1,29 @@
+{
+  "name": "dormtag",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "npm run build && wrangler dev --local",
+    "deploy": "npm run build && wrangler deploy",
+    "db:local": "wrangler d1 execute dormtag --local --file=./migrations/0001_init.sql",
+    "db:remote": "wrangler d1 execute dormtag --remote --file=./migrations/0001_init.sql",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "^0.454.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "wrangler": "^3.99.0"
+  }
+}

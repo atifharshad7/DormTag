@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dormtag",
+  "main": "worker/index.ts",
+  "compatibility_date": "2024-11-06",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dormtag",
+      "database_id": "PASTE_YOUR_DATABASE_ID_HERE"
+    }
+  ],
+  "vars": {
+    "DEMO_MODE": "true"
+  },
+  "observability": { "enabled": true }
+}
