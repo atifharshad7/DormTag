@@ -9,7 +9,8 @@
 
 import {
   Droplet, Flame, Lightbulb, Refrigerator, Thermometer, ShowerHead,
-  WashingMachine, DoorClosed, Wind, Plug, type LucideIcon,
+  WashingMachine, DoorClosed, Wind, Plug, Bed, UtensilsCrossed, Bath, DoorOpen,
+  type LucideIcon,
 } from "lucide-react";
 
 export type Locale = "de" | "en";
@@ -29,9 +30,6 @@ export const T = {
   seeding:       { de: "Wird geladen…",                   en: "Loading…" },
   logout:        { de: "Abmelden",                        en: "Sign out" },
 
-  scanTitle:     { de: "Schaden melden",                  en: "Report a problem" },
-  scanHint:      { de: "QR-Aufkleber im Raum scannen",    en: "Scan the sticker in the room" },
-  simulate:      { de: "Aufkleber wählen (Demo)",         en: "Pick a sticker (demo)" },
   whatBroken:    { de: "Was ist defekt?",                 en: "What's broken?" },
   whatWrong:     { de: "Was ist das Problem?",            en: "What's wrong with it?" },
   noteOptional:  { de: "Notiz (optional)",                en: "Note (optional)" },
@@ -115,6 +113,25 @@ export const T = {
   stickerCount:   { de: "Aufkleber",                 en: "stickers" },
   backToApp:      { de: "Zurück",                    en: "Back" },
   reportProblem:  { de: "Schaden melden",            en: "Report a problem" },
+  yourFlat:       { de: "deine Wohnung",             en: "your flat" },
+  yourRoom:        { de: "dein Zimmer",              en: "your room" },
+  sharedTag:       { de: "gemeinsam",                en: "shared" },
+  orChooseRoom:    { de: "oder Raum wählen",         en: "or choose a room" },
+  scanKnowsItem:   { de: "Erkennt das genaue Objekt", en: "Knows the exact item" },
+  openCamera:      { de: "Kamera öffnen",            en: "Open camera" },
+  outsideFlat:     { de: "Etwas außerhalb deiner Wohnung? Dort den Aufkleber scannen.", en: "Something outside your flat? Scan the sticker there." },
+  scanQrTitle:    { de: "QR-Code scannen",           en: "Scan a QR code" },
+  scanOpen:       { de: "Scannen",                   en: "Scan" },
+  scanStart:      { de: "Kamera bereit.",            en: "Camera ready." },
+  scanStarting:   { de: "Kamera startet…",           en: "Starting camera…" },
+  scanAim:        { de: "Aufkleber ins Bild halten", en: "Point at the sticker" },
+  scanDenied:     { de: "Kamerazugriff wurde abgelehnt. In den Browsereinstellungen erlauben.", en: "Camera access was refused. Allow it in your browser settings." },
+  scanInsecure:   { de: "Kamera braucht HTTPS.",     en: "The camera needs HTTPS." },
+  scanNoCamera:   { de: "Keine Kamera gefunden.",    en: "No camera found." },
+  scanError:      { de: "Kamera konnte nicht gestartet werden.", en: "Couldn't start the camera." },
+  scanRetry:      { de: "Nochmal versuchen",         en: "Try again" },
+  scanFallback:   { de: "Die normale Kamera-App liest den Code auch.", en: "Your phone's normal camera app reads it too." },
+  close:          { de: "Schließen",                 en: "Close" },
 } as const;
 
 export type StrKey = keyof typeof T;
@@ -281,6 +298,12 @@ const pick = (table: Record<string, any>, code: string, l: Locale, fallback?: st
   (table[code]?.[l] as string) ?? fallback ?? code;
 
 export const roomLabel    = (code: string, l: Locale) => pick(ROOM_TYPE, code, l);
+
+const ROOM_ICON: Record<string, LucideIcon> = {
+  BEDROOM: Bed, KITCHEN: UtensilsCrossed, BATHROOM: Bath,
+  HALLWAY: DoorOpen, LAUNDRY: WashingMachine,
+};
+export const roomIcon = (code: string): LucideIcon => ROOM_ICON[code] ?? DoorClosed;
 export const objLabel     = (code: string, l: Locale) => pick(OBJECT_TYPE, code, l);
 export const symptomLabel = (code: string, l: Locale) => pick(SYMPTOM, code, l);
 export const causeLabel   = (code: string, l: Locale) => pick(CAUSE, code, l);

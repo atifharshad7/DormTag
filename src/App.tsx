@@ -2,14 +2,15 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   QrCode, Calendar, Clock, Check, ChevronLeft, Package, AlertTriangle, Key,
   Building2, Wrench, LayoutDashboard, Languages, User, Users, ArrowRight, Plus,
-  LogOut,
+  LogOut, Camera,
 } from "lucide-react";
 import {
   api, T, SYMPTOMS_FOR, CAUSE, CAUSES_FOR,
-  roomLabel, objLabel, objIcon, symptomLabel, causeLabel, reasonLabel,
+  roomLabel, roomIcon, objLabel, objIcon, symptomLabel, causeLabel, reasonLabel,
   fmtDay, fmtDT, fmtTime, plate, title, STATE_TONE, type Locale, type StrKey,
 } from "./lib";
 import { SignIn, ScanLanding, ReportDone, StickerSheet } from "./Auth";
+import { ScannerModal } from "./Scanner";
 
 /* ---------------------------------------------------------------- */
 /* small shared pieces                                              */
@@ -42,7 +43,7 @@ function Err({ msg, onClose }: any) {
 /* resident                                                         */
 /* ---------------------------------------------------------------- */
 
-function TenantView({ l, t, tickets, reload }: { l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void> }) {
+function TenantView({ l, t, tickets, reload, home, onScan }: { l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>; home: any; onScan: () => void }) {
   const [screen, setScreen] = useState<"list" | "scan" | "object" | "symptom">("list");
   const [rows, setRows] = useState<any[]>([]);
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -62,24 +63,55 @@ function TenantView({ l, t, tickets, reload }: { l: Locale; t: (k: StrKey) => st
   if (openId) return <TenantTicket l={l} t={t} id={openId} reload={reload} onBack={() => { setOpenId(null); reload(); }} />;
 
   if (screen === "scan") {
+    // Two equal paths. Scanning is best for a precise fixture or anything
+    // outside the flat; picking a room is faster for someone already standing
+    // in their own kitchen. Private rooms first — your own is the likely one.
+    const ordered = [...rooms].sort((a, b) =>
+      (a.room_kind === b.room_kind ? 0 : a.room_kind === "private" ? -1 : 1));
+
     return (
       <div className="col">
         <button className="linkback" onClick={() => setScreen("list")}><ChevronLeft size={16} /> {t("back")}</button>
-        <div className="scanbox">
-          <QrCode size={40} strokeWidth={1.25} aria-hidden />
-          <h2>{t("scanTitle")}</h2>
-          <p className="muted">{t("scanHint")}</p>
+
+        <div>
+          <h2>{t("reportProblem")}</h2>
+          {home && <p className="muted">{home.building_code}-{home.unit_code} · {t("yourFlat")}</p>}
         </div>
-        <p className="eyebrow">{t("simulate")}</p>
-        <div className="stickers">
-          {rooms.map((r) => (
-            <button key={r.room_id} className="sticker"
-              onClick={() => { setRoomId(r.room_id); setObjectId(null); setSymptom(null); setScreen("object"); }}>
-              <Plate sm>{roomLabel(r.room_type, l)}</Plate>
-              {r.room_kind === "shared" && <Users size={14} strokeWidth={1.5} aria-hidden />}
-            </button>
-          ))}
+
+        <div className="scancard">
+          <div className="scanhead">
+            <QrCode size={22} strokeWidth={1.5} aria-hidden />
+            <div>
+              <p className="scanheadtitle">{t("scanQrTitle")}</p>
+              <p className="scanheadsub">{t("scanKnowsItem")}</p>
+            </div>
+          </div>
+          <button className="btn btn-scan" onClick={onScan}>
+            <Camera size={16} aria-hidden /> {t("openCamera")}
+          </button>
         </div>
+
+        <div className="divider"><span>{t("orChooseRoom")}</span></div>
+
+        <div className="col" style={{ gap: 6 }}>
+          {ordered.map((r) => {
+            const Icon = roomIcon(r.room_type);
+            return (
+              <button key={r.room_id} className="roomrow"
+                onClick={() => { setRoomId(r.room_id); setObjectId(null); setSymptom(null); setScreen("object"); }}>
+                <span className="roomname">
+                  <Icon size={18} strokeWidth={1.5} aria-hidden />
+                  {roomLabel(r.room_type, l)}
+                </span>
+                <Pill tone={r.room_kind === "private" ? "info" : "neutral"}>
+                  {r.room_kind === "private" ? t("yourRoom") : t("sharedTag")}
+                </Pill>
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="muted">{t("outsideFlat")}</p>
       </div>
     );
   }
@@ -470,6 +502,13 @@ export default function App() {
   const [route, setRoute] = useState(readRoute);
   const [screen, setScreen] = useState<"main" | "stickers" | "sent">("main");
   const [sent, setSent] = useState<{ id: string; token?: string } | null>(null);
+  const [scanning, setScanning] = useState(false);
+
+  const goScan = useCallback((slug: string) => {
+    history.pushState({}, "", `/r/${slug}`);
+    setRoute({ kind: "scan", slug });
+    setScreen("main");
+  }, []);
 
   const goApp = useCallback(() => {
     history.pushState({}, "", "/");
@@ -504,6 +543,9 @@ export default function App() {
       <header className="topbar">
         <div className="brand"><Building2 size={18} strokeWidth={1.75} aria-hidden /><span>{t("appName")}</span></div>
         <div className="row">
+          <button className="lang" onClick={() => setScanning(true)} aria-label={t("scanOpen")}>
+            <Camera size={14} aria-hidden />
+          </button>
           {isStaffKind && (
             <button className="lang" onClick={() => setScreen(screen === "stickers" ? "main" : "stickers")}
               aria-label={t("stickers")}><QrCode size={14} aria-hidden /></button>
@@ -535,13 +577,18 @@ export default function App() {
         ) : kind === "anonymous" ? (
           <SignIn l={l} t={t} session={session} onDone={loadSession} />
         ) : kind === "tenant" ? (
-          <TenantView l={l} t={t} tickets={tickets} reload={reload} />
+          <TenantView l={l} t={t} tickets={tickets} reload={reload} home={session.home} onScan={() => setScanning(true)} />
         ) : kind === "staff" ? (
           <StaffView l={l} t={t} tickets={tickets} reload={reload} />
         ) : (
           <OperatorView l={l} t={t} />
         )}
       </main>
+
+      {scanning && (
+        <ScannerModal t={t} onClose={() => setScanning(false)}
+          onFound={(slug) => { setScanning(false); goScan(slug); }} />
+      )}
     </div>
   );
 }

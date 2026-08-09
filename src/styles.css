@@ -316,3 +316,67 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   .sheet { grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .stickercard { break-inside: avoid; page-break-inside: avoid; }
 }
+
+/* --- in-app scanner ----------------------------------------------- */
+
+.modal {
+  position: absolute; inset: 0; z-index: 20;
+  background: rgba(10,12,13,.72);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 5vh 16px;
+}
+.sheetcard {
+  width: 100%; max-width: 420px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.iconbtn {
+  border: 0; background: none; padding: 6px; cursor: pointer;
+  color: var(--muted); border-radius: 6px; min-height: 32px;
+}
+.iconbtn:hover { background: rgba(22,25,27,.07); }
+
+.viewport {
+  position: relative; aspect-ratio: 1 / 1; width: 100%;
+  background: #101315; border-radius: 10px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.vid { width: 100%; height: 100%; object-fit: cover; }
+.hide { display: none; }
+.viewportmsg {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center; padding: 20px; color: #c9cdd0;
+}
+.viewportmsg p { margin: 0; font-size: 13px; }
+.reticle {
+  position: absolute; width: 62%; aspect-ratio: 1;
+  border: 2px solid rgba(242,176,8,.9); border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.28);
+}
+
+/* --- resident report entry: scan card + room rows ------------------ */
+
+.scancard {
+  background: rgba(242,176,8,.11); border: 1px solid rgba(169,106,16,.35);
+  border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.scanhead { display: flex; align-items: center; gap: 10px; color: var(--amber); }
+.scanheadtitle { font-size: 14px; font-weight: 500; margin: 0; }
+.scanheadsub { font-size: 12px; margin: 0; opacity: .85; }
+.btn-scan {
+  background: var(--yellow); border-color: var(--yellow); color: #2a1f02; font-weight: 500;
+}
+.btn-scan:hover { border-color: var(--amber); }
+
+.divider { display: flex; align-items: center; gap: 10px; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.divider span { font-size: 12px; color: var(--muted); }
+
+.roomrow {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 12px; min-height: 48px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  cursor: pointer; font: inherit; text-align: left; color: var(--ink);
+}
+.roomrow:hover { border-color: var(--slate); }
+.roomname { display: inline-flex; align-items: center; gap: 9px; font-size: 14px; }

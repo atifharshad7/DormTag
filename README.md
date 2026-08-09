@@ -157,6 +157,12 @@ the person who notices a dead corridor light may not live on that floor. Private
 rooms require a session. An anonymous report returns a capability token and the
 reporter gets `/t/:token` as their only way back to the ticket.
 
+There is also an in-app scanner (the camera icon in the header) for staff
+walking a building: native `BarcodeDetector` where available, jsQR as a fallback
+for Safari and Firefox, lazily loaded so it costs nothing until opened. It needs
+a secure context, and it degrades with an explicit message rather than a dead
+button when permission is refused or no camera exists.
+
 Staff can print a sheet of stickers per building from the app (`/api/stickers/:code`,
 scoped to their assigned buildings). Each sticker carries the QR, the
 human-readable location, and the slug in text as a fallback for when the code is
