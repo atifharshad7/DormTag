@@ -12,7 +12,6 @@
 
 export interface Env {
   DB: D1Database;
-  COOKIE_SECRET: string;
   DEMO_MODE: string;
   ASSETS: Fetcher;
 }
@@ -50,27 +49,22 @@ function randomToken() {
   return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function hmac(secret: string, value: string) {
-  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(value));
-  return btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=+$/, "");
-}
-
-async function signCookie(secret: string, value: string) {
-  return `${value}.${await hmac(secret, value)}`;
-}
-
-async function readSignedCookie(req: Request, secret: string, name: string): Promise<string | null> {
+/**
+ * Session cookies carry the raw token — no signature.
+ *
+ * The token is 32 bytes of crypto-random data and is only accepted if its
+ * SHA-256 hash matches a live row in staff_sessions / tenant_sessions. An
+ * HMAC on top would add no security (an unguessable token cannot be forged);
+ * it would only save one database lookup on garbage input, in exchange for a
+ * deployment-time secret that can silently be missing.
+ */
+function readCookie(req: Request, name: string): string | null {
   const raw = req.headers.get("cookie") || "";
   const hit = raw.split(/;\s*/).find((c) => c.startsWith(name + "="));
   if (!hit) return null;
-  const packed = decodeURIComponent(hit.slice(name.length + 1));
-  const i = packed.lastIndexOf(".");
-  if (i < 1) return null;
-  const value = packed.slice(0, i);
-  const sig = packed.slice(i + 1);
-  // Constant-time-ish compare via re-sign
-  return (await hmac(secret, value)) === sig ? value : null;
+  const value = decodeURIComponent(hit.slice(name.length + 1)).trim();
+  // Reject anything that isn't a plausible token before touching the database.
+  return /^[A-Za-z0-9_-]{20,}$/.test(value) ? value : null;
 }
 
 function setCookie(name: string, value: string, maxAgeSec: number) {
@@ -90,9 +84,7 @@ type Principal =
   | { kind: "operator"; staffId: string; name: string; locale: string };
 
 async function resolvePrincipal(req: Request, env: Env): Promise<Principal> {
-  const secret = env.COOKIE_SECRET;
-
-  const sid = await readSignedCookie(req, secret, "sid");
+  const sid = readCookie(req, "sid");
   if (sid) {
     const row = await env.DB.prepare(
       `SELECT s.id, s.display_name, s.is_operator, s.locale
@@ -110,7 +102,7 @@ async function resolvePrincipal(req: Request, env: Env): Promise<Principal> {
     }
   }
 
-  const tid = await readSignedCookie(req, secret, "tid");
+  const tid = readCookie(req, "tid");
   if (tid) {
     const row = await env.DB.prepare(
       `SELECT t.id AS tenant_id, t.locale, r.id AS room_id, r.unit_id
@@ -297,7 +289,7 @@ route("POST", "/api/session/demo", async ({ req, env }) => {
     await env.DB.prepare(
       `INSERT INTO tenant_sessions (id, tenant_id, token_hash, issued_at, expires_at) VALUES (?1,?2,?3,?4,?5)`
     ).bind(uid(), t.id, hash, now(), now() + 7 * DAY).run();
-    headers.append("set-cookie", setCookie("tid", await signCookie(env.COOKIE_SECRET, token), 7 * 86400));
+    headers.append("set-cookie", setCookie("tid", token, 7 * 86400));
     headers.append("set-cookie", clearCookie("sid"));
   } else {
     const s = await env.DB.prepare(`SELECT id FROM staff WHERE email = ?1`).bind(email).first<any>();
@@ -305,7 +297,7 @@ route("POST", "/api/session/demo", async ({ req, env }) => {
     await env.DB.prepare(
       `INSERT INTO staff_sessions (id, staff_id, token_hash, issued_at, expires_at) VALUES (?1,?2,?3,?4,?5)`
     ).bind(uid(), s.id, hash, now(), now() + 7 * DAY).run();
-    headers.append("set-cookie", setCookie("sid", await signCookie(env.COOKIE_SECRET, token), 7 * 86400));
+    headers.append("set-cookie", setCookie("sid", token, 7 * 86400));
     headers.append("set-cookie", clearCookie("tid"));
   }
   return new Response(JSON.stringify({ ok: true }), { headers });
