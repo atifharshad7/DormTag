@@ -1,415 +1,162 @@
 # DormTag
 
-Repair coordination for student halls. A resident scans a QR sticker, taps
-what's broken, and picks an appointment slot; the caretaker works a queue and
-closes each job with a cause code; the operator sees which faults keep coming
-back from the same pipe.
+**Scan it. Book it. Done.**
 
-The name is the front door: every fixture in the building carries a tag, and
-scanning it is the whole reporting flow.
+DormTag is repair reporting for student halls. Something breaks in your room, you scan the QR sticker on the door, tap what it is, and pick a time the caretaker comes. No email, no waiting for a reply that never arrives.
 
-Built as a product-engineering exercise. The interesting parts are the data
-model and the state machine, not the CRUD.
+Every repair is logged to the exact room and fixture, so after a year the operator doesn't see eleven complaints, they see the one pipe causing them.
 
-**Stack:** Cloudflare Workers · D1 (SQLite) · React · Vite · TypeScript, no framework.
+**Status:** working demo, seeded with a year of example data. German and English. Built as a product engineering exercise.
 
----
 
-## The problem
+## What it does
 
-German student halls run repairs on email, phone and paper slips pinned by the
-caretaker's door. Three things go wrong:
+### For residents
 
-1. **No status.** The resident reports a leak and hears nothing for three weeks.
-   Usually the honest answer is "we're waiting for a part" — but nobody says so.
-2. **Missed appointments.** The caretaker arrives, nobody's home, repeat in three
-   weeks. In the seeded data this is **31% of visits**, and until now nobody could
-   measure it.
-3. **No memory.** Eleven blocked drains on one riser looks like eleven clumsy
-   students, because the pattern only exists in one person's head.
+* Scan the sticker in the room, tap the fixture, tap what's wrong. Twenty seconds, no typing, no account needed for shared spaces.
+* Pick the appointment yourself from times the caretaker actually offered, so nobody rings the bell during a lecture.
+* See exactly where it stands, including when a part is on order and what the supplier said.
+* Reports are grouped by what needs your attention: pick a time, booked, waiting on a part, reported, done.
+* Grant "enter without me" so simple jobs don't need you there at all.
 
-Most tenant portals solve (1) with a web form. This tries to solve (2) and (3).
+### For caretakers
 
----
+* One queue instead of a mailbox, split into booked, no appointment, waiting for parts, and with an external firm.
+* Offer appointment times on a day strip and hour grid. Hours you're already committed to are greyed out before you submit.
+* Close a job with a cause code in four taps and no typing. "Nobody home" is a first-class button, not buried in a menu.
+* Hand work you can't legally do to a trade: electrical, plumbing, heating, locksmith, glazing, pest, lift.
+* Print QR sticker sheets per building, scoped to the buildings assigned to you.
+* Scan a fixture in the corridor to pull up its history on the spot.
 
-## Three design decisions worth reading the code for
+### For operators
 
-### 1. Structured locations, not free text
+* Four metrics you can click into: what's open, what's waiting on parts, what's with an external firm, and how often nobody was home.
+* Reported-versus-fixed by month. Tap a bar for that month's counts, median fix time, and splits by building, fixture and cause.
+* Repeat-fault ranking by riser, which is what turns eleven separate complaints into one plumbing problem.
+* Filter everything by period (1, 3, 6 or 12 months) and by building.
+* Commission external firms and record the order reference.
 
-The location tree is `Building → Unit → Room → Object`, and every report stores
-`object_id` plus a symptom code — never a sentence. `Unit` exists as its own
-level because a WG breaks a flat building/room model: **tenancies attach to a
-room**, but **shared spaces attach to the unit**.
+## Design notes
 
-Objects also carry a `riser` — the plumbing or electrical stack they sit on.
-That single nullable column is what makes repeat-fault detection possible.
-Group faults by building and you learn nothing; group by riser and the pipe
-problem falls out.
+* **Sticker granularity follows ambiguity.** One sticker per room, so a four-person flat needs 7 instead of 26. An extra sticker per fixture only where a room holds several of the same type, like a laundry with three washing machines, because "machine 3" has to reach machine 3.
+* **Nothing invents a time.** When an appointment falls through the ticket reuses the caretaker's remaining offers and withdraws the rejected one. If none are left it waits for him to propose new ones.
+* **Access follows the unit, not the room.** A shared kitchen inside a locked flat still needs somebody to let the caretaker in. Only genuine common areas need nobody present.
+* **Analytics are per object, never per person.** The dashboard groups by building, riser and fixture, never by caretaker response time. A system that scores individual employees triggers works-council co-determination in a German public body.
+* **Closed tickets are never deleted**, but reporter identities are anonymised a year after closure. The maintenance history is the asset; the link to the person is not.
+* German institutional signage as the visual direction: slate enamel plates with mono room codes, traffic yellow reserved for the two things it means (the sticker, and waiting).
+* Mobile first. The resident is on a phone, the caretaker is on a phone in a stairwell, and only the operator dashboard wants the width.
 
-Free-text reports would have made this permanently unrecoverable. You cannot
-retrofit structure onto a year of prose.
+## Tech stack
 
-### 2. Appointments are append-only
+* **Frontend:** React and TypeScript, built with Vite. No framework, no component library.
+* **Backend:** a single [Cloudflare Worker](https://workers.cloudflare.com/) with a hand-rolled router, serving both the API and the static assets.
+* **Database:** [Cloudflare D1](https://developers.cloudflare.com/d1/) (SQLite).
+* **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Tokens are stored hashed.
+* **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
+* **Housekeeping:** a Cron Trigger runs retention daily.
+* **Tests:** 199 end-to-end assertions in a plain Node script, no test framework.
+* **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
-`UPDATE appointments SET slot_id = ...` destroys the thing the dashboard needs.
-Instead each change inserts a row and cancels the previous one, with a status of
-`booked` / `completed` / `cancelled_by_tenant` / `cancelled_by_staff` /
-`no_access`.
-
-`no_access` is the important one. It's a one-tap outcome for the caretaker, and
-it's the only reason the failed-visit metric can exist at all.
-
-### 3. Three concurrency guards live in the database
-
-Not in a service layer, where they'd fail under concurrency:
-
-```sql
-CREATE UNIQUE INDEX one_open_ticket_per_object
-  ON tickets(object_id) WHERE state NOT IN ('done','cancelled');
-CREATE UNIQUE INDEX one_booked_appt_per_ticket
-  ON appointments(ticket_id) WHERE status = 'booked';
-CREATE UNIQUE INDEX staff_not_double_booked
-  ON appointments(staff_id, starts_at) WHERE status = 'booked';
-```
-
-The first is deduplication: three residents reporting the same corridor light
-produce one ticket and three `ticket_reporters` rows. Everyone gets updates;
-the caretaker gets one job.
-
-Postgres would express the third as an `EXCLUDE USING gist` over a time range.
-D1 has no `btree_gist`, so slots are generated on a fixed hourly grid and the
-index covers exact-time collision. That's a real trade-off, written down rather
-than hidden — see the comment at the top of `migrations/0001_init.sql`.
-
----
-
-## The state machine
+## Project structure
 
 ```
-reported → accepted → slots_offered → scheduled → done
-                            ↑              │
-                            └──────────────┤  no_access, reschedule
-                            └── waiting_for_parts
+worker/
+  index.ts           # API, auth, row scoping, state machine, seed, retention
+src/
+  App.tsx            # app shell, resident and caretaker views
+  Operator.tsx       # dashboard: metrics, charts, drill-downs
+  Auth.tsx           # sign in, about page, scan landing, sticker sheet
+  SlotPicker.tsx     # appointment time picker
+  Scanner.tsx        # in-app QR scanner
+  lib.ts             # i18n catalogue, label resolution, API client
+  styles.css         # design tokens and layout
+  main.tsx           # Vite entry
+migrations/
+  000*.sql           # schema, applied in order
+  000*.console.sql   # same statements without comments, for the D1 dashboard
+scripts/
+  smoke.mjs          # end-to-end tests against a running worker
+reference/
+  schema.sql         # the Postgres design this started from
+  schema-access.sql  # sessions and row-level security policies
+  access.ts          # principal resolution for a Node/Postgres runtime
+index.html
+wrangler.jsonc
 ```
 
-Transitions are declared in one table in `worker/index.ts` and checked on every
-write; an illegal one returns 409 rather than silently corrupting state.
+The `reference/` folder is the Postgres version of the schema, kept because D1 forced two compromises worth documenting: no `EXCLUDE USING gist` for overlapping appointments, and no row-level security, so scoping lives only in `ticketScope()` in the worker.
 
-The caretaker chooses the offered times himself. Two steps on one screen: pick a
-day from a strip, tap the hours. Appointments sit on whole hours and last an
-hour — that's a simplification for someone working on a phone, not a database
-workaround, and it also means two visits can never partially overlap.
+## Getting started (local development)
 
-Appointment hours belong to the **building**, not the server or the browser. A
-Worker runs in UTC, so `new Date(ms).getHours()` on 09:00 Berlin returns 7 and
-every morning slot was rejected as "not offered" — a bug that only showed up once
-real times were being picked. Validation now converts through
-`Intl.DateTimeFormat` with an explicit zone, the client constructs timestamps the
-same way, and the seed places its appointments on offerable local hours so demo
-data reads like something a caretaker created.
+Requires Node.js 20+.
 
-Hours he's already committed to are greyed out and labelled *already booked*
-before he submits. An earlier version accepted them and then reported that some
-had been skipped, which is a confusing way to find out you're double-booked.
-
-Booking still claims a slot in a single `INSERT ... SELECT ... WHERE NOT EXISTS`,
-which evaluates the overlap guard and performs the write atomically inside
-SQLite. With hourly slots the unique index would mostly suffice; the atomic
-guard is kept because a read-then-write check would race, and it costs nothing.
-
-The picker is built from `slotRules` served by `/api/session`, so the client and
-the validator can't drift apart.
-
-The `waiting_for_parts` branch looping **back to slot offering** is the piece a
-naive implementation misses. Without it the caretaker either closes the ticket
-early or leaves it open forever.
-
-Parts show facts, never predictions: *ordered Tuesday · supplier says KW 34*.
-Promising a date you then miss is worse than saying nothing.
-
----
-
-## Access control
-
-Three principals, three mechanisms, because they have three different trust
-levels and three different tolerances for friction:
-
-| Principal | Mechanism | Why |
-| --- | --- | --- |
-| Resident | signed session cookie, magic-link ready; capability token per ticket | Reports twice a year — an account is friction they'll never pay |
-| Caretaker | signed session cookie, scoped to assigned buildings | Daily user with a persistent queue |
-| Operator | signed session cookie, aggregate views only | Sees the whole estate |
-
-Session tokens are stored **hashed**, so a database dump doesn't hand over live
-sessions. The cookie carries the raw token unsigned — an HMAC would add no
-security over an unguessable 256-bit token validated against the database, and
-it adds a deploy-time secret that can silently be missing. `ticketScope()` is the single source of truth for row visibility:
-
-- Operator — everything
-- Caretaker — only buildings in `staff_buildings`
-- Resident — own private room, plus every shared room in their unit. **Never a
-  flatmate's bedroom.**
-- Capability token — exactly one ticket
-
-Anonymous reporting is allowed for **shared rooms only**, because the person who
-notices a broken corridor light may not live on that floor.
-
-And `mayBookOrConsent()` is deliberately one function used for both picking the
-slot and granting entry — they're the same permission wearing two hats. A
-flatmate can report that your radiator is dead; only you can let someone into
-your room.
-
-**No client-side role variable, and no role-switch endpoint.** Staff sign in
-with email and password (PBKDF2-SHA256, per-user salt, 100k iterations);
-residents sign in with an access code of the kind a welcome letter would carry.
-The role comes from the account row, never from the request. Both paths are
-throttled per identifier, and the password check derives a hash even for unknown
-emails so response time doesn't leak whether an account exists.
-
-In demo mode the login screen *displays* working credentials, but the reviewer
-still signs in through the production path. A resident session cannot become a
-caretaker session by any request the client can make.
-
-### QR stickers
-
-**Sticker granularity follows ambiguity.** One sticker per room, not per fixture:
-a four-person flat needs 7 stickers instead of 26, a door frame is an obvious
-place to put one, and it doesn't go stale when the fridge is replaced. Scanning
-resolves the room and offers its fixtures as one-tap choices.
-
-The exception is multiples. A laundry with three washing machines gets a sticker
-per machine, because "machine 3" has to reach machine 3 — and the number matters
-for the repeat-fault analysis, since one bad machine and a bad laundry are
-different problems. The sticker sheet works this out from the data rather than
-being told: an object sticker is printed only where a room holds more than one of
-that type.
-
-Common areas belong to a floor rather than a flat, so each corridor gets its own
-sticker. Object slugs still resolve, so anything already printed keeps working. No app install — a phone's built-in camera
-reads the code and opens the browser.
-
-Access follows the **unit**, not the room kind. A WG's shared kitchen sits inside
-a locked flat, so somebody still has to let the caretaker in — any flatmate will
-do, but it needs an appointment. Only genuine common areas (stairwell, laundry)
-need nobody present, and even there the caretaker can still offer times if he
-wants residents to know he's coming. My first version keyed this off
-private-versus-shared and got WG bathrooms wrong.
-
-Shared rooms (kitchen, corridor, laundry) can be reported anonymously, because
-the person who notices a dead corridor light may not live on that floor. Private
-rooms require a session. An anonymous report returns a capability token and the
-reporter gets `/t/:token` as their only way back to the ticket.
-
-There is also an in-app scanner (the camera icon in the header) for staff
-walking a building: native `BarcodeDetector` where available, jsQR as a fallback
-for Safari and Firefox, lazily loaded so it costs nothing until opened. It needs
-a secure context, and it degrades with an explicit message rather than a dead
-button when permission is refused or no camera exists.
-
-Staff can print a sheet of stickers per building from the app (`/api/stickers/:code`,
-scoped to their assigned buildings). Each sticker carries the QR, the
-human-readable location, and the slug in text as a fallback for when the code is
-scuffed or the phone is dead.
-
-### Work a caretaker can't legally do
-
-A caretaker changes washers and clears traps. He cannot touch electrical, gas or
-heating work — in Germany that requires a qualified firm — and some jobs are
-simply beyond one person. So he can hand a ticket to a trade, choosing the trade
-(Elektro, Sanitär, Heizung, Schlosser, Glaser, Schädlinge, Aufzug) and a reason:
-needs a qualified firm, too big, keeps coming back, safety risk, warranty.
-
-The **operator** commissions the firm, because that's who holds the budget and
-the contracts, and records the firm name and order reference. The dashboard has a
-metric for work sitting with a trade, split by whether it's been commissioned
-yet — uncommissioned work is listed first, since that's the queue somebody has to
-act on. Escalated tickets leave the caretaker's working queue and appear under
-*with an external firm*; the resident is told a firm is taking it on, which is
-better than silence while nothing appears to happen.
-
-`SYSTEMIC` as a reason is the interesting one: it's the point where the
-caretaker's ground truth meets the repeat-fault dashboard. He's seen the same
-riser three times and is saying so in a field the operator can count.
-
-Escalation is a change of **handling**, not a new ticket state — the ticket is
-still open and still needs an appointment. That's also the pragmatic choice:
-SQLite can't alter the CHECK constraint on `tickets.state` without rebuilding the
-table, which isn't worth doing to a live database for a label.
-
-### The operator dashboard
-
-Four metrics, a trend chart, an object breakdown, the repeat-fault ranking, and a
-building grid — all driven by two controls: a period (1, 3, 6 or 12 months) and a
-building filter. Clicking a building card filters everything to it; clicking it
-again clears.
-
-Three of the four metric cards are clickable and open the tickets behind the
-number: everything currently open, everything waiting on a supplier (with the
-part and the unit), and every visit where nobody was home (with the missed time).
-A number you can't interrogate is a number nobody trusts.
-
-The trend chart is hand-rolled from divs — reported per month as the outline,
-fixed as the filled portion — because a charting library would have cost more
-bundle than the chart is worth. Each bar carries its count and is a real button:
-tapping a month opens a panel with that month's reported / fixed / still-open
-counts and median fix time, plus breakdowns by building, by object and by cause,
-and the tickets themselves.
-
-The chart and the panel share one SQL expression for the month bucket
-(`MONTH_BUCKET`), so a bar and its detail are computed the same way rather than
-nearly the same way. A test asserts the panel total equals the bar it came from,
-which is the invariant most likely to drift silently, along with the building
-split summing to the month total and the metric-card drill-downs matching their
-cards exactly.
-
-### Analytics are per-object, never per-person
-
-The dashboard groups by building, riser and object — never by caretaker
-response time. In a German public body, a system that scores individual
-employees triggers works-council co-determination and can stall a rollout
-outright. Designed out rather than argued about later.
-
----
-
-## Running it
-
-```bash
+```
 npm install
 npm run build
-npm run db:local          # apply the schema to a local D1
-npm run dev               # http://localhost:8787
+npm run db:local
+npm run dev
 ```
 
-Then click **Load demo data** once, and pick a role.
+Then open the printed localhost URL, click **Load demo data** once, and sign in.
 
-> **Local gotcha:** if `wrangler dev` dies with `Address already in use`, a stale
-> `workerd` is holding the port. `pkill -f workerd` and retry. `npm run dev`
-> does this for you.
+Run the tests in a second terminal while `npm run dev` is running:
 
-### Deploying to Cloudflare
+```
+npm run smoke
+```
 
-```bash
-npx wrangler d1 create dormtag      # paste the id into wrangler.jsonc
+If `wrangler dev` fails with `Address already in use`, a stale `workerd` is holding the port: `pkill -f workerd` and retry.
+
+## Backend setup (Cloudflare D1)
+
+```
+npx wrangler login
+npx wrangler d1 create dormtag
+```
+
+Paste the printed `database_id` into `wrangler.jsonc`, then apply the schema and deploy:
+
+```
 npm run db:remote
 npm run deploy
 ```
 
-Set `DEMO_MODE` to `"false"` in `wrangler.jsonc` before making the URL public —
-the seed endpoint wipes the database.
+If you'd rather not use the terminal, create the database in the Cloudflare dashboard and paste each `migrations/000*.console.sql` file into the D1 console in order. Those versions have the comments stripped, because a clipboard that drops line breaks turns a leading `--` into a comment that swallows the whole script.
 
-### Tests
+Finally, open the site and click **Load demo data** once. That writes three buildings, the sticker slugs, the demo accounts, and a year of history with a deliberately planted drain problem on one riser so the repeat-fault view has something to show.
 
-```bash
-npm run typecheck
-npm run smoke             # against a running `wrangler dev`
-```
+**Demo credentials**, also displayed on the login screen:
 
-`scripts/smoke.mjs` covers the state machine, all three concurrency guards, and
-every authorization rule — including the ones that must *fail*: forged cookies,
-a resident reaching the dashboard, anonymous reporting of a private room, a
-flatmate booking someone else's slot, reusing a claimed slot, and the 24-hour
-reschedule cutoff.
-
----
-
-## Seeded data
-
-The seed generates 12 months of history across three buildings with a pattern
-**deliberately planted in it**: eleven blocked-drain tickets on Haus C riser 2,
-across seven rooms, eight of them closed with cause `RISER`.
-
-This is on purpose. Repeat-fault detection needs a year of history before it
-says anything, so a reviewer opening an empty dashboard would see nothing. With
-the seed, the finding is visible on first load — and it's surrounded by
-background noise so the pattern has to actually stand out.
-
----
-
-## Language
-
-The database stores `KITCHEN` / `SINK` / `RISER`. `src/lib.ts` is the only place
-those become words. So the dashboard counts sink leaks across the whole estate
-regardless of which language each report was filed in, and the caretaker reads
-German while the resident reads English off the same row.
-
-This matters more than it sounds: a large share of hall residents don't speak
-German, and writing a Schadensmeldung email in German is a real barrier. Tapping
-`kitchen → sink → leaking` is not. The tile picker is the accessibility feature,
-not a styling choice.
-
----
-
-## Design direction
-
-German institutional signage rather than generic SaaS: slate enamel plates with
-mono room codes, traffic yellow used only where it signals something — the QR
-sticker and the waiting state. The plate `B-312 · Küche` appears in all three
-roles, which is what makes them feel like one system.
-
-Mobile-first throughout. The resident is on a phone; the caretaker is on a phone
-in a stairwell, which is why closing a job is four taps and no typing; only the
-operator dashboard wants the width.
-
----
-
-## Retention
-
-Closed tickets are **never deleted**. The room-and-cause history is the entire
-reason the operator dashboard is worth anything — repeat-fault detection needs a
-year minimum, and the case for replacing a riser rests on three. Once the
-reporter link is gone, "the drain in C-204 blocked twice" isn't personal data.
-
-So the record and the person are separated, and only the person expires:
-
-| | Kept |
+| Role | Sign in with |
 | --- | --- |
-| Ticket: room, fixture, symptom, cause, dates | Indefinitely |
-| Reporter link (`tenant_id`, email, token) | 365 days after closure, or after the tenancy ends |
-| Capability tokens | Revoked the moment the ticket closes |
-| Login attempts | 30 days |
-| Expired sessions, unclaimed old offers | Purged |
+| Resident | code `B312-Z2-DEMO` |
+| Caretaker | `hausmeister@wohnheim.test` / `hausmeister-demo-2026` |
+| Operator | `verwaltung@wohnheim.test` / `verwaltung-demo-2026` |
 
-A Cron Trigger runs `runRetention` daily at 03:00; the same function is exposed
-at `POST /api/dev/retention` for the operator so it can be tested rather than
-taken on faith. It anonymises rather than deletes — the ticket keeps its reporter
-*count*, loses the identities. There's a test asserting the ticket total is
-unchanged after a run, and another that the planted drain pattern still shows on
-the dashboard afterwards, because the failure mode here is housekeeping quietly
-eating the thing the product is for.
+Set `DEMO_MODE` to `"false"` in `wrangler.jsonc` before putting the URL anywhere public. It disables the seed endpoint, which wipes the database, and stops the login screen displaying credentials.
 
-Tokens are revoked by overwriting the value rather than by an expiry column: the
-column is already `UNIQUE NOT NULL`, so `'revoked-' || id` invalidates the link
-without a migration, and principal resolution refuses anything matching that
-shape.
+## Deployment (Cloudflare Workers)
 
-Residents see finished reports for 90 days, then they collapse behind *Show
-older* — hidden, not gone.
+The site auto-builds on every push to `main` once you've connected the repo under Workers and Pages:
 
-## What's deliberately missing
+* Build command: `npm run build`
+* Deploy command: `npx wrangler deploy`
+* No environment variables needed. The D1 binding and the cron schedule live in `wrangler.jsonc`.
 
-- **Email/push notifications.** A slot offer nobody sees is worthless, so this
-  is the first real gap. Structure is in place (`ticket_reporters.locale`,
-  per-reporter tokens); the sender is not.
-- **Photo upload.** Needs R2. The schema has nowhere to put it yet.
-- **Rate limiting** on the public report endpoint. An open endpoint is an open
-  spam endpoint.
-- **Password reset and magic links.** Staff passwords are set at seed time;
-  there is no self-service reset, because there is no email sender yet.
-- **A caretaker availability calendar.** Slots are generated per ticket, which
-  is simpler and enough here. A weekly availability grid would be a new table
-  with `slot_offers` generated from it.
+`wrangler.jsonc` also sets `not_found_handling: "single-page-application"` so client-side routes like `/r/b312-ku` don't 404 on refresh, and a daily cron at 03:00 for retention.
 
-## Repository layout
 
-```
-migrations/0001_init.sql   schema, indexes, v_ticket_location
-worker/index.ts            API, auth, row scoping, state machine, seed
-src/lib.ts                 i18n catalogue, label resolution, API client
-src/App.tsx                all three role views
-src/styles.css             design tokens and layout
-scripts/smoke.mjs          end-to-end tests
-```
 
-There is also a Postgres variant of the schema (`schema.sql`,
-`schema-access.sql`) with `EXCLUDE USING gist` and row-level security, kept as
-the reference design — see the D1 notes above for what changed and why.
+## Screenshots
+<img width="590" height="1278" alt="IMG_7749" src="https://github.com/user-attachments/assets/d472aaa2-38c3-40f6-895e-3d7c2dbacff9" />
+<img width="590" height="1278" alt="IMG_7746" src="https://github.com/user-attachments/assets/81b378b0-f0c4-44d0-866b-d883d60d422e" />
+<img width="590" height="1278" alt="IMG_7752" src="https://github.com/user-attachments/assets/ac9175a5-1f6f-4d6e-a542-f869844b9195" />
+<img width="1179" height="2379" alt="IMG_7748" src="https://github.com/user-attachments/assets/7fdb860a-5126-44f9-bd62-c566ffdd311d" />
+
+<img width="590" height="1278" alt="IMG_7750" src="https://github.com/user-attachments/assets/3eec3556-3ec3-4f15-910c-fc2fde34a1ab" />
+
+<img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 26 00 PM" src="https://github.com/user-attachments/assets/615d00e3-6a49-4b90-8913-23c28875cd8d" />
+<img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 26 15 PM" src="https://github.com/user-attachments/assets/605543a8-10b8-49c1-9a4a-3b9533abfeeb" />
+<img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 28 22 PM" src="https://github.com/user-attachments/assets/23f49d47-1fe6-4af1-ac80-30c0f00c3165" />
+
+
