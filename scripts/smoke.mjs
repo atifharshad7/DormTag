@@ -113,21 +113,21 @@ ok("tenant cannot accept a ticket", (await req("/api/tickets/L4/accept", { metho
 ok("anonymous cannot report a private room",
   (await req("/api/tickets", { method: "POST", body: { objectId: "u-B-207-Z1-LIGHT", symptom: "NO_POWER" } })).status === 403);
 ok("anonymous CAN report a shared room",
-  (await req("/api/tickets", { method: "POST", body: { objectId: "u-A-COM-FL-DOOR", symptom: "BROKEN" } })).status === 200);
+  (await req("/api/tickets", { method: "POST", body: { objectId: "u-A-COM1-FL-DOOR", symptom: "BROKEN" } })).status === 200);
 ok("a resident cannot report a bedroom in another flat",
   (await req("/api/tickets", { method: "POST", cookie: tenant, body: { objectId: "u-B-207-Z1-SOCKET", symptom: "NO_POWER" } })).status === 403);
 ok("a resident CAN report a flatmate's bedroom in their own flat",
   [200].includes((await req("/api/tickets", { method: "POST", cookie: tenant, body: { objectId: "u-B-312-Z3-WINDOW", symptom: "COLD" } })).status));
 ok("a resident CAN report shared space in another building",
-  [200].includes((await req("/api/tickets", { method: "POST", cookie: tenant, body: { objectId: "u-C-COM-WK-WASHER", symptom: "NOISE" } })).status));
+  [200].includes((await req("/api/tickets", { method: "POST", cookie: tenant, body: { objectId: "u-C-COM2-WK-WASHER1", symptom: "NOISE" } })).status));
 ok("signing in is never more restrictive than staying anonymous",
-  (await req("/api/tickets", { method: "POST", cookie: tenant, body: { objectId: "u-A-COM-FL-LIGHT", symptom: "NO_POWER" } })).status !== 403);
+  (await req("/api/tickets", { method: "POST", cookie: tenant, body: { objectId: "u-A-COM1-FL-LIGHT", symptom: "NO_POWER" } })).status !== 403);
 
 section("deduplication");
 const sameAgain = await req("/api/tickets", { method: "POST", cookie: tenant, body: { objectId: "u-B-312-KU-SINK", symptom: "LEAKING" } });
 ok("re-report on a live object merges instead of duplicating", sameAgain.json.merged === true, JSON.stringify(sameAgain.json));
 const before = (await req("/api/tickets/L3", { cookie: staff })).json.reporterCount;
-await req("/api/tickets", { method: "POST", body: { objectId: "u-C-COM-FL-LIGHT", symptom: "NO_POWER" } });
+await req("/api/tickets", { method: "POST", body: { objectId: "u-C-COM2-FL-LIGHT", symptom: "NO_POWER" } });
 const after = (await req("/api/tickets/L3", { cookie: staff })).json.reporterCount;
 ok("a new reporter joins the existing ticket", after === before + 1, `${before} -> ${after}`);
 ok("the same person twice does not add a row",
@@ -403,7 +403,7 @@ const wgShared = await mkTicket("u-B-312-BA-DRAIN", tenant);
 ok("a shared room inside a flat still needs access", !!(await needs(wgShared, staff)),
   "the caretaker has to be let into the flat");
 
-const commonArea = await mkTicket("u-C-COM-WK-DRAIN");
+const commonArea = await mkTicket("u-C-COM2-WK-DRAIN");
 ok("a laundry in a common area needs no access", !(await needs(commonArea, staff)));
 
 const ownRoom = await mkTicket("u-B-312-Z2-SOCKET", tenant);
@@ -523,20 +523,68 @@ section("qr stickers");
 const sheet = await req("/api/stickers/B", { cookie: staff });
 ok("caretaker can print their own building", sheet.status === 200 && sheet.json.stickers.length > 0,
   `${sheet.status}`);
-ok("stickers carry a slug and a room", !!sheet.json.stickers?.[0]?.qr_slug && !!sheet.json.stickers?.[0]?.room_code);
 ok("operator can print any building", (await req("/api/stickers/C", { cookie: operator })).status === 200);
 ok("resident cannot list stickers", (await req("/api/stickers/B", { cookie: tenant })).status === 403);
 ok("anonymous cannot list stickers", (await req("/api/stickers/B")).status === 403);
 
-const slug = sheet.json.stickers.find((x) => x.room_kind === "shared")?.qr_slug;
-const scan = await req(`/api/r/${slug}`);
-ok("anonymous can resolve a scanned sticker", scan.status === 200 && !!scan.json.object, `${slug}`);
-ok("scan returns the rest of the room for the picker", scan.json.siblings.length > 1);
+const roomStickers = sheet.json.stickers.filter((x) => x.kind === "room");
+const objStickers = sheet.json.stickers.filter((x) => x.kind === "object");
+ok("stickers are per room by default", roomStickers.length > 0 && roomStickers.length >= objStickers.length,
+  `${roomStickers.length} room, ${objStickers.length} object`);
+ok("room stickers carry a slug and a room type",
+  roomStickers.every((x) => !!x.qr_slug && !!x.room_type));
+
+// One sticker per room is a big reduction over one per fixture.
+const b312 = roomStickers.filter((x) => x.unit_code === "312");
+ok("a four-person flat needs 7 stickers, not 26", b312.length === 7, `${b312.length}`);
+
+section("qr: room stickers resolve to a picker");
+const roomSlug = roomStickers.find((x) => x.unit_code === "312" && x.room_type === "KITCHEN").qr_slug;
+const scan = await req(`/api/r/${roomSlug}`);
+ok("a room sticker resolves", scan.status === 200, roomSlug);
+ok("it preselects nothing", scan.json.object === null);
+ok("it offers the room's fixtures to choose from", scan.json.siblings.length > 1,
+  `${scan.json.siblings.length}`);
+ok("it names the room", scan.json.room.room_type === "KITCHEN");
 ok("unknown sticker 404s", (await req("/api/r/not-a-real-slug")).status === 404);
 
-const anonReport = await req("/api/tickets", { method: "POST", body: { objectId: scan.json.object.id, symptom: "BROKEN" } });
-ok("scanning a shared fixture lets anyone report it", anonReport.status === 200, JSON.stringify(anonReport.json));
-ok("report hands back a capability token", typeof anonReport.json.token === "string" && anonReport.json.token.length > 20);
+const pick = scan.json.siblings.find((x) => x.object_type === "SINK");
+const viaRoom = await req("/api/tickets", { method: "POST", cookie: tenant,
+  body: { objectId: pick.id, symptom: "LEAKING" } });
+ok("reporting through a room sticker works", viaRoom.status === 200, JSON.stringify(viaRoom.json));
+
+section("qr: multiples still get their own sticker");
+const cSheet = (await req("/api/stickers/C", { cookie: operator })).json;
+const washers = cSheet.stickers.filter((x) => x.kind === "object" && x.object_type === "WASHER");
+ok("a laundry with three machines gets three object stickers", washers.length === 3, `${washers.length}`);
+ok("each machine sticker carries its number",
+  [1, 2, 3].every((n) => washers.some((w) => w.ordinal === n)),
+  JSON.stringify(washers.map((w) => w.ordinal)));
+
+const machine2 = washers.find((w) => w.ordinal === 2).qr_slug;
+const mScan = await req(`/api/r/${machine2}`);
+ok("an object sticker resolves straight to that machine",
+  mScan.status === 200 && mScan.json.object?.ordinal === 2, JSON.stringify(mScan.json.object));
+ok("it still offers the rest of the room", mScan.json.siblings.length > 3);
+
+// Singular fixtures get no object sticker of their own.
+ok("a bedroom light has no object sticker",
+  !sheet.json.stickers.some((x) => x.kind === "object" && x.object_type === "LIGHT" && x.room_type === "BEDROOM"));
+
+section("qr: common areas belong to a floor");
+const commons = roomStickers.filter((x) => x.is_common);
+ok("common-area stickers exist in Haus B", commons.length > 0, `${commons.length}`);
+ok("they carry a floor", commons.every((x) => typeof x.floor === "number"));
+const aCommons = (await req("/api/stickers/A", { cookie: staff })).json.stickers
+  .filter((x) => x.kind === "room" && x.is_common);
+ok("a building with two floors of corridor gets one sticker each",
+  new Set(aCommons.map((x) => x.floor)).size === 2, JSON.stringify(aCommons.map((x) => x.floor)));
+ok("a corridor needs no appointment", await (async () => {
+  const r = await req("/api/tickets", { method: "POST",
+    body: { objectId: (await req(`/api/r/${aCommons[0].qr_slug}`)).json.siblings[0].id, symptom: "BROKEN" } });
+  if (r.status !== 200) return false;
+  return !(await req(`/api/tickets/${r.json.id}`, { cookie: staff })).json.ticket.needs_access;
+})());
 
 section("static assets");
 const page = await fetch(BASE + "/");

@@ -172,9 +172,20 @@ caretaker session by any request the client can make.
 
 ### QR stickers
 
-Every fixture has a `qr_slug`, and `/r/:slug` is the front door: scanning it
-resolves the sticker, pre-fills building, room and object, and offers the rest
-of the room as one-tap alternatives. No app install — a phone's built-in camera
+**Sticker granularity follows ambiguity.** One sticker per room, not per fixture:
+a four-person flat needs 7 stickers instead of 26, a door frame is an obvious
+place to put one, and it doesn't go stale when the fridge is replaced. Scanning
+resolves the room and offers its fixtures as one-tap choices.
+
+The exception is multiples. A laundry with three washing machines gets a sticker
+per machine, because "machine 3" has to reach machine 3 — and the number matters
+for the repeat-fault analysis, since one bad machine and a bad laundry are
+different problems. The sticker sheet works this out from the data rather than
+being told: an object sticker is printed only where a room holds more than one of
+that type.
+
+Common areas belong to a floor rather than a flat, so each corridor gets its own
+sticker. Object slugs still resolve, so anything already printed keeps working. No app install — a phone's built-in camera
 reads the code and opens the browser.
 
 Access follows the **unit**, not the room kind. A WG's shared kitchen sits inside

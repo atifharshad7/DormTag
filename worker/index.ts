@@ -526,18 +526,49 @@ route("POST", "/api/session/logout", async () => {
 /* --- stickers + picker ------------------------------------------ */
 
 route("GET", "/api/r/:slug", async ({ env, params }) => {
-  const o = await env.DB.prepare(
-    `SELECT o.id, o.object_type, o.riser, r.id AS room_id, r.room_type, r.kind AS room_kind,
-            u.code AS unit_code, b.code AS building_code
-       FROM objects o JOIN rooms r ON r.id = o.room_id
-       JOIN units u ON u.id = r.unit_id JOIN buildings b ON b.id = u.building_id
-      WHERE o.qr_slug = ?1`
-  ).bind(params.slug).first<any>();
-  if (!o) return bad("unknown sticker", 404);
+  const slug = params.slug.toLowerCase();
+
+  // Room sticker: the normal case. Object sticker: only printed where a room
+  // holds several of the same type, so the resident can say which one.
+  const room = await env.DB.prepare(
+    `SELECT r.id AS room_id, r.room_type, r.kind AS room_kind, r.code AS room_code,
+            u.code AS unit_code, u.is_common, b.code AS building_code
+       FROM rooms r JOIN units u ON u.id = r.unit_id JOIN buildings b ON b.id = u.building_id
+      WHERE r.qr_slug = ?1`
+  ).bind(slug).first<any>();
+
+  let target: any = null;
+  let scope = room;
+
+  if (!room) {
+    const obj = await env.DB.prepare(
+      `SELECT o.id, o.object_type, o.ordinal, o.riser,
+              r.id AS room_id, r.room_type, r.kind AS room_kind, r.code AS room_code,
+              u.code AS unit_code, u.is_common, b.code AS building_code
+         FROM objects o JOIN rooms r ON r.id = o.room_id
+         JOIN units u ON u.id = r.unit_id JOIN buildings b ON b.id = u.building_id
+        WHERE o.qr_slug = ?1`
+    ).bind(slug).first<any>();
+    if (!obj) return bad("unknown sticker", 404);
+    target = obj;
+    scope = obj;
+  }
+
   const siblings = await env.DB.prepare(
-    `SELECT id, object_type, ordinal, qr_slug FROM objects WHERE room_id = ?1 ORDER BY object_type`
-  ).bind(o.room_id).all<any>();
-  return json({ object: o, siblings: siblings.results });
+    `SELECT id, object_type, ordinal, qr_slug FROM objects
+      WHERE room_id = ?1 ORDER BY object_type, ordinal`
+  ).bind(scope.room_id).all<any>();
+
+  return json({
+    // `object` is null for a room sticker: the resident picks from `siblings`.
+    object: target,
+    room: {
+      id: scope.room_id, room_type: scope.room_type, room_kind: scope.room_kind,
+      room_code: scope.room_code, unit_code: scope.unit_code,
+      building_code: scope.building_code, is_common: scope.is_common,
+    },
+    siblings: siblings.results,
+  });
 });
 
 /**
@@ -556,18 +587,35 @@ route("GET", "/api/stickers/:buildingCode", async ({ env, p, params }) => {
     return bad("not one of your buildings", 403);
   }
 
-  const rows = await env.DB.prepare(
-    `SELECT o.qr_slug, o.object_type, o.ordinal, o.riser,
-            r.code AS room_code, r.room_type, r.kind AS room_kind,
+  // One sticker per room.
+  const rooms = await env.DB.prepare(
+    `SELECT r.qr_slug, r.room_type, r.code AS room_code, r.kind AS room_kind,
+            u.code AS unit_code, u.floor, u.is_common
+       FROM rooms r JOIN units u ON u.id = r.unit_id
+      WHERE u.building_id = ?1 AND r.qr_slug IS NOT NULL
+      ORDER BY u.floor, u.code, r.code`
+  ).bind(b.id).all<any>();
+
+  // Plus one per object, but only where a room holds several of the same type.
+  const extras = await env.DB.prepare(
+    `SELECT o.qr_slug, o.object_type, o.ordinal, r.room_type, r.code AS room_code,
             u.code AS unit_code, u.floor
        FROM objects o
        JOIN rooms r ON r.id = o.room_id
        JOIN units u ON u.id = r.unit_id
       WHERE u.building_id = ?1
-      ORDER BY u.floor, u.code, r.code, o.object_type`
+        AND (SELECT COUNT(*) FROM objects o2
+              WHERE o2.room_id = o.room_id AND o2.object_type = o.object_type) > 1
+      ORDER BY u.floor, u.code, r.code, o.object_type, o.ordinal`
   ).bind(b.id).all<any>();
 
-  return json({ building: b, stickers: rows.results });
+  return json({
+    building: b,
+    stickers: [
+      ...rooms.results.map((r: any) => ({ ...r, kind: "room" })),
+      ...extras.results.map((o: any) => ({ ...o, kind: "object" })),
+    ],
+  });
 });
 
 /** Rooms + objects the current tenant may report on. Drives the picker. */
@@ -1328,7 +1376,9 @@ const ROOM_SPEC: Record<string, string[]> = {
   KITCHEN: ["SINK", "STOVE", "FRIDGE", "LIGHT", "SOCKET"],
   BATHROOM: ["SHOWER", "DRAIN", "LIGHT"],
   HALLWAY: ["LIGHT", "DOOR"],
-  LAUNDRY: ["WASHER", "DRAIN", "LIGHT"],
+  // "WASHER*3" means three of them, ordinals 1..3. A room with multiples is
+  // the one case that still needs a sticker per object.
+  LAUNDRY: ["WASHER*3", "DRAIN", "LIGHT"],
 };
 
 async function seed(env: Env) {
@@ -1357,18 +1407,26 @@ async function seed(env: Env) {
     const uid_ = `u-${bcode}-${code}`;
     stmts.push(env.DB.prepare(
       `INSERT INTO units (id, building_id, code, floor, kind, is_common) VALUES (?1,?2,?3,?4,?5,?6)`
-    ).bind(uid_, bid, code, floor, kind, code === "COM" ? 1 : 0));
+    ).bind(uid_, bid, code, floor, kind, code.startsWith("COM") ? 1 : 0));
     rooms.forEach(([rcode, rtype, rkind, riser]) => {
       const rid = `${uid_}-${rcode}`;
-      stmts.push(env.DB.prepare(`INSERT INTO rooms (id, unit_id, code, room_type, kind) VALUES (?1,?2,?3,?4,?5)`)
-        .bind(rid, uid_, rcode, rtype, rkind));
-      ROOM_SPEC[rtype].forEach((otype) => {
-        const oid = `${rid}-${otype}`;
-        const slug = `${bcode}${code}-${rcode}-${otype}`.toLowerCase();
-        stmts.push(env.DB.prepare(
-          `INSERT INTO objects (id, room_id, object_type, ordinal, qr_slug, riser) VALUES (?1,?2,?3,1,?4,?5)`
-        ).bind(oid, rid, otype, slug, riser));
-        objects.push({ id: oid, type: otype, riser, roomId: rid, roomKind: rkind });
+      const roomSlug = `${bcode}${code}-${rcode}`.toLowerCase();
+      stmts.push(env.DB.prepare(
+        `INSERT INTO rooms (id, unit_id, code, room_type, kind, qr_slug) VALUES (?1,?2,?3,?4,?5,?6)`
+      ).bind(rid, uid_, rcode, rtype, rkind, roomSlug));
+
+      ROOM_SPEC[rtype].forEach((entry) => {
+        const [otype, countStr] = entry.split("*");
+        const count = Number(countStr || 1);
+        for (let n = 1; n <= count; n++) {
+          const suffix = count > 1 ? `${otype}${n}` : otype;
+          const oid = `${rid}-${suffix}`;
+          const slug = `${roomSlug}-${suffix}`.toLowerCase();
+          stmts.push(env.DB.prepare(
+            `INSERT INTO objects (id, room_id, object_type, ordinal, qr_slug, riser) VALUES (?1,?2,?3,?4,?5,?6)`
+          ).bind(oid, rid, otype, n, slug, riser));
+          objects.push({ id: oid, type: otype, riser, roomId: rid, roomKind: rkind });
+        }
       });
     });
     return uid_;
@@ -1383,8 +1441,13 @@ async function seed(env: Env) {
   ]);
   addUnit("b-b", "B", "207", 2, "studio", [["Z1", "BEDROOM", "private", "B-S2"], ["BA", "BATHROOM", "private", "B-S2"]]);
   addUnit("b-a", "A", "104", 1, "studio", [["Z1", "BEDROOM", "private", "A-S1"], ["BA", "BATHROOM", "private", "A-S1"]]);
-  addUnit("b-a", "A", "COM", 1, "studio", [["FL", "HALLWAY", "shared", "A-S1"]]);
-  addUnit("b-c", "C", "COM", 2, "studio", [["FL", "HALLWAY", "shared", "C-S2"], ["WK", "LAUNDRY", "shared", "C-S2"]]);
+  // One common-area unit per floor: a corridor belongs to a floor, not a flat.
+  addUnit("b-a", "A", "COM1", 1, "studio", [["FL", "HALLWAY", "shared", "A-S1"]]);
+  addUnit("b-a", "A", "COM2", 2, "studio", [["FL", "HALLWAY", "shared", "A-S1"]]);
+  addUnit("b-b", "B", "COM3", 3, "studio", [["FL", "HALLWAY", "shared", "B-S1"]]);
+  addUnit("b-c", "C", "COM2", 2, "studio", [
+    ["FL", "HALLWAY", "shared", "C-S2"], ["WK", "LAUNDRY", "shared", "C-S2"],
+  ]);
   for (let i = 1; i <= 8; i++) {
     addUnit("b-c", "C", `20${i}`, 2, "studio", [
       ["Z1", "BEDROOM", "private", "C-S2"], ["BA", "BATHROOM", "private", "C-S2"],
@@ -1473,7 +1536,7 @@ async function seed(env: Env) {
   });
 
   // A second, milder repeat so the dashboard shows a ranking not a single row.
-  const aHall = objects.find((o) => o.id === "u-A-COM-FL-LIGHT");
+  const aHall = objects.find((o) => o.id === "u-A-COM1-FL-LIGHT");
   if (aHall) [200, 160, 120, 84, 50, 18].forEach((ago, i) =>
     closed(aHall.id, "NO_POWER", i < 4 ? "WIRING" : "CONSUMABLE", ago, 1 + (i % 3), false));
 
@@ -1515,7 +1578,7 @@ async function seed(env: Env) {
     // Common-area hallway light in Haus C: three reporters, no appointment needed
     env.DB.prepare(
       `INSERT INTO tickets (id, object_id, symptom, state, reported_at, needs_access)
-       VALUES ('L3','u-C-COM-FL-LIGHT','NO_POWER','accepted',?1,0)`
+       VALUES ('L3','u-C-COM2-FL-LIGHT','NO_POWER','accepted',?1,0)`
     ).bind(now() - DAY),
     ...[1, 2, 3].map((i) =>
       env.DB.prepare(`INSERT INTO ticket_reporters (id, ticket_id, locale, token, is_primary, created_at) VALUES (?1,'L3','de',?2,0,?3)`)

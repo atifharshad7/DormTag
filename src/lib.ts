@@ -189,6 +189,8 @@ export const T = {
   stickerCount:   { de: "Aufkleber",                 en: "stickers" },
   backToApp:      { de: "Zurück",                    en: "Back" },
   reportProblem:  { de: "Schaden melden",            en: "Report a problem" },
+  floorShort:      { de: "OG",                       en: "Floor " },
+  pickTheItem:     { de: "Was in diesem Raum?",      en: "Which item in this room?" },
   yourFlat:       { de: "deine Wohnung",             en: "your flat" },
   yourRoom:        { de: "dein Zimmer",              en: "your room" },
   sharedTag:       { de: "gemeinsam",                en: "shared" },

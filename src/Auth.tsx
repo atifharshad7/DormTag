@@ -174,17 +174,21 @@ export function ScanLanding({ l, t, slug, principal, onSignIn, onDone }: {
 
   useEffect(() => {
     api.sticker(slug)
-      .then((d) => { setData(d); setObjectId(d.object.id); })
+      .then((d) => {
+        setData(d);
+        // Room stickers leave the choice open; object stickers preselect.
+        setObjectId(d.object?.id ?? null);
+      })
       .catch((e) => setErr(e.message));
   }, [slug]);
 
   if (err) return <div className="col"><div className="err">{err}</div></div>;
   if (!data) return <p className="muted">…</p>;
 
-  const o = data.object;
-  const needsAuth = o.room_kind === "private" && principal.kind === "anonymous";
-  const current = data.siblings.find((s: any) => s.id === objectId) || o;
-  const syms = SYMPTOMS_FOR[current.object_type] ?? ["BROKEN"];
+  const room = data.room;
+  const needsAuth = room.room_kind === "private" && !room.is_common && principal.kind === "anonymous";
+  const current = data.siblings.find((s: any) => s.id === objectId) ?? null;
+  const syms = current ? (SYMPTOMS_FOR[current.object_type] ?? ["BROKEN"]) : [];
 
   const send = async () => {
     setBusy(true); setErr("");
@@ -199,7 +203,7 @@ export function ScanLanding({ l, t, slug, principal, onSignIn, onDone }: {
       <div className="scanned">
         <QrCode size={20} strokeWidth={1.5} aria-hidden />
         <span className="plate">
-          {o.building_code}-{o.unit_code} · {roomLabel(o.room_type, l)}
+          {room.building_code}-{room.unit_code} · {roomLabel(room.room_type, l)}
         </span>
       </div>
 
@@ -219,27 +223,37 @@ export function ScanLanding({ l, t, slug, principal, onSignIn, onDone }: {
                   className={"tile" + (objectId === s.id ? " tile-on" : "")}
                   onClick={() => { setObjectId(s.id); setSymptom(null); }}>
                   {Icon && <Icon size={26} strokeWidth={1.5} aria-hidden />}
-                  <span>{objLabel(s.object_type, l)}</span>
+                  <span>
+                    {objLabel(s.object_type, l)}
+                    {data.siblings.filter((x: any) => x.object_type === s.object_type).length > 1
+                      ? ` ${s.ordinal}` : ""}
+                  </span>
                 </button>
               );
             })}
           </div>
 
-          <h2>{t("whatWrong")}</h2>
-          <div className="grid2">
-            {syms.map((s) => (
-              <button key={s} className={"tile tile-text" + (symptom === s ? " tile-on" : "")}
-                onClick={() => setSymptom(s)}>
-                <span>{symptomLabel(s, l)}</span>
-              </button>
-            ))}
-          </div>
+          {current && (
+            <>
+              <h2>{t("whatWrong")}</h2>
+              <div className="grid2">
+                {syms.map((s) => (
+                  <button key={s} className={"tile tile-text" + (symptom === s ? " tile-on" : "")}
+                    onClick={() => setSymptom(s)}>
+                    <span>{symptomLabel(s, l)}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
-          <textarea className="ta" rows={2} placeholder={t("noteOptional")}
-            value={note} onChange={(e) => setNote(e.target.value)} />
+          {current && (
+            <textarea className="ta" rows={2} placeholder={t("noteOptional")}
+              value={note} onChange={(e) => setNote(e.target.value)} />
+          )}
 
           {err && <div className="err">{err}</div>}
-          <button className="btn btn-primary" disabled={!symptom || busy} onClick={send}>
+          <button className="btn btn-primary" disabled={!objectId || !symptom || busy} onClick={send}>
             {t("send")} <ArrowRight size={16} />
           </button>
         </>
@@ -348,9 +362,14 @@ export function StickerSheet({ l, t, buildings, onBack }: {
               <Qr text={`${origin}/r/${s.qr_slug}`} />
               <div className="stickermeta">
                 <span className="stickerplate">
-                  {data.building.code}-{s.unit_code} · {s.room_code}
+                  {data.building.code}-{s.unit_code}
+                  {s.is_common ? ` · ${t("floorShort")}${s.floor}` : ""}
                 </span>
-                <span className="stickerobj">{objLabel(s.object_type, l)}</span>
+                <span className="stickerobj">
+                  {s.kind === "room"
+                    ? roomLabel(s.room_type, l)
+                    : `${objLabel(s.object_type, l)} ${s.ordinal}`}
+                </span>
                 <span className="stickerhint">{t("reportProblem")} · Schaden melden</span>
                 <span className="stickerslug mono">{s.qr_slug}</span>
               </div>
