@@ -531,10 +531,20 @@ route("POST", "/api/tickets", async ({ env, req, p }) => {
   ).bind(body.objectId).first<any>();
   if (!o) return bad("unknown object", 404);
 
-  // Tenants may only report in their own unit.
-  if (p.kind === "tenant" && o.unit_id !== p.unitId) return bad("not your unit", 403);
-  // Anonymous reporting is allowed for shared rooms only.
-  if (p.kind === "anonymous" && o.room_kind !== "shared") return bad("sign in to report your room", 403);
+  // Shared space — kitchen, corridor, laundry — is reportable by anyone who
+  // notices it, signed in or not. The person who spots a dead corridor light
+  // may not live on that floor, and being signed in must never restrict more
+  // than staying anonymous does.
+  //
+  // Private rooms are different: a session is required, and it has to belong to
+  // the same unit. A flatmate may report your radiator (that's how faults get
+  // caught), but a stranger cannot file against your bedroom.
+  if (o.room_kind === "private") {
+    if (p.kind === "anonymous") return bad("sign in to report your own room", 403);
+    if (p.kind === "tenant" && o.unit_id !== p.unitId) {
+      return bad("that room is in another flat", 403);
+    }
+  }
 
   const existing = await env.DB.prepare(
     `SELECT id FROM tickets WHERE object_id = ?1 AND state NOT IN ('done','cancelled')`
