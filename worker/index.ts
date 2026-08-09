@@ -58,6 +58,57 @@ function randomToken() {
  * it would only save one database lookup on garbage input, in exchange for a
  * deployment-time secret that can silently be missing.
  */
+/* ---- password hashing (PBKDF2-SHA256) ---- */
+
+const PBKDF2_ITERATIONS = 100_000;
+
+function toHex(buf: ArrayBuffer) {
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function derivePassword(password: string, saltHex: string): Promise<string> {
+  const salt = Uint8Array.from(saltHex.match(/../g)!.map((h) => parseInt(h, 16)));
+  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" }, key, 256
+  );
+  return toHex(bits);
+}
+
+async function hashNewPassword(password: string) {
+  const saltBytes = new Uint8Array(16);
+  crypto.getRandomValues(saltBytes);
+  const salt = toHex(saltBytes.buffer);
+  return { salt, hash: await derivePassword(password, salt) };
+}
+
+/** Constant-time-ish comparison so a wrong password can't be timed. */
+function sameSecret(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/* ---- login throttling ---- */
+
+const MAX_ATTEMPTS = 8;
+const ATTEMPT_WINDOW = 15 * 60 * 1000;
+
+async function tooManyAttempts(env: Env, identifier: string) {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM login_attempts
+      WHERE identifier = ?1 AND succeeded = 0 AND attempted_at > ?2`
+  ).bind(identifier.toLowerCase(), now() - ATTEMPT_WINDOW).first<any>();
+  return (row?.n ?? 0) >= MAX_ATTEMPTS;
+}
+
+async function recordAttempt(env: Env, identifier: string, ok: boolean) {
+  await env.DB.prepare(
+    `INSERT INTO login_attempts (identifier, succeeded, attempted_at) VALUES (?1,?2,?3)`
+  ).bind(identifier.toLowerCase(), ok ? 1 : 0, now()).run();
+}
+
 function readCookie(req: Request, name: string): string | null {
   const raw = req.headers.get("cookie") || "";
   const hit = raw.split(/;\s*/).find((c) => c.startsWith(name + "="));
@@ -221,6 +272,22 @@ function generateSlots(base: number) {
 }
 
 /* ================================================================ */
+/* demo credentials — shown on the login page only when DEMO_MODE is on.  */
+/* They are real credentials against real accounts: the reviewer signs in */
+/* through the production login path, not a role switch.                 */
+/* ================================================================ */
+
+const DEMO_STAFF_PASSWORD = "hausmeister-demo-2026";
+const DEMO_OPERATOR_PASSWORD = "verwaltung-demo-2026";
+const DEMO_RESIDENT_CODE = "B312-Z2-DEMO";
+
+const DEMO_HINTS = {
+  resident: { code: DEMO_RESIDENT_CODE },
+  staff: { email: "hausmeister@wohnheim.test", password: DEMO_STAFF_PASSWORD },
+  operator: { email: "verwaltung@wohnheim.test", password: DEMO_OPERATOR_PASSWORD },
+};
+
+/* ================================================================ */
 /* 5. routes                                                        */
 /* ================================================================ */
 
@@ -261,46 +328,94 @@ route("GET", "/api/session", async ({ p, env }) => {
         WHERE r.id = ?1`
     ).bind(p.roomId).first<any>();
   }
-  return json({ principal: p, buildings: buildings.results, home, demo: env.DEMO_MODE === "true" });
+  const demo = env.DEMO_MODE === "true";
+  return json({
+    principal: p,
+    buildings: buildings.results,
+    home,
+    demo,
+    demoHints: demo ? DEMO_HINTS : null,
+  });
+});
+
+async function issueStaffSession(env: Env, staffId: string) {
+  const token = randomToken();
+  await env.DB.prepare(
+    `INSERT INTO staff_sessions (id, staff_id, token_hash, issued_at, expires_at) VALUES (?1,?2,?3,?4,?5)`
+  ).bind(uid(), staffId, await sha256(token), now(), now() + 7 * DAY).run();
+  return token;
+}
+
+async function issueTenantSession(env: Env, tenantId: string) {
+  const token = randomToken();
+  await env.DB.prepare(
+    `INSERT INTO tenant_sessions (id, tenant_id, token_hash, issued_at, expires_at) VALUES (?1,?2,?3,?4,?5)`
+  ).bind(uid(), tenantId, await sha256(token), now(), now() + 7 * DAY).run();
+  return token;
+}
+
+function sessionResponse(cookieName: "sid" | "tid", token: string) {
+  const headers = new Headers({ "content-type": "application/json" });
+  headers.append("set-cookie", setCookie(cookieName, token, 7 * 86400));
+  headers.append("set-cookie", clearCookie(cookieName === "sid" ? "tid" : "sid"));
+  return new Response(JSON.stringify({ ok: true }), { headers });
+}
+
+/** Staff and operators: email + password. Role comes from the account, never the request. */
+route("POST", "/api/auth/staff", async ({ req, env }) => {
+  const { email, password } = (await req.json()) as { email?: string; password?: string };
+  if (!email || !password) return bad("email and password required");
+
+  if (await tooManyAttempts(env, email)) {
+    return bad("too many attempts — wait 15 minutes", 429);
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT id, password_hash, password_salt FROM staff WHERE email = ?1`
+  ).bind(email.trim().toLowerCase()).first<any>();
+
+  // Always do the derivation, even for an unknown email, so response time
+  // doesn't reveal whether the account exists.
+  const salt = row?.password_salt ?? "00000000000000000000000000000000";
+  const attempt = await derivePassword(password, salt);
+
+  if (!row || !row.password_hash || !sameSecret(attempt, row.password_hash)) {
+    await recordAttempt(env, email, false);
+    return bad("wrong email or password", 401);
+  }
+
+  await recordAttempt(env, email, true);
+  return sessionResponse("sid", await issueStaffSession(env, row.id));
 });
 
 /**
- * Demo login. Issues a REAL session against a real seeded account — the
- * reviewer clicks a role, the auth path underneath is the production one.
+ * Residents: an activation code, the way a welcome letter or move-in pack would
+ * carry it. No password for someone who signs in twice a year.
  */
-route("POST", "/api/session/demo", async ({ req, env }) => {
-  if (env.DEMO_MODE !== "true") return bad("demo disabled", 403);
-  const { as } = (await req.json()) as { as: string };
-  const emails: Record<string, string> = {
-    tenant: "z2@wohnheim.test",
-    staff: "hausmeister@wohnheim.test",
-    operator: "verwaltung@wohnheim.test",
-  };
-  const email = emails[as];
-  if (!email) return bad("unknown role");
+route("POST", "/api/auth/resident", async ({ req, env }) => {
+  const { code } = (await req.json()) as { code?: string };
+  if (!code) return bad("activation code required");
+  const clean = code.trim().toUpperCase();
 
-  const token = randomToken();
-  const hash = await sha256(token);
-  const headers = new Headers({ "content-type": "application/json" });
-
-  if (as === "tenant") {
-    const t = await env.DB.prepare(`SELECT id FROM tenants WHERE email = ?1`).bind(email).first<any>();
-    if (!t) return bad("seed the database first", 409);
-    await env.DB.prepare(
-      `INSERT INTO tenant_sessions (id, tenant_id, token_hash, issued_at, expires_at) VALUES (?1,?2,?3,?4,?5)`
-    ).bind(uid(), t.id, hash, now(), now() + 7 * DAY).run();
-    headers.append("set-cookie", setCookie("tid", token, 7 * 86400));
-    headers.append("set-cookie", clearCookie("sid"));
-  } else {
-    const s = await env.DB.prepare(`SELECT id FROM staff WHERE email = ?1`).bind(email).first<any>();
-    if (!s) return bad("seed the database first", 409);
-    await env.DB.prepare(
-      `INSERT INTO staff_sessions (id, staff_id, token_hash, issued_at, expires_at) VALUES (?1,?2,?3,?4,?5)`
-    ).bind(uid(), s.id, hash, now(), now() + 7 * DAY).run();
-    headers.append("set-cookie", setCookie("sid", token, 7 * 86400));
-    headers.append("set-cookie", clearCookie("tid"));
+  if (await tooManyAttempts(env, "code:" + clean)) {
+    return bad("too many attempts — wait 15 minutes", 429);
   }
-  return new Response(JSON.stringify({ ok: true }), { headers });
+
+  const row = await env.DB.prepare(
+    `SELECT t.id FROM tenants t
+       JOIN tenancies tn ON tn.tenant_id = t.id AND tn.ends_on IS NULL
+      WHERE t.activation_code = ?1`
+  ).bind(clean).first<any>();
+
+  if (!row) {
+    await recordAttempt(env, "code:" + clean, false);
+    return bad("that code isn't valid", 401);
+  }
+
+  await recordAttempt(env, "code:" + clean, true);
+  await env.DB.prepare(`UPDATE tenants SET activated_at = COALESCE(activated_at, ?1) WHERE id = ?2`)
+    .bind(now(), row.id).run();
+  return sessionResponse("tid", await issueTenantSession(env, row.id));
 });
 
 route("POST", "/api/session/logout", async () => {
@@ -325,6 +440,36 @@ route("GET", "/api/r/:slug", async ({ env, params }) => {
     `SELECT id, object_type, ordinal, qr_slug FROM objects WHERE room_id = ?1 ORDER BY object_type`
   ).bind(o.room_id).all<any>();
   return json({ object: o, siblings: siblings.results });
+});
+
+/**
+ * Printable sticker sheet for one building. Staff-only, because the slug set
+ * is effectively a map of every fixture in the estate.
+ *
+ * A caretaker gets their own buildings; an operator gets any.
+ */
+route("GET", "/api/stickers/:buildingCode", async ({ env, p, params }) => {
+  if (!isStaff(p)) return bad("staff only", 403);
+
+  const b = await env.DB.prepare(`SELECT id, code, name FROM buildings WHERE code = ?1`)
+    .bind(params.buildingCode.toUpperCase()).first<any>();
+  if (!b) return bad("unknown building", 404);
+  if (p.kind === "staff" && !p.buildingIds.includes(b.id)) {
+    return bad("not one of your buildings", 403);
+  }
+
+  const rows = await env.DB.prepare(
+    `SELECT o.qr_slug, o.object_type, o.ordinal, o.riser,
+            r.code AS room_code, r.room_type, r.kind AS room_kind,
+            u.code AS unit_code, u.floor
+       FROM objects o
+       JOIN rooms r ON r.id = o.room_id
+       JOIN units u ON u.id = r.unit_id
+      WHERE u.building_id = ?1
+      ORDER BY u.floor, u.code, r.code, o.object_type`
+  ).bind(b.id).all<any>();
+
+  return json({ building: b, stickers: rows.results });
 });
 
 /** Rooms + objects the current tenant may report on. Drives the picker. */
@@ -732,11 +877,22 @@ async function seed(env: Env) {
     ]);
   }
 
-  // Accounts
+  // Accounts. Passwords are hashed here exactly as a real signup would.
+  const hmPw = await hashNewPassword(DEMO_STAFF_PASSWORD);
+  const opPw = await hashNewPassword(DEMO_OPERATOR_PASSWORD);
   stmts.push(
-    env.DB.prepare(`INSERT INTO tenants (id, email, locale, activated_at) VALUES ('t-z2','z2@wohnheim.test','en',?1)`).bind(now()),
-    env.DB.prepare(`INSERT INTO staff (id, email, display_name, locale, is_operator) VALUES ('s-hm','hausmeister@wohnheim.test','K. Neumann','de',0)`),
-    env.DB.prepare(`INSERT INTO staff (id, email, display_name, locale, is_operator) VALUES ('s-op','verwaltung@wohnheim.test','Studierendenwerk','de',1)`),
+    env.DB.prepare(
+      `INSERT INTO tenants (id, email, locale, activated_at, activation_code)
+       VALUES ('t-z2','z2@wohnheim.test','en',?1,?2)`
+    ).bind(now(), DEMO_RESIDENT_CODE),
+    env.DB.prepare(
+      `INSERT INTO staff (id, email, display_name, locale, is_operator, password_hash, password_salt)
+       VALUES ('s-hm','hausmeister@wohnheim.test','K. Neumann','de',0,?1,?2)`
+    ).bind(hmPw.hash, hmPw.salt),
+    env.DB.prepare(
+      `INSERT INTO staff (id, email, display_name, locale, is_operator, password_hash, password_salt)
+       VALUES ('s-op','verwaltung@wohnheim.test','Studierendenwerk','de',1,?1,?2)`
+    ).bind(opPw.hash, opPw.salt),
     env.DB.prepare(`INSERT INTO staff_buildings (staff_id, building_id) VALUES ('s-hm','b-a')`),
     env.DB.prepare(`INSERT INTO staff_buildings (staff_id, building_id) VALUES ('s-hm','b-b')`),
     env.DB.prepare(`INSERT INTO staff_buildings (staff_id, building_id) VALUES ('s-hm','b-c')`),

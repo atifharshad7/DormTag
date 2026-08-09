@@ -257,3 +257,62 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   .plate { background: #3a4548; }
   .btn-primary { background: #3a4548; color: #f0f0eb; border-color: #3a4548; }
 }
+
+/* --- sign in ------------------------------------------------------ */
+
+.tabs { display: flex; gap: 6px; background: rgba(22,25,27,.06); padding: 3px; border-radius: 10px; }
+.tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px; min-height: 42px; border: 0; background: none; border-radius: 8px;
+  font: inherit; font-size: 14px; color: var(--muted); cursor: pointer;
+}
+.tab-on { background: var(--card); color: var(--ink); font-weight: 500; }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > span { font-size: 13px; color: var(--muted); }
+
+.demo { background: rgba(22,25,27,.03); }
+.demorow {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px;
+  color: var(--ink); text-align: left; min-height: 42px;
+}
+.demorow:hover { border-color: var(--slate); }
+.demorow .mono { color: var(--muted); }
+
+/* --- scanned sticker landing -------------------------------------- */
+
+.scanned {
+  display: flex; align-items: center; gap: 10px; padding: 12px;
+  background: rgba(242,176,8,.12); border-left: 3px solid var(--yellow);
+  border-radius: 0 8px 8px 0; color: var(--amber);
+}
+.scanned .plate { background: var(--slate); color: #f2f2ee; }
+.breakall { overflow-wrap: anywhere; }
+
+/* --- printable sticker sheet -------------------------------------- */
+
+.sheet {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px;
+}
+.stickercard {
+  display: flex; gap: 10px; align-items: center; padding: 10px;
+  border: 1px dashed rgba(22,25,27,.35); border-radius: 6px; background: #fff;
+}
+.qr { width: 66px; height: 66px; display: block; }
+.stickermeta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stickerplate {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; color: #16191b;
+}
+.stickerobj { font-size: 14px; font-weight: 500; color: #16191b; }
+.stickerhint { font-size: 9px; color: #55595c; text-transform: uppercase; letter-spacing: .05em; }
+.stickerslug { font-size: 8px; color: #85898c; overflow-wrap: anywhere; }
+
+@media print {
+  .topbar, .noprint { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  .app { background: #fff !important; }
+  .sheet { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .stickercard { break-inside: avoid; page-break-inside: avoid; }
+}

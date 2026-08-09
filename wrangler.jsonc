@@ -12,7 +12,7 @@
     {
       "binding": "DB",
       "database_name": "dormtag",
-      "database_id": "3c269ad3-73eb-4828-af29-41c36abacea8"
+      "database_id": "PASTE_YOUR_DATABASE_ID_HERE"
     }
   ],
   "vars": {

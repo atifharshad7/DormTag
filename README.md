@@ -116,7 +116,9 @@ levels and three different tolerances for friction:
 | Operator | signed session cookie, aggregate views only | Sees the whole estate |
 
 Session tokens are stored **hashed**, so a database dump doesn't hand over live
-sessions. `ticketScope()` is the single source of truth for row visibility:
+sessions. The cookie carries the raw token unsigned — an HMAC would add no
+security over an unguessable 256-bit token validated against the database, and
+it adds a deploy-time secret that can silently be missing. `ticketScope()` is the single source of truth for row visibility:
 
 - Operator — everything
 - Caretaker — only buildings in `staff_buildings`
@@ -132,9 +134,33 @@ slot and granting entry — they're the same permission wearing two hats. A
 flatmate can report that your radiator is dead; only you can let someone into
 your room.
 
-**No client-side role variable.** In demo mode the login buttons issue *real*
-sessions against real seeded accounts, so the auth path a reviewer exercises is
-the production one.
+**No client-side role variable, and no role-switch endpoint.** Staff sign in
+with email and password (PBKDF2-SHA256, per-user salt, 100k iterations);
+residents sign in with an access code of the kind a welcome letter would carry.
+The role comes from the account row, never from the request. Both paths are
+throttled per identifier, and the password check derives a hash even for unknown
+emails so response time doesn't leak whether an account exists.
+
+In demo mode the login screen *displays* working credentials, but the reviewer
+still signs in through the production path. A resident session cannot become a
+caretaker session by any request the client can make.
+
+### QR stickers
+
+Every fixture has a `qr_slug`, and `/r/:slug` is the front door: scanning it
+resolves the sticker, pre-fills building, room and object, and offers the rest
+of the room as one-tap alternatives. No app install — a phone's built-in camera
+reads the code and opens the browser.
+
+Shared rooms (kitchen, corridor, laundry) can be reported anonymously, because
+the person who notices a dead corridor light may not live on that floor. Private
+rooms require a session. An anonymous report returns a capability token and the
+reporter gets `/t/:token` as their only way back to the ticket.
+
+Staff can print a sheet of stickers per building from the app (`/api/stickers/:code`,
+scoped to their assigned buildings). Each sticker carries the QR, the
+human-readable location, and the slug in text as a fallback for when the code is
+scuffed or the phone is dead.
 
 ### Analytics are per-object, never per-person
 
@@ -156,12 +182,6 @@ npm run dev               # http://localhost:8787
 
 Then click **Load demo data** once, and pick a role.
 
-Create `.dev.vars` from the example first:
-
-```
-COOKIE_SECRET=any-long-random-string
-```
-
 > **Local gotcha:** if `wrangler dev` dies with `Address already in use`, a stale
 > `workerd` is holding the port. `pkill -f workerd` and retry. `npm run dev`
 > does this for you.
@@ -171,7 +191,6 @@ COOKIE_SECRET=any-long-random-string
 ```bash
 npx wrangler d1 create dormtag      # paste the id into wrangler.jsonc
 npm run db:remote
-npx wrangler secret put COOKIE_SECRET
 npm run deploy
 ```
 
@@ -241,8 +260,8 @@ operator dashboard wants the width.
 - **Photo upload.** Needs R2. The schema has nowhere to put it yet.
 - **Rate limiting** on the public report endpoint. An open endpoint is an open
   spam endpoint.
-- **Real magic-link login.** The table is in the Postgres variant; the Worker
-  currently only issues demo sessions.
+- **Password reset and magic links.** Staff passwords are set at seed time;
+  there is no self-service reset, because there is no email sender yet.
 - **A caretaker availability calendar.** Slots are generated per ticket, which
   is simpler and enough here. A weekly availability grid would be a new table
   with `slot_offers` generated from it.

@@ -32,13 +32,26 @@ async function req(path, { method = "GET", body, cookie } = {}) {
   return { status: res.status, json, setCookie: res.headers.getSetCookie?.() ?? [] };
 }
 
-async function login(as) {
-  const r = await req("/api/session/demo", { method: "POST", body: { as } });
-  const jar = r.setCookie
+const CREDS = {
+  staff:    { email: "hausmeister@wohnheim.test", password: "hausmeister-demo-2026" },
+  operator: { email: "verwaltung@wohnheim.test",  password: "verwaltung-demo-2026" },
+  resident: { code: "B312-Z2-DEMO" },
+};
+
+function jarOf(r) {
+  return r.setCookie
     .map((c) => c.split(";")[0])
     .filter((c) => !c.endsWith("="))
     .join("; ");
-  return jar;
+}
+
+/** Real credential login — there is no role-switch endpoint to shortcut. */
+async function login(as) {
+  const r = as === "resident"
+    ? await req("/api/auth/resident", { method: "POST", body: CREDS.resident })
+    : await req("/api/auth/staff", { method: "POST", body: CREDS[as] });
+  if (r.status !== 200) throw new Error(`login as ${as} failed: ${JSON.stringify(r.json)}`);
+  return jarOf(r);
 }
 
 const section = (s) => console.log(`\n${s}`);
@@ -50,7 +63,7 @@ ok("seed succeeds", (await req("/api/dev/seed", { method: "POST" })).status === 
 
 section("sessions");
 const staff = await login("staff");
-const tenant = await login("tenant");
+const tenant = await login("resident");
 const operator = await login("operator");
 ok("staff cookie issued", staff.startsWith("sid="));
 ok("tenant cookie issued", tenant.startsWith("tid="));
@@ -165,6 +178,37 @@ if (drain) {
   ok("drain pattern ranks first", dash.repeats[0].object_type === "DRAIN");
 }
 ok("failed-visit rate is non-zero", dash.metrics.failedPct > 0, `${dash.metrics.failedPct}%`);
+
+section("credentials");
+ok("wrong staff password is refused",
+  (await req("/api/auth/staff", { method: "POST", body: { email: CREDS.staff.email, password: "wrong" } })).status === 401);
+ok("unknown staff email is refused",
+  (await req("/api/auth/staff", { method: "POST", body: { email: "nobody@example.com", password: "x" } })).status === 401);
+ok("bad access code is refused",
+  (await req("/api/auth/resident", { method: "POST", body: { code: "NOPE-NOPE" } })).status === 401);
+ok("no role-switch endpoint exists",
+  (await req("/api/session/demo", { method: "POST", body: { as: "operator" } })).status === 404);
+ok("a resident cannot become staff by asking",
+  (await req("/api/auth/staff", { method: "POST", body: { email: CREDS.resident.code, password: CREDS.resident.code } })).status === 401);
+
+section("qr stickers");
+const sheet = await req("/api/stickers/B", { cookie: staff });
+ok("caretaker can print their own building", sheet.status === 200 && sheet.json.stickers.length > 0,
+  `${sheet.status}`);
+ok("stickers carry a slug and a room", !!sheet.json.stickers?.[0]?.qr_slug && !!sheet.json.stickers?.[0]?.room_code);
+ok("operator can print any building", (await req("/api/stickers/C", { cookie: operator })).status === 200);
+ok("resident cannot list stickers", (await req("/api/stickers/B", { cookie: tenant })).status === 403);
+ok("anonymous cannot list stickers", (await req("/api/stickers/B")).status === 403);
+
+const slug = sheet.json.stickers.find((x) => x.room_kind === "shared")?.qr_slug;
+const scan = await req(`/api/r/${slug}`);
+ok("anonymous can resolve a scanned sticker", scan.status === 200 && !!scan.json.object, `${slug}`);
+ok("scan returns the rest of the room for the picker", scan.json.siblings.length > 1);
+ok("unknown sticker 404s", (await req("/api/r/not-a-real-slug")).status === 404);
+
+const anonReport = await req("/api/tickets", { method: "POST", body: { objectId: scan.json.object.id, symptom: "BROKEN" } });
+ok("scanning a shared fixture lets anyone report it", anonReport.status === 200, JSON.stringify(anonReport.json));
+ok("report hands back a capability token", typeof anonReport.json.token === "string" && anonReport.json.token.length > 20);
 
 section("static assets");
 const page = await fetch(BASE + "/");

@@ -92,6 +92,29 @@ export const T = {
   st_waiting_for_parts: { de: "Wartet auf Teil",          en: "Waiting for part" },
   st_done:       { de: "Erledigt",                        en: "Done" },
   st_cancelled:  { de: "Abgebrochen",                     en: "Cancelled" },
+
+  signInTitle:    { de: "Anmelden",                  en: "Sign in" },
+  iLiveHere:      { de: "Ich wohne hier",            en: "I live here" },
+  iWorkHere:      { de: "Personal",                  en: "Staff" },
+  accessCode:     { de: "Zugangscode",               en: "Access code" },
+  codeHint:       { de: "Steht in deinem Willkommensschreiben.", en: "It's on your welcome letter." },
+  emailLabel:     { de: "E-Mail",                    en: "Email" },
+  passwordLabel:  { de: "Passwort",                  en: "Password" },
+  signInBtn:      { de: "Anmelden",                  en: "Sign in" },
+  demoCreds:      { de: "Demo-Zugangsdaten",         en: "Demo credentials" },
+  useThese:       { de: "Einsetzen",                 en: "Use these" },
+  signInToReport: { de: "Für dein Zimmer musst du angemeldet sein.", en: "Sign in to report your own room." },
+  scanAgain:      { de: "Anderes Objekt im Raum",    en: "Another item in this room" },
+  reportSent:     { de: "Meldung ist eingegangen.",  en: "Your report is in." },
+  saveLink:       { de: "Link speichern, um den Status zu sehen.", en: "Save this link to check the status." },
+  copyLink:       { de: "Link kopieren",             en: "Copy link" },
+  copied:         { de: "Kopiert",                   en: "Copied" },
+  stickers:       { de: "QR-Aufkleber",              en: "QR stickers" },
+  printSheet:     { de: "Bogen drucken",             en: "Print sheet" },
+  pickBuilding:   { de: "Gebäude wählen",            en: "Choose a building" },
+  stickerCount:   { de: "Aufkleber",                 en: "stickers" },
+  backToApp:      { de: "Zurück",                    en: "Back" },
+  reportProblem:  { de: "Schaden melden",            en: "Report a problem" },
 } as const;
 
 export type StrKey = keyof typeof T;
@@ -224,7 +247,10 @@ const post = (path: string, body?: unknown) =>
 
 export const api = {
   session:     () => call("/session"),
-  demoLogin:   (as: string) => post("/session/demo", { as }),
+  staffLogin:    (email: string, password: string) => post("/auth/staff", { email, password }),
+  residentLogin: (code: string) => post("/auth/resident", { code }),
+  sticker:       (slug: string) => call(`/r/${encodeURIComponent(slug)}`),
+  stickerSheet:  (code: string) => call(`/stickers/${encodeURIComponent(code)}`),
   logout:      () => post("/session/logout"),
   seed:        () => post("/dev/seed"),
 

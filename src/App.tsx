@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   QrCode, Calendar, Clock, Check, ChevronLeft, Package, AlertTriangle, Key,
   Building2, Wrench, LayoutDashboard, Languages, User, Users, ArrowRight, Plus,
-  LogOut, Database,
+  LogOut,
 } from "lucide-react";
 import {
   api, T, SYMPTOMS_FOR, CAUSE, CAUSES_FOR,
   roomLabel, objLabel, objIcon, symptomLabel, causeLabel, reasonLabel,
   fmtDay, fmtDT, fmtTime, plate, title, STATE_TONE, type Locale, type StrKey,
 } from "./lib";
+import { SignIn, ScanLanding, ReportDone, StickerSheet } from "./Auth";
 
 /* ---------------------------------------------------------------- */
 /* small shared pieces                                              */
@@ -36,41 +37,6 @@ function Err({ msg, onClose }: any) {
 /* ---------------------------------------------------------------- */
 /* sign-in                                                          */
 /* ---------------------------------------------------------------- */
-
-function SignIn({ l, t, demo, onDone }: any) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [err, setErr] = useState("");
-
-  const go = async (as: string) => {
-    setBusy(as); setErr("");
-    try { await api.demoLogin(as); await onDone(); }
-    catch (e: any) { setErr(e.message); } finally { setBusy(null); }
-  };
-
-  const doSeed = async () => {
-    setBusy("seed"); setErr("");
-    try { await api.seed(); setErr(""); }
-    catch (e: any) { setErr(e.message); } finally { setBusy(null); }
-  };
-
-  return (
-    <div className="col signin">
-      <h2>{t("signIn")}</h2>
-      <p className="muted">{t("demoNote")}</p>
-      <Err msg={err} onClose={() => setErr("")} />
-      {[["tenant", User], ["staff", Wrench], ["operator", LayoutDashboard]].map(([k, Icon]: any) => (
-        <button key={k} className="btn btn-big" disabled={!!busy} onClick={() => go(k)}>
-          <Icon size={18} strokeWidth={1.75} /> {t(k as StrKey)} <ArrowRight size={16} />
-        </button>
-      ))}
-      {demo && (
-        <button className="btn" disabled={!!busy} onClick={doSeed}>
-          <Database size={16} /> {busy === "seed" ? t("seeding") : t("seedFirst")}
-        </button>
-      )}
-    </div>
-  );
-}
 
 /* ---------------------------------------------------------------- */
 /* resident                                                         */
@@ -488,10 +454,28 @@ function OperatorView({ l, t }: any) {
 /* app shell                                                        */
 /* ---------------------------------------------------------------- */
 
+/** Minimal path router: /r/:slug is a scanned sticker, /t/:token a report link. */
+function readRoute() {
+  const m = location.pathname.match(/^\/(r|t)\/([A-Za-z0-9_-]+)\/?$/);
+  if (!m) return { kind: "app" as const };
+  return m[1] === "r"
+    ? { kind: "scan" as const, slug: m[2] }
+    : { kind: "token" as const, token: m[2] };
+}
+
 export default function App() {
   const [l, setL] = useState<Locale>(() => (navigator.language.startsWith("de") ? "de" : "en"));
   const [session, setSession] = useState<any>(null);
   const [tickets, setTickets] = useState<any[]>([]);
+  const [route, setRoute] = useState(readRoute);
+  const [screen, setScreen] = useState<"main" | "stickers" | "sent">("main");
+  const [sent, setSent] = useState<{ id: string; token?: string } | null>(null);
+
+  const goApp = useCallback(() => {
+    history.pushState({}, "", "/");
+    setRoute({ kind: "app" });
+    setScreen("main");
+  }, []);
   const t = (k: StrKey) => (T[k] as any)?.[l] ?? k;
 
   const loadSession = useCallback(async () => {
@@ -513,12 +497,17 @@ export default function App() {
   const kind = session.principal.kind;
   const roleLabel = kind === "operator" ? t("operator") : kind === "staff" ? t("staff") : t("tenant");
   const RoleIcon = kind === "operator" ? LayoutDashboard : kind === "staff" ? Wrench : User;
+  const isStaffKind = kind === "staff" || kind === "operator";
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand"><Building2 size={18} strokeWidth={1.75} aria-hidden /><span>{t("appName")}</span></div>
         <div className="row">
+          {isStaffKind && (
+            <button className="lang" onClick={() => setScreen(screen === "stickers" ? "main" : "stickers")}
+              aria-label={t("stickers")}><QrCode size={14} aria-hidden /></button>
+          )}
           {kind !== "anonymous" && (
             <>
               <span className="who"><RoleIcon size={14} strokeWidth={1.75} aria-hidden /> {roleLabel}</span>
@@ -532,11 +521,26 @@ export default function App() {
         </div>
       </header>
 
-      <main className={kind === "operator" ? "wide" : "narrow"}>
-        {kind === "anonymous" && <SignIn l={l} t={t} demo={session.demo} onDone={loadSession} />}
-        {kind === "tenant" && <TenantView l={l} t={t} tickets={tickets} reload={reload} />}
-        {kind === "staff" && <StaffView l={l} t={t} tickets={tickets} reload={reload} />}
-        {kind === "operator" && <OperatorView l={l} t={t} />}
+      <main className={kind === "operator" || screen === "stickers" ? "wide" : "narrow"}>
+        {screen === "sent" ? (
+          <ReportDone t={t} token={sent?.token} onHome={goApp} />
+        ) : route.kind === "scan" ? (
+          <ScanLanding
+            l={l} t={t} slug={route.slug} principal={session.principal}
+            onSignIn={goApp}
+            onDone={(id, token) => { setSent({ id, token }); setScreen("sent"); reload(); }}
+          />
+        ) : screen === "stickers" && isStaffKind ? (
+          <StickerSheet l={l} t={t} buildings={session.buildings} onBack={() => setScreen("main")} />
+        ) : kind === "anonymous" ? (
+          <SignIn l={l} t={t} session={session} onDone={loadSession} />
+        ) : kind === "tenant" ? (
+          <TenantView l={l} t={t} tickets={tickets} reload={reload} />
+        ) : kind === "staff" ? (
+          <StaffView l={l} t={t} tickets={tickets} reload={reload} />
+        ) : (
+          <OperatorView l={l} t={t} />
+        )}
       </main>
     </div>
   );
