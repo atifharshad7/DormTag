@@ -12,6 +12,7 @@ import {
 import { SignIn, ScanLanding, ReportDone, StickerSheet } from "./Auth";
 import { ScannerModal } from "./Scanner";
 import { SlotPicker, type SlotRules } from "./SlotPicker";
+import { OperatorView } from "./Operator";
 
 /* ---------------------------------------------------------------- */
 /* small shared pieces                                              */
@@ -237,6 +238,12 @@ function TenantTicket({ l, t, id, onBack }: any) {
         )}
       </div>
 
+      {d.ticket.state === "accepted" && d.events.length > 2 && (
+        <div className="card">
+          <p className="cardtitle">{t("awaitingTimes")}</p>
+        </div>
+      )}
+
       {d.ticket.state === "slots_offered" && (
         <div className="card">
           <p className="cardtitle">{t("pickSlot")}</p>
@@ -360,6 +367,10 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
         </button>
       )}
 
+      {d.ticket.state === "accepted" && mode === "main" && d.events.length > 2 && (
+        <div className="err">{t("noTimesLeft")}</div>
+      )}
+
       {d.ticket.state === "accepted" && mode === "main" && (
         <>
           <button className="btn btn-primary" onClick={() => setMode("times")}>
@@ -377,7 +388,7 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
       )}
 
       {mode === "times" && (
-        <SlotPicker l={l} t={t} rules={rules} busy={false}
+        <SlotPicker l={l} t={t} rules={rules}
           onCancel={() => setMode("main")}
           onOffer={async (slots) => {
             setErr(""); setNotice("");
@@ -446,66 +457,6 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
 /* ---------------------------------------------------------------- */
 /* operator                                                         */
 /* ---------------------------------------------------------------- */
-
-function OperatorView({ l, t }: any) {
-  const [d, setD] = useState<any>(null);
-  const [err, setErr] = useState("");
-  useEffect(() => { api.dashboard().then(setD).catch((e) => setErr(e.message)); }, []);
-  if (err) return <Err msg={err} />;
-  if (!d) return <p className="muted">…</p>;
-
-  const m = d.metrics;
-  return (
-    <div className="col">
-      <div className="metrics">
-        {[[t("openTickets"), m.open], [t("medianFix"), m.medianDays + " d"],
-          [t("waitingParts"), m.waitingParts], [t("failedVisits"), m.failedPct + "%"]].map(([lab, v]: any) => (
-          <div className="metric" key={lab}><p className="muted">{lab}</p><p className="big mono">{v}</p></div>
-        ))}
-      </div>
-
-      <div className="card">
-        <div className="rowspread">
-          <p className="cardtitle">{t("repeatFaults")}</p>
-          <span className="muted">{t("last12")}</span>
-        </div>
-        {d.repeats.length === 0 && <p className="muted">{t("nothingFlagged")}</p>}
-        {d.repeats.map((g: any, i: number) => {
-          const flagged = g.systemic >= 3;
-          return (
-            <div key={i} className={"repeat" + (flagged ? " repeat-flag" : "")}>
-              <div className="rowspread">
-                <span className="mono">{g.building_code} · {g.riser} · {objLabel(g.object_type, l)}</span>
-                <span className="mono">{g.ticket_count} {t("ticketsWord")}</span>
-              </div>
-              <p className="muted">
-                {g.rooms_affected} {t("roomsAffected")}
-                {flagged && ` · ${t("systemicHint")} ${g.systemic} ${t("ofWord")} ${g.ticket_count}`}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-
-      <p className="eyebrow">{t("buildings")}</p>
-      <div className="bgrid">
-        {d.buildings.map((b: any) => {
-          const load = Math.min(100, Math.round((b.open_count / 20) * 100));
-          return (
-            <div className="card" key={b.id}>
-              <div className="rowspread">
-                <p className="cardtitle">{b.name}</p>
-                <Plate sm>{b.code}</Plate>
-              </div>
-              <p className="muted mono">{b.room_count} {t("roomsWord")} · {b.open_count} {t("openWord")}</p>
-              <div className="bar"><div className={"barfill" + (load > 50 ? " barfill-warn" : "")} style={{ width: load + "%" }} /></div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /* ---------------------------------------------------------------- */
 /* app shell                                                        */

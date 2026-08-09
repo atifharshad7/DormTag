@@ -82,6 +82,27 @@ export const T = {
   roomsWord:     { de: "Zimmer",                          en: "rooms" },
   openWord:      { de: "offen",                           en: "open" },
   nothingFlagged:{ de: "Keine Auffälligkeiten.",          en: "Nothing flagged." },
+  period:          { de: "Zeitraum",                 en: "Period" },
+  range1:          { de: "Letzter Monat",            en: "Last month" },
+  range3:          { de: "Letzte 3 Monate",          en: "Last 3 months" },
+  range6:          { de: "Letzte 6 Monate",          en: "Last 6 months" },
+  range12:         { de: "Letzte 12 Monate",         en: "Last 12 months" },
+  buildingLabel:   { de: "Gebäude",                  en: "Building" },
+  allBuildings:    { de: "Alle Gebäude",             en: "All buildings" },
+  filterToThis:    { de: "Nur dieses Haus",          en: "Filter to this" },
+  clearFilter:     { de: "Filter aufheben",          en: "Clear filter" },
+  seeList:         { de: "Liste ansehen",            en: "See the list" },
+  backToDash:      { de: "Zurück zur Übersicht",     en: "Back to dashboard" },
+  nothingHere:     { de: "Nichts vorhanden.",        en: "Nothing here." },
+  noData:          { de: "Keine Daten im Zeitraum.", en: "No data in this period." },
+  reportedVsFixed: { de: "Gemeldet und erledigt",    en: "Reported and fixed" },
+  fixed:           { de: "erledigt",                 en: "fixed" },
+  stillOpen:       { de: "noch offen",               en: "still open" },
+  byObject:        { de: "Häufigste Objekte",        en: "Most reported items" },
+  closedInPeriod:  { de: "erledigt im Zeitraum",     en: "closed in period" },
+  visits:          { de: "Besuche",                  en: "visits" },
+  reportedOn:      { de: "gemeldet",                 en: "reported" },
+  daysOpen:        { de: "Tage offen",               en: "days open" },
 
   st_reported:   { de: "Gemeldet",                        en: "Reported" },
   st_accepted:   { de: "Angenommen",                      en: "Accepted" },
@@ -121,6 +142,20 @@ export const T = {
   openCamera:      { de: "Kamera öffnen",            en: "Open camera" },
   outsideFlat:     { de: "Etwas außerhalb deiner Wohnung? Dort den Aufkleber scannen.", en: "Something outside your flat? Scan the sticker there." },
   slotLength:      { de: "Jeder Termin dauert {n} Minuten.", en: "Each visit is {n} minutes." },
+  step1Day:        { de: "1. Tag wählen",            en: "1. Pick a day" },
+  step2Times:      { de: "2. Uhrzeiten antippen",    en: "2. Tap the times" },
+  upToN:           { de: "bis zu {n}",               en: "up to {n}" },
+  pickAtLeastOne:  { de: "Noch keine Zeit gewählt.", en: "No times chosen yet." },
+  youAreOffering:  { de: "Du bietest an",            en: "You're offering" },
+  residentPicksOne:{ de: "Der Bewohner wählt eine davon aus.", en: "The resident picks one of these." },
+  addTime:         { de: "Hinzufügen",               en: "Add" },
+  timeLabel:       { de: "Uhrzeit",                  en: "Time" },
+  durationLabel:   { de: "Dauer",                    en: "Duration" },
+  tooManyTimes:    { de: "Genug Zeiten gewählt.",    en: "That's enough times." },
+  timeInPast:      { de: "Diese Zeit ist vorbei.",   en: "That time has passed." },
+  timesOverlap:    { de: "Überschneidet sich mit einer gewählten Zeit.", en: "That overlaps a time you already picked." },
+  awaitingTimes:   { de: "Der Hausmeister schlägt neue Zeiten vor.", en: "The caretaker will propose new times." },
+  noTimesLeft:     { de: "Keine weiteren Zeiten offen — bitte neue anbieten.", en: "No times left — offer new ones." },
   reoffer:         { de: "Andere Zeiten anbieten",   en: "Offer different times" },
   skippedBusy:     { de: "Zeiten übersprungen, du bist dort schon gebucht.", en: "Some times were skipped — you're already booked then." },
   chooseTimes:     { de: "Zeiten auswählen",         en: "Choose times" },
@@ -156,6 +191,7 @@ export const REASON = {
   booked:        { de: "Termin gebucht",               en: "Appointment booked" },
   rebooked:      { de: "Termin geändert",              en: "Appointment changed" },
   reschedule:    { de: "Termin abgesagt",              en: "Appointment cancelled" },
+  needs_times:   { de: "Wartet auf neue Zeiten",       en: "Waiting for new times" },
   no_access:     { de: "Niemand angetroffen",          en: "Nobody was home" },
   part_ordered:  { de: "Teil bestellt",                en: "Part ordered" },
   part_arrived:  { de: "Teil geliefert",               en: "Part arrived" },
@@ -280,6 +316,7 @@ export const api = {
   residentLogin: (code: string) => post("/auth/resident", { code }),
   sticker:       (slug: string) => call(`/r/${encodeURIComponent(slug)}`),
   stickerSheet:  (code: string) => call(`/stickers/${encodeURIComponent(code)}`),
+  mySchedule:    () => call("/my-schedule"),
   logout:      () => post("/session/logout"),
   seed:        () => post("/dev/seed"),
 
@@ -290,9 +327,9 @@ export const api = {
                  post("/tickets", { objectId, symptom, note }),
 
   accept:      (id: string) => post(`/tickets/${id}/accept`),
-  offer:       (id: string, slots?: number[]) =>
+  offer:       (id: string, slots?: unknown[]) =>
                  post(`/tickets/${id}/offer`, slots ? { slots } : undefined),
-  mySchedule:  () => call("/my-schedule"),
+  mySchedule_x:() => call("/my-schedule"),
   book:        (id: string, slotId: string) => post(`/tickets/${id}/book`, { slotId }),
   reschedule:  (id: string) => post(`/tickets/${id}/reschedule`),
   noAccess:    (id: string) => post(`/tickets/${id}/no-access`),
@@ -301,7 +338,10 @@ export const api = {
   done:        (id: string, cause: string) => post(`/tickets/${id}/done`, { cause }),
   consent:     (id: string, value: boolean) => post(`/tickets/${id}/consent`, { value }),
 
-  dashboard:   () => call("/dashboard"),
+  dashboard:        (months: number, building: string | null) =>
+                      call(`/dashboard?months=${months}${building ? `&building=${building}` : ""}`),
+  dashboardTickets: (which: string, months: number, building: string | null) =>
+                      call(`/dashboard/tickets?filter=${which}&months=${months}${building ? `&building=${building}` : ""}`),
 };
 
 /* ---------------------------------------------------------------- */

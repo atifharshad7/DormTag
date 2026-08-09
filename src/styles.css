@@ -420,3 +420,92 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   color: inherit; font: inherit; font-weight: 600; letter-spacing: -.02em;
 }
 .brandbtn:hover { opacity: .85; }
+
+/* --- free-form time entry ------------------------------------------ */
+
+.timerow { display: flex; gap: 6px; align-items: stretch; flex-wrap: wrap; }
+.timein { flex: 1 1 110px; min-width: 100px; font-family: 'IBM Plex Mono', monospace; }
+.durin { flex: 0 1 104px; }
+.timerow .btn { flex: 0 0 auto; }
+
+
+/* --- slot picker: legible two-step ---------------------------------- */
+
+.steplabel {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 13px; font-weight: 500; margin: 2px 0 0; color: var(--ink);
+}
+.stepnote { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+.hourchip {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  padding: 10px 4px; min-height: 46px; border: 1px solid var(--line);
+  background: var(--card); border-radius: 8px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink);
+}
+.hourchip-busy { opacity: 1; background: rgba(22,25,27,.05); color: var(--muted); }
+.chipnote {
+  font-family: Archivo, sans-serif; font-size: 9px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted);
+}
+
+.offerline {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  background: rgba(28,122,75,.08); border-radius: 8px; font-size: 13.5px;
+  color: var(--ink);
+}
+.offerline > .mono { margin-left: auto; }
+.offerx {
+  border: 0; background: none; cursor: pointer; color: var(--muted);
+  font-size: 18px; line-height: 1; padding: 0 2px;
+}
+.offerx:hover { color: var(--ink); }
+
+/* --- operator: controls, chart, drill-down -------------------------- */
+
+.controls { display: flex; gap: 10px; flex-wrap: wrap; }
+.ctl { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; }
+.ctl > span { font-size: 12px; color: var(--muted); }
+.ctl .in { min-height: 42px; }
+
+.metriclink {
+  cursor: pointer; text-align: left; font: inherit; color: inherit;
+  border: 1px solid var(--line);
+}
+.metriclink:hover { border-color: var(--slate); }
+.metrichint {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11.5px; color: var(--muted); margin: 6px 0 0;
+}
+.metriclink:hover .metrichint { color: var(--blue); }
+.cardactive { border: 2px solid var(--slate); }
+
+.chart {
+  display: flex; align-items: flex-end; gap: 2px;
+  height: 130px; margin: 4px 0 6px;
+}
+.chartcol { display: flex; flex-direction: column; align-items: center; height: 100%; }
+.barstack { flex: 1; width: 100%; display: flex; align-items: flex-end; padding: 0 2px; }
+.barreported {
+  width: 100%; background: rgba(22,25,27,.14); border-radius: 3px 3px 0 0;
+  display: flex; align-items: flex-end; min-height: 2px;
+}
+.barfixed { width: 100%; background: var(--green); border-radius: 3px 3px 0 0; }
+.chartlabel { font-size: 10px; color: var(--muted); padding-top: 5px; }
+
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.swatch-fixed { background: var(--green); }
+.swatch-open { background: rgba(22,25,27,.14); }
+
+.typerow { display: flex; align-items: center; gap: 10px; }
+.typename { font-size: 13px; flex: 0 0 108px; }
+.typebar { flex: 1; height: 8px; background: rgba(22,25,27,.07); border-radius: 4px; overflow: hidden; }
+.typebar > div { height: 100%; background: var(--blue); border-radius: 4px; }
+.typecount { flex: 0 0 28px; text-align: right; color: var(--muted); }
+
+@media (prefers-color-scheme: dark) {
+  .barreported, .swatch-open { background: rgba(232,232,227,.16); }
+  .typebar { background: rgba(232,232,227,.1); }
+}

@@ -229,8 +229,8 @@ const TRANSITIONS: Record<State, State[]> = {
   reported:          ["accepted", "cancelled"],
   accepted:          ["slots_offered", "done", "waiting_for_parts", "cancelled"],
   slots_offered:     ["scheduled", "accepted", "cancelled"],
-  scheduled:         ["done", "waiting_for_parts", "slots_offered", "cancelled"],
-  waiting_for_parts: ["slots_offered", "done", "cancelled"],
+  scheduled:         ["done", "waiting_for_parts", "slots_offered", "accepted", "cancelled"],
+  waiting_for_parts: ["slots_offered", "accepted", "done", "cancelled"],
   done:              [],
   cancelled:         [],
 };
@@ -261,26 +261,18 @@ function transitionStmts(env: Env, ticket: any, to: State, reason: string, p: Pr
 
 /** Slots land on a fixed hourly grid so the staff_not_double_booked index bites. */
 /** The hours a caretaker works. Offers must land on this grid. */
+/**
+ * Appointments sit on whole hours, one hour long.
+ *
+ * That's a deliberate simplification, not a database workaround: a caretaker
+ * offering times on a phone wants to tap "10:00", not fill in a start time and
+ * a duration. It also means two visits can never partially overlap, so the
+ * booking guard has less to do.
+ */
 const SLOT_HOURS = [8, 9, 10, 11, 13, 14, 15, 16];
 const SLOT_MINUTES = 60;
 const MAX_OFFERS = 4;
 const OFFER_HORIZON_DAYS = 14;
-
-/**
- * Fallback offers, used when the system re-opens scheduling on its own — after
- * a no-show or when a part arrives. A caretaker choosing times explicitly goes
- * through the picker instead.
- */
-function generateSlots(base: number) {
-  const out: { startsAt: number; endsAt: number }[] = [];
-  const hours = [9, 14, 11];
-  for (let d = 1; d <= 3; d++) {
-    const s = new Date(base + d * DAY);
-    s.setHours(hours[d - 1], 0, 0, 0);
-    out.push({ startsAt: s.getTime(), endsAt: s.getTime() + 36e5 });
-  }
-  return out;
-}
 
 /**
  * Validate caretaker-chosen times. Rejects anything in the past, off-grid, too
@@ -293,18 +285,24 @@ function validateSlots(raw: unknown): { startsAt: number; endsAt: number }[] {
   if (raw.length > MAX_OFFERS) {
     throw new HttpError(`at most ${MAX_OFFERS} times`);
   }
+
   const seen = new Set<number>();
   const out: { startsAt: number; endsAt: number }[] = [];
   for (const v of raw) {
-    const ms = Number(v);
+    const ms = Number(typeof v === "object" && v !== null ? (v as any).startsAt : v);
     if (!Number.isFinite(ms)) throw new HttpError("bad time value");
+
     const d = new Date(ms);
-    if (d.getMinutes() !== 0 || d.getSeconds() !== 0 || !SLOT_HOURS.includes(d.getHours())) {
-      throw new HttpError("that time is outside working hours");
+    if (d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0) {
+      throw new HttpError("appointments start on the hour");
+    }
+    if (!SLOT_HOURS.includes(d.getHours())) {
+      throw new HttpError("that hour isn't offered");
     }
     if (ms < now()) throw new HttpError("that time is in the past");
     if (ms > now() + OFFER_HORIZON_DAYS * DAY) throw new HttpError("that time is too far ahead");
     if (seen.has(ms)) throw new HttpError("duplicate time");
+
     seen.add(ms);
     out.push({ startsAt: ms, endsAt: ms + SLOT_MINUTES * 60e3 });
   }
@@ -559,7 +557,13 @@ route("GET", "/api/tickets/:id", async ({ env, p, params }) => {
   const t = await loadTicket(env, params.id);
   const [events, slots, appts, parts, reporters] = await Promise.all([
     env.DB.prepare(`SELECT * FROM ticket_events WHERE ticket_id = ?1 ORDER BY created_at, id`).bind(params.id).all<any>(),
-    env.DB.prepare(`SELECT * FROM slot_offers WHERE ticket_id = ?1 AND expires_at > ?2 ORDER BY starts_at`).bind(params.id, now()).all<any>(),
+    env.DB.prepare(
+      `SELECT so.* FROM slot_offers so
+        WHERE so.ticket_id = ?1 AND so.expires_at > ?2 AND so.starts_at > ?2
+          AND NOT EXISTS (SELECT 1 FROM appointments a
+                           WHERE a.slot_offer_id = so.id AND a.status = 'booked')
+        ORDER BY so.starts_at`
+    ).bind(params.id, now()).all<any>(),
     env.DB.prepare(`SELECT * FROM appointments WHERE ticket_id = ?1 ORDER BY created_at`).bind(params.id).all<any>(),
     env.DB.prepare(`SELECT * FROM parts_orders WHERE ticket_id = ?1 ORDER BY ordered_at DESC`).bind(params.id).all<any>(),
     env.DB.prepare(`SELECT COUNT(*) AS n FROM ticket_reporters WHERE ticket_id = ?1`).bind(params.id).first<any>(),
@@ -665,16 +669,18 @@ route("POST", "/api/tickets/:id/offer", async ({ env, req, p, params }) => {
   const staffId = (p as any).staffId;
 
   let body: any = {};
-  try { body = await req.json(); } catch { /* no body: use fallback times */ }
-  const chosen = body?.slots ? validateSlots(body.slots) : generateSlots(now());
+  try { body = await req.json(); } catch { /* handled by validateSlots */ }
+  // No generated fallback: the app must never invent a caretaker's availability.
+  const chosen = validateSlots(body?.slots);
 
-  // Don't offer a time this caretaker is already committed to elsewhere.
+  // Don't offer a time that overlaps something this caretaker is already
+  // committed to. Now that times are free-form, equality isn't enough.
   const busy = await env.DB.prepare(
-    `SELECT starts_at FROM appointments
-      WHERE staff_id = ?1 AND status = 'booked' AND starts_at >= ?2`
+    `SELECT starts_at, ends_at FROM appointments
+      WHERE staff_id = ?1 AND status = 'booked' AND ends_at > ?2`
   ).bind(staffId, now()).all<any>();
-  const taken = new Set(busy.results.map((r: any) => r.starts_at));
-  const free = chosen.filter((c) => !taken.has(c.startsAt));
+  const free = chosen.filter((c) =>
+    !busy.results.some((b: any) => c.startsAt < b.ends_at && c.endsAt > b.starts_at));
   if (free.length === 0) return bad("you're already booked at all of those times", 409);
 
   const stmts = [
@@ -716,30 +722,65 @@ route("POST", "/api/tickets/:id/book", async ({ env, req, p, params }) => {
   if (!slot) return bad("slot not available", 409);
   if (slot.expires_at < now()) return bad("that offer expired", 409);
 
+  /**
+   * Claim the slot in ONE statement.
+   *
+   * Times are free-form now, so two appointments can overlap without sharing a
+   * start time — which a unique index on (staff_id, starts_at) cannot catch.
+   * A read-then-write check would race. `INSERT ... SELECT ... WHERE NOT EXISTS`
+   * evaluates the guard and performs the write atomically inside SQLite, so a
+   * second request arriving in the same millisecond simply inserts nothing.
+   */
+  let claimed;
   try {
-    await env.DB.batch([
-      env.DB.prepare(
-        `UPDATE appointments SET status = 'cancelled_by_tenant', resolved_at = ?1
-          WHERE ticket_id = ?2 AND status = 'booked'`
-      ).bind(now(), t.id),
-      env.DB.prepare(
-        `INSERT INTO appointments (id, ticket_id, slot_offer_id, staff_id, starts_at, ends_at, status, booked_by, created_at)
-         VALUES (?1,?2,?3,?4,?5,?6,'booked','tenant',?7)`
-      ).bind(uid(), t.id, slot.id, slot.staff_id, slot.starts_at, slot.ends_at, now()),
-      env.DB.prepare(`UPDATE slot_offers SET expires_at = ?1 WHERE ticket_id = ?2 AND id != ?3 AND expires_at > ?1`)
-        .bind(now(), t.id, slot.id),
-      ...transitionStmts(env, t, "scheduled", t.reschedule_count > 0 ? "rebooked" : "booked", p),
-    ]);
+    claimed = await env.DB.prepare(
+      `INSERT INTO appointments
+         (id, ticket_id, slot_offer_id, staff_id, starts_at, ends_at, status, booked_by, created_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, 'booked', 'tenant', ?7
+        WHERE NOT EXISTS (
+                SELECT 1 FROM appointments a
+                 WHERE a.staff_id = ?4 AND a.status = 'booked'
+                   AND a.starts_at < ?6 AND a.ends_at > ?5)
+          AND NOT EXISTS (
+                SELECT 1 FROM appointments b
+                 WHERE b.ticket_id = ?2 AND b.status = 'booked')
+          AND NOT EXISTS (
+                SELECT 1 FROM appointments c
+                 WHERE c.slot_offer_id = ?3 AND c.status = 'booked')`
+    ).bind(uid(), t.id, slot.id, slot.staff_id, slot.starts_at, slot.ends_at, now()).run();
   } catch (e: any) {
-    // Only a unique-index violation means "someone else got there first".
-    // Anything else is a real bug and must not be disguised as a race.
     if (/UNIQUE constraint failed/i.test(e?.message || "")) {
       return bad("that time was just taken — pick another", 409);
     }
     throw e;
   }
+
+  if (!claimed.meta.changes) {
+    return bad("that time was just taken — pick another", 409);
+  }
+
+  // Other offered times stay open: if the resident later changes their mind,
+  // they pick from what the caretaker already agreed to.
+  await env.DB.batch(
+    transitionStmts(env, t, "scheduled", t.reschedule_count > 0 ? "rebooked" : "booked", p)
+  );
   return json({ ok: true });
 });
+
+/**
+ * Times the caretaker has offered that are still choosable: not expired, not in
+ * the past, and not already claimed by a live appointment.
+ */
+async function remainingOffers(env: Env, ticketId: string, excludeSlotId?: string | null) {
+  const r = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM slot_offers so
+      WHERE so.ticket_id = ?1 AND so.expires_at > ?2 AND so.starts_at > ?2
+        AND (?3 IS NULL OR so.id != ?3)
+        AND NOT EXISTS (SELECT 1 FROM appointments a
+                         WHERE a.slot_offer_id = so.id AND a.status = 'booked')`
+  ).bind(ticketId, now(), excludeSlotId ?? null).first<any>();
+  return (r?.n as number) ?? 0;
+}
 
 route("POST", "/api/tickets/:id/reschedule", async ({ env, p, params }) => {
   await assertVisible(env, p, params.id);
@@ -751,20 +792,23 @@ route("POST", "/api/tickets/:id/reschedule", async ({ env, p, params }) => {
   if (!isStaff(p) && appt.starts_at - now() < DAY) return bad("under 24 hours — the caretaker has to agree", 409);
   if (!isStaff(p) && t.reschedule_count >= 3) return bad("too many changes — the caretaker will contact you", 409);
 
+  // Reuse what the caretaker already agreed to. If he offered only the one
+  // time, there is nothing left to choose and he has to propose new times —
+  // the app must not invent them.
+  const left = await remainingOffers(env, t.id, appt.slot_offer_id);
+  const back: State = left > 0 ? "slots_offered" : "accepted";
+
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE appointments SET status = ?1, resolved_at = ?2 WHERE id = ?3`
     ).bind(isStaff(p) ? "cancelled_by_staff" : "cancelled_by_tenant", now(), appt.id),
     env.DB.prepare(`UPDATE tickets SET reschedule_count = reschedule_count + 1 WHERE id = ?1`).bind(t.id),
-    ...generateSlots(now()).map((s) =>
-      env.DB.prepare(
-        `INSERT INTO slot_offers (id, ticket_id, staff_id, starts_at, ends_at, offered_at, expires_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7)`
-      ).bind(uid(), t.id, appt.staff_id, s.startsAt, s.endsAt, now(), now() + 5 * DAY)
-    ),
-    ...transitionStmts(env, t, "slots_offered", "reschedule", p),
+    env.DB.prepare(
+      `UPDATE slot_offers SET expires_at = ?1 WHERE id = ?2`
+    ).bind(now(), appt.slot_offer_id),
+    ...transitionStmts(env, t, back, left > 0 ? "reschedule" : "needs_times", p),
   ]);
-  return json({ ok: true });
+  return json({ ok: true, remaining: left });
 });
 
 route("POST", "/api/tickets/:id/no-access", async ({ env, p, params }) => {
@@ -774,17 +818,17 @@ route("POST", "/api/tickets/:id/no-access", async ({ env, p, params }) => {
   const appt = await env.DB.prepare(`SELECT * FROM appointments WHERE ticket_id = ?1 AND status='booked'`)
     .bind(t.id).first<any>();
   if (!appt) return bad("no appointment", 409);
+  const left = await remainingOffers(env, t.id, appt.slot_offer_id);
+  const back: State = left > 0 ? "slots_offered" : "accepted";
+
   await env.DB.batch([
     env.DB.prepare(`UPDATE appointments SET status='no_access', resolved_at=?1 WHERE id=?2`).bind(now(), appt.id),
-    ...generateSlots(now()).map((s) =>
-      env.DB.prepare(
-        `INSERT INTO slot_offers (id, ticket_id, staff_id, starts_at, ends_at, offered_at, expires_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7)`
-      ).bind(uid(), t.id, appt.staff_id, s.startsAt, s.endsAt, now(), now() + 5 * DAY)
-    ),
-    ...transitionStmts(env, t, "slots_offered", "no_access", p),
+    env.DB.prepare(
+      `UPDATE slot_offers SET expires_at = ?1 WHERE id = ?2`
+    ).bind(now(), appt.slot_offer_id),
+    ...transitionStmts(env, t, back, "no_access", p),
   ]);
-  return json({ ok: true });
+  return json({ ok: true, remaining: left });
 });
 
 route("POST", "/api/tickets/:id/part", async ({ env, req, p, params }) => {
@@ -808,20 +852,16 @@ route("POST", "/api/tickets/:id/part-arrived", async ({ env, p, params }) => {
   if (!isStaff(p)) return bad("staff only", 403);
   await assertVisible(env, p, params.id);
   const t = await loadTicket(env, params.id);
-  const staffId = (p as any).staffId;
+  const left = await remainingOffers(env, t.id);
+  const back: State = left > 0 ? "slots_offered" : "accepted";
+
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE parts_orders SET arrived_at = ?1 WHERE ticket_id = ?2 AND arrived_at IS NULL`
     ).bind(now(), t.id),
-    ...generateSlots(now()).map((s) =>
-      env.DB.prepare(
-        `INSERT INTO slot_offers (id, ticket_id, staff_id, starts_at, ends_at, offered_at, expires_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7)`
-      ).bind(uid(), t.id, staffId, s.startsAt, s.endsAt, now(), now() + 5 * DAY)
-    ),
-    ...transitionStmts(env, t, "slots_offered", "part_arrived", p),
+    ...transitionStmts(env, t, back, "part_arrived", p),
   ]);
-  return json({ ok: true });
+  return json({ ok: true, remaining: left });
 });
 
 route("POST", "/api/tickets/:id/done", async ({ env, req, p, params }) => {
@@ -851,55 +891,160 @@ route("POST", "/api/tickets/:id/consent", async ({ env, req, p, params }) => {
 
 /* --- dashboard -------------------------------------------------- */
 
-route("GET", "/api/dashboard", async ({ env, p }) => {
-  if (p.kind !== "operator") return bad("operator only", 403);
-  const yearAgo = now() - 365 * DAY;
+const RANGE_MONTHS = [1, 3, 6, 12];
 
-  const [open, parts, closed, visits, repeats, buildings] = await Promise.all([
-    env.DB.prepare(`SELECT COUNT(*) AS n FROM tickets WHERE state NOT IN ('done','cancelled')`).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS n FROM tickets WHERE state = 'waiting_for_parts'`).first<any>(),
+/** Shared filter parsing for the dashboard and its drill-down lists. */
+function dashboardFilter(url: URL) {
+  const months = RANGE_MONTHS.includes(Number(url.searchParams.get("months")))
+    ? Number(url.searchParams.get("months"))
+    : 12;
+  const building = (url.searchParams.get("building") || "").toUpperCase() || null;
+  return { months, building, since: now() - months * 30 * DAY };
+}
+
+/** `AND building_code = ?` only when a building is selected. */
+const buildingClause = (building: string | null, alias = "vtl") =>
+  building ? `AND ${alias}.building_code = ?` : "";
+
+route("GET", "/api/dashboard", async ({ env, p, url }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+  const { months, building, since } = dashboardFilter(url);
+  const bBind = building ? [building] : [];
+  const bc = buildingClause(building);
+
+  const [open, parts, closed, visits, repeats, buildings, trend, byType] = await Promise.all([
     env.DB.prepare(
-      `SELECT (closed_at - reported_at) AS ms FROM tickets
-        WHERE state='done' AND closed_at IS NOT NULL ORDER BY ms`
-    ).all<any>(),
+      `SELECT COUNT(*) AS n FROM v_ticket_location vtl
+        WHERE vtl.state NOT IN ('done','cancelled') ${bc}`
+    ).bind(...bBind).first<any>(),
+
     env.DB.prepare(
-      `SELECT status, COUNT(*) AS n FROM appointments
-        WHERE status IN ('completed','no_access') GROUP BY status`
-    ).all<any>(),
+      `SELECT COUNT(*) AS n FROM v_ticket_location vtl
+        WHERE vtl.state = 'waiting_for_parts' ${bc}`
+    ).bind(...bBind).first<any>(),
+
     env.DB.prepare(
-      `SELECT building_code, riser, object_type,
+      `SELECT (vtl.closed_at - vtl.reported_at) AS ms FROM v_ticket_location vtl
+        WHERE vtl.state = 'done' AND vtl.closed_at IS NOT NULL
+          AND vtl.closed_at >= ? ${bc}
+        ORDER BY ms`
+    ).bind(since, ...bBind).all<any>(),
+
+    env.DB.prepare(
+      `SELECT a.status, COUNT(*) AS n
+         FROM appointments a JOIN v_ticket_location vtl ON vtl.ticket_id = a.ticket_id
+        WHERE a.status IN ('completed','no_access') AND a.starts_at >= ? ${bc}
+        GROUP BY a.status`
+    ).bind(since, ...bBind).all<any>(),
+
+    env.DB.prepare(
+      `SELECT vtl.building_code, vtl.riser, vtl.object_type,
               COUNT(*) AS ticket_count,
-              COUNT(DISTINCT room_id) AS rooms_affected,
-              SUM(CASE WHEN cause IN ('RISER','WIRING') THEN 1 ELSE 0 END) AS systemic
-         FROM v_ticket_location
-        WHERE reported_at >= ?1 AND riser IS NOT NULL
-        GROUP BY building_code, riser, object_type
+              COUNT(DISTINCT vtl.room_id) AS rooms_affected,
+              SUM(CASE WHEN vtl.cause IN ('RISER','WIRING') THEN 1 ELSE 0 END) AS systemic
+         FROM v_ticket_location vtl
+        WHERE vtl.reported_at >= ? AND vtl.riser IS NOT NULL ${bc}
+        GROUP BY vtl.building_code, vtl.riser, vtl.object_type
        HAVING COUNT(*) >= 3
         ORDER BY ticket_count DESC LIMIT 6`
-    ).bind(yearAgo).all<any>(),
+    ).bind(since, ...bBind).all<any>(),
+
     env.DB.prepare(
       `SELECT b.id, b.code, b.name, b.room_count,
               (SELECT COUNT(*) FROM v_ticket_location v
-                WHERE v.building_id = b.id AND v.state NOT IN ('done','cancelled')) AS open_count
+                WHERE v.building_id = b.id AND v.state NOT IN ('done','cancelled')) AS open_count,
+              (SELECT COUNT(*) FROM v_ticket_location v
+                WHERE v.building_id = b.id AND v.reported_at >= ?1) AS reported_count
          FROM buildings b ORDER BY b.code`
-    ).all<any>(),
+    ).bind(since).all<any>(),
+
+    // Monthly reported vs. fixed, for the trend chart.
+    env.DB.prepare(
+      `SELECT strftime('%Y-%m', vtl.reported_at / 1000, 'unixepoch') AS bucket,
+              COUNT(*) AS reported,
+              SUM(CASE WHEN vtl.state = 'done' THEN 1 ELSE 0 END) AS fixed
+         FROM v_ticket_location vtl
+        WHERE vtl.reported_at >= ? ${bc}
+        GROUP BY bucket ORDER BY bucket`
+    ).bind(since, ...bBind).all<any>(),
+
+    env.DB.prepare(
+      `SELECT vtl.object_type, COUNT(*) AS n
+         FROM v_ticket_location vtl
+        WHERE vtl.reported_at >= ? ${bc}
+        GROUP BY vtl.object_type ORDER BY n DESC LIMIT 8`
+    ).bind(since, ...bBind).all<any>(),
   ]);
 
   const ms = closed.results.map((r: any) => r.ms);
   const median = ms.length ? ms[Math.floor(ms.length / 2)] / DAY : 0;
   const vc = Object.fromEntries(visits.results.map((r: any) => [r.status, r.n]));
-  const total = (vc.completed || 0) + (vc.no_access || 0);
+  const visitTotal = (vc.completed || 0) + (vc.no_access || 0);
 
   return json({
+    filter: { months, building, ranges: RANGE_MONTHS },
     metrics: {
       open: open.n,
       medianDays: median.toFixed(1),
       waitingParts: parts.n,
-      failedPct: total ? Math.round((100 * (vc.no_access || 0)) / total) : 0,
+      failedPct: visitTotal ? Math.round((100 * (vc.no_access || 0)) / visitTotal) : 0,
+      closedCount: ms.length,
+      failedCount: vc.no_access || 0,
     },
+    trend: trend.results,
+    byType: byType.results,
     repeats: repeats.results,
     buildings: buildings.results,
   });
+});
+
+/**
+ * Drill-down behind the metric cards. Same filters, individual tickets.
+ * `filter=open` for everything live, `parts` for what's waiting on a supplier,
+ * `failed` for visits where nobody was home.
+ */
+route("GET", "/api/dashboard/tickets", async ({ env, p, url }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+  const { months, building, since } = dashboardFilter(url);
+  const which = url.searchParams.get("filter") || "open";
+  const bBind = building ? [building] : [];
+  const bc = buildingClause(building);
+
+  if (which === "parts") {
+    const rows = await env.DB.prepare(
+      `SELECT vtl.ticket_id, vtl.building_code, vtl.unit_code, vtl.room_code, vtl.room_type,
+              vtl.object_type, vtl.state, vtl.reported_at,
+              po.description AS part, po.supplier_eta, po.ordered_at
+         FROM v_ticket_location vtl
+         JOIN parts_orders po ON po.ticket_id = vtl.ticket_id AND po.arrived_at IS NULL
+        WHERE vtl.state = 'waiting_for_parts' ${bc}
+        ORDER BY po.ordered_at`
+    ).bind(...bBind).all<any>();
+    return json({ filter: { which, months, building }, tickets: rows.results });
+  }
+
+  if (which === "failed") {
+    const rows = await env.DB.prepare(
+      `SELECT vtl.ticket_id, vtl.building_code, vtl.unit_code, vtl.room_code, vtl.room_type,
+              vtl.object_type, vtl.state, vtl.reported_at,
+              a.starts_at AS missed_at
+         FROM appointments a JOIN v_ticket_location vtl ON vtl.ticket_id = a.ticket_id
+        WHERE a.status = 'no_access' AND a.starts_at >= ? ${bc}
+        ORDER BY a.starts_at DESC LIMIT 100`
+    ).bind(since, ...bBind).all<any>();
+    return json({ filter: { which, months, building }, tickets: rows.results });
+  }
+
+  const rows = await env.DB.prepare(
+    `SELECT vtl.ticket_id, vtl.building_code, vtl.unit_code, vtl.room_code, vtl.room_type,
+            vtl.object_type, vtl.state, vtl.reported_at,
+            (SELECT starts_at FROM appointments a
+              WHERE a.ticket_id = vtl.ticket_id AND a.status = 'booked') AS appt_at
+       FROM v_ticket_location vtl
+      WHERE vtl.state NOT IN ('done','cancelled') ${bc}
+      ORDER BY vtl.reported_at LIMIT 200`
+  ).bind(...bBind).all<any>();
+  return json({ filter: { which, months, building }, tickets: rows.results });
 });
 
 /* --- dev seed --------------------------------------------------- */

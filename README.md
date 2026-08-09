@@ -95,13 +95,22 @@ reported → accepted → slots_offered → scheduled → done
 Transitions are declared in one table in `worker/index.ts` and checked on every
 write; an illegal one returns 409 rather than silently corrupting state.
 
-The caretaker chooses the offered times himself — a day strip plus an hour grid,
-because he's on a phone in a corridor. Slots sit on the whole hour with a fixed
-duration, which is what makes a single unique index on `(staff_id, starts_at)`
-sufficient to prevent double booking without Postgres range types. Times he's
-already committed to elsewhere are filtered out of the offer rather than
-silently colliding at booking time. The picker is built from `slotRules` served
-by `/api/session`, so the client and the validator can't drift apart.
+The caretaker chooses the offered times himself. Two steps on one screen: pick a
+day from a strip, tap the hours. Appointments sit on whole hours and last an
+hour — that's a simplification for someone working on a phone, not a database
+workaround, and it also means two visits can never partially overlap.
+
+Hours he's already committed to are greyed out and labelled *already booked*
+before he submits. An earlier version accepted them and then reported that some
+had been skipped, which is a confusing way to find out you're double-booked.
+
+Booking still claims a slot in a single `INSERT ... SELECT ... WHERE NOT EXISTS`,
+which evaluates the overlap guard and performs the write atomically inside
+SQLite. With hourly slots the unique index would mostly suffice; the atomic
+guard is kept because a read-then-write check would race, and it costs nothing.
+
+The picker is built from `slotRules` served by `/api/session`, so the client and
+the validator can't drift apart.
 
 The `waiting_for_parts` branch looping **back to slot offering** is the piece a
 naive implementation misses. Without it the caretaker either closes the ticket
@@ -182,6 +191,24 @@ Staff can print a sheet of stickers per building from the app (`/api/stickers/:c
 scoped to their assigned buildings). Each sticker carries the QR, the
 human-readable location, and the slug in text as a fallback for when the code is
 scuffed or the phone is dead.
+
+### The operator dashboard
+
+Four metrics, a trend chart, an object breakdown, the repeat-fault ranking, and a
+building grid — all driven by two controls: a period (1, 3, 6 or 12 months) and a
+building filter. Clicking a building card filters everything to it; clicking it
+again clears.
+
+Three of the four metric cards are clickable and open the tickets behind the
+number: everything currently open, everything waiting on a supplier (with the
+part and the unit), and every visit where nobody was home (with the missed time).
+A number you can't interrogate is a number nobody trusts.
+
+The trend chart is hand-rolled from divs — reported per month as the outline,
+fixed as the filled portion — because a charting library would have cost more
+bundle than the chart is worth. The tests assert that `fixed` never exceeds
+`reported` in any bucket and that the drill-down counts match the metric cards
+exactly, which is the invariant most likely to break silently.
 
 ### Analytics are per-object, never per-person
 
