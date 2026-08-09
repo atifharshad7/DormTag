@@ -360,15 +360,21 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
         </button>
       )}
 
-      {d.ticket.state === "accepted" && (d.ticket.needs_access ? (
-        <button className="btn btn-primary" onClick={() => setMode("times")}>
-          <Calendar size={16} /> {t("chooseTimes")}
-        </button>
-      ) : (
-        <button className="btn btn-primary" onClick={() => setMode("close")}>
-          <Wrench size={16} /> {t("goFix")}
-        </button>
-      ))}
+      {d.ticket.state === "accepted" && mode === "main" && (
+        <>
+          <button className="btn btn-primary" onClick={() => setMode("times")}>
+            <Calendar size={16} /> {t("chooseTimes")}
+          </button>
+          {/* No appointment needed in a stairwell or laundry — but offering
+              times stays available, because the caretaker may still want the
+              residents to know when he's coming. */}
+          {!d.ticket.needs_access && (
+            <button className="btn" onClick={() => setMode("close")}>
+              <Wrench size={16} /> {t("goFix")}
+            </button>
+          )}
+        </>
+      )}
 
       {mode === "times" && (
         <SlotPicker l={l} t={t} rules={rules} busy={false}

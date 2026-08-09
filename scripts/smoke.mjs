@@ -257,6 +257,35 @@ const clash = await req("/api/tickets/L4/offer", { method: "POST", cookie: staff
 ok("a time the caretaker is already booked for is not offered again",
   clash.status === 409 || clash.json.skipped === 1, JSON.stringify(clash.json));
 
+section("access follows the unit, not the room kind");
+const mkTicket = async (objectId, cookie) => {
+  const r = await req("/api/tickets", { method: "POST", cookie, body: { objectId, symptom: "BROKEN" } });
+  return r.json.id;
+};
+const needs = async (id, cookie) => (await req(`/api/tickets/${id}`, { cookie })).json.ticket.needs_access;
+
+const wgShared = await mkTicket("u-B-312-BA-DRAIN", tenant);
+ok("a shared room inside a flat still needs access", !!(await needs(wgShared, staff)),
+  "the caretaker has to be let into the flat");
+
+const commonArea = await mkTicket("u-C-COM-WK-DRAIN");
+ok("a laundry in a common area needs no access", !(await needs(commonArea, staff)));
+
+const ownRoom = await mkTicket("u-B-312-Z2-SOCKET", tenant);
+ok("a private bedroom needs access", !!(await needs(ownRoom, staff)));
+
+// Both tickets must accept an offer of times — the caretaker decides.
+ok("caretaker accepts the flat's bathroom", (await req(`/api/tickets/${wgShared}/accept`, { method: "POST", cookie: staff })).status === 200);
+ok("times can be offered for a shared room in a flat",
+  (await req(`/api/tickets/${wgShared}/offer`, { method: "POST", cookie: staff, body: { slots: [nextAt(13, 3)] } })).status === 200);
+
+ok("caretaker accepts the laundry", (await req(`/api/tickets/${commonArea}/accept`, { method: "POST", cookie: staff })).status === 200);
+ok("times can also be offered for a common area",
+  (await req(`/api/tickets/${commonArea}/offer`, { method: "POST", cookie: staff, body: { slots: [nextAt(16, 3)] } })).status === 200);
+
+ok("any flatmate can consent for a shared room in their flat",
+  (await req(`/api/tickets/${wgShared}/consent`, { method: "POST", cookie: tenant, body: { value: true } })).status === 200);
+
 section("qr stickers");
 const sheet = await req("/api/stickers/B", { cookie: staff });
 ok("caretaker can print their own building", sheet.status === 200 && sheet.json.stickers.length > 0,

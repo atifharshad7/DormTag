@@ -344,7 +344,11 @@ const route = (method: string, pattern: string, fn: (c: Ctx) => Promise<Response
 async function loadTicket(env: Env, id: string) {
   const t = await env.DB.prepare(`SELECT * FROM tickets WHERE id = ?1`).bind(id).first<any>();
   if (!t) throw new HttpError("not found", 404);
-  const loc = await env.DB.prepare(`SELECT * FROM v_ticket_location WHERE ticket_id = ?1`).bind(id).first<any>();
+  const loc = await env.DB.prepare(
+    `SELECT vtl.*, u.is_common
+       FROM v_ticket_location vtl JOIN units u ON u.id = vtl.unit_id
+      WHERE vtl.ticket_id = ?1`
+  ).bind(id).first<any>();
   return { ...t, loc };
 }
 
@@ -573,8 +577,11 @@ route("POST", "/api/tickets", async ({ env, req, p }) => {
   if (!body.objectId || !body.symptom) return bad("objectId and symptom required");
 
   const o = await env.DB.prepare(
-    `SELECT o.id, r.kind AS room_kind, r.unit_id, r.id AS room_id
-       FROM objects o JOIN rooms r ON r.id = o.room_id WHERE o.id = ?1`
+    `SELECT o.id, r.kind AS room_kind, r.unit_id, r.id AS room_id, u.is_common
+       FROM objects o
+       JOIN rooms r ON r.id = o.room_id
+       JOIN units u ON u.id = r.unit_id
+      WHERE o.id = ?1`
   ).bind(body.objectId).first<any>();
   if (!o) return bad("unknown object", 404);
 
@@ -612,11 +619,14 @@ route("POST", "/api/tickets", async ({ env, req, p }) => {
 
   const id = uid();
   const isPrivate = o.room_kind === "private";
+  // Anything inside a dwelling needs somebody to open the door, shared or not.
+  // Only genuine common areas (stairwell, laundry) need no appointment.
+  const needsAccess = o.is_common ? 0 : 1;
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO tickets (id, object_id, symptom, state, reported_at, needs_access, note, note_locale)
        VALUES (?1,?2,?3,'reported',?4,?5,?6,?7)`
-    ).bind(id, body.objectId, body.symptom, now(), isPrivate ? 1 : 0, body.note || null, (p as any).locale || "de"),
+    ).bind(id, body.objectId, body.symptom, now(), needsAccess, body.note || null, (p as any).locale || "de"),
     env.DB.prepare(
       `INSERT INTO ticket_reporters (id, ticket_id, tenant_id, locale, token, is_primary, created_at)
        VALUES (?1,?2,?3,?4,?5,?6,?7)`
@@ -937,8 +947,9 @@ async function seed(env: Env) {
   const addUnit = (bid: string, bcode: string, code: string, floor: number, kind: string,
                    rooms: [string, string, string, string][]) => {
     const uid_ = `u-${bcode}-${code}`;
-    stmts.push(env.DB.prepare(`INSERT INTO units (id, building_id, code, floor, kind) VALUES (?1,?2,?3,?4,?5)`)
-      .bind(uid_, bid, code, floor, kind));
+    stmts.push(env.DB.prepare(
+      `INSERT INTO units (id, building_id, code, floor, kind, is_common) VALUES (?1,?2,?3,?4,?5,?6)`
+    ).bind(uid_, bid, code, floor, kind, code === "COM" ? 1 : 0));
     rooms.forEach(([rcode, rtype, rkind, riser]) => {
       const rid = `${uid_}-${rcode}`;
       stmts.push(env.DB.prepare(`INSERT INTO rooms (id, unit_id, code, room_type, kind) VALUES (?1,?2,?3,?4,?5)`)
@@ -1068,7 +1079,7 @@ async function seed(env: Env) {
   live.push(
     env.DB.prepare(
       `INSERT INTO tickets (id, object_id, symptom, state, reported_at, needs_access, access_consent, note)
-       VALUES ('L1','u-B-312-KU-SINK','LEAKING','waiting_for_parts',?1,0,1,'Tropft unter dem Schrank.')`
+       VALUES ('L1','u-B-312-KU-SINK','LEAKING','waiting_for_parts',?1,1,1,'Tropft unter dem Schrank.')`
     ).bind(now() - 2 * DAY),
     env.DB.prepare(`INSERT INTO ticket_reporters (id, ticket_id, tenant_id, locale, token, is_primary, created_at) VALUES ('r1','L1','t-z2','en',?1,1,?2)`)
       .bind(randomToken(), now() - 2 * DAY),

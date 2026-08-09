@@ -160,6 +160,13 @@ resolves the sticker, pre-fills building, room and object, and offers the rest
 of the room as one-tap alternatives. No app install — a phone's built-in camera
 reads the code and opens the browser.
 
+Access follows the **unit**, not the room kind. A WG's shared kitchen sits inside
+a locked flat, so somebody still has to let the caretaker in — any flatmate will
+do, but it needs an appointment. Only genuine common areas (stairwell, laundry)
+need nobody present, and even there the caretaker can still offer times if he
+wants residents to know he's coming. My first version keyed this off
+private-versus-shared and got WG bathrooms wrong.
+
 Shared rooms (kitchen, corridor, laundry) can be reported anonymously, because
 the person who notices a dead corridor light may not live on that floor. Private
 rooms require a session. An anonymous report returns a capability token and the
