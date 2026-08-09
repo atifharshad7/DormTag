@@ -100,6 +100,14 @@ day from a strip, tap the hours. Appointments sit on whole hours and last an
 hour — that's a simplification for someone working on a phone, not a database
 workaround, and it also means two visits can never partially overlap.
 
+Appointment hours belong to the **building**, not the server or the browser. A
+Worker runs in UTC, so `new Date(ms).getHours()` on 09:00 Berlin returns 7 and
+every morning slot was rejected as "not offered" — a bug that only showed up once
+real times were being picked. Validation now converts through
+`Intl.DateTimeFormat` with an explicit zone, the client constructs timestamps the
+same way, and the seed places its appointments on offerable local hours so demo
+data reads like something a caretaker created.
+
 Hours he's already committed to are greyed out and labelled *already booked*
 before he submits. An earlier version accepted them and then reported that some
 had been skipped, which is a confusing way to find out you're double-booked.
@@ -191,6 +199,31 @@ Staff can print a sheet of stickers per building from the app (`/api/stickers/:c
 scoped to their assigned buildings). Each sticker carries the QR, the
 human-readable location, and the slug in text as a fallback for when the code is
 scuffed or the phone is dead.
+
+### Work a caretaker can't legally do
+
+A caretaker changes washers and clears traps. He cannot touch electrical, gas or
+heating work — in Germany that requires a qualified firm — and some jobs are
+simply beyond one person. So he can hand a ticket to a trade, choosing the trade
+(Elektro, Sanitär, Heizung, Schlosser, Glaser, Schädlinge, Aufzug) and a reason:
+needs a qualified firm, too big, keeps coming back, safety risk, warranty.
+
+The **operator** commissions the firm, because that's who holds the budget and
+the contracts, and records the firm name and order reference. The dashboard has a
+metric for work sitting with a trade, split by whether it's been commissioned
+yet — uncommissioned work is listed first, since that's the queue somebody has to
+act on. Escalated tickets leave the caretaker's working queue and appear under
+*with an external firm*; the resident is told a firm is taking it on, which is
+better than silence while nothing appears to happen.
+
+`SYSTEMIC` as a reason is the interesting one: it's the point where the
+caretaker's ground truth meets the repeat-fault dashboard. He's seen the same
+riser three times and is saying so in a field the operator can count.
+
+Escalation is a change of **handling**, not a new ticket state — the ticket is
+still open and still needs an appointment. That's also the pragmatic choice:
+SQLite can't alter the CHECK constraint on `tickets.state` without rebuilding the
+table, which isn't worth doing to a live database for a label.
 
 ### The operator dashboard
 

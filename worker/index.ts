@@ -270,7 +270,55 @@ function transitionStmts(env: Env, ticket: any, to: State, reason: string, p: Pr
  * booking guard has less to do.
  */
 const SLOT_HOURS = [8, 9, 10, 11, 13, 14, 15, 16];
+
+/**
+ * Appointment hours are local to the building, not to the server.
+ *
+ * A Worker runs in UTC, so `new Date(ms).getHours()` on 09:00 Berlin returns 7
+ * and every morning slot was rejected as "not offered". Validation therefore
+ * converts to the building's zone explicitly.
+ */
+const BUILDING_TZ = "Europe/Berlin";
+
+const tzParts = new Intl.DateTimeFormat("en-GB", {
+  timeZone: BUILDING_TZ, hourCycle: "h23", hour: "2-digit", minute: "2-digit",
+});
+
+/** The instant at which it is `hour:00` in the building's zone, `days` from now. */
+function buildingHourFromNow(days: number, hour: number): number {
+  const off = tzOffsetForInstant(now());
+  const shifted = new Date(now() + off);
+  const naive = Date.UTC(
+    shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate() + days, hour, 0, 0, 0
+  );
+  let ms = naive - tzOffsetForInstant(naive);
+  return naive - tzOffsetForInstant(ms);
+}
+
+function tzOffsetForInstant(ms: number): number {
+  const f = new Intl.DateTimeFormat("en-GB", {
+    timeZone: BUILDING_TZ, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const parts = f.formatToParts(new Date(ms));
+  const g = (t: string) => Number(parts.find((x) => x.type === t)?.value ?? 0);
+  return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second")) - ms;
+}
+
+function localHourMinute(ms: number) {
+  const parts = tzParts.formatToParts(new Date(ms));
+  const get = (type: string) => Number(parts.find((x) => x.type === type)?.value ?? NaN);
+  return { hour: get("hour"), minute: get("minute") };
+}
 const SLOT_MINUTES = 60;
+/**
+ * Trades a caretaker hands work to. ELECTRICAL / GAS / HEATING are not a
+ * judgement call in Germany — that work requires a qualified firm.
+ */
+const TRADES = ["ELECTRICAL", "PLUMBING", "HEATING", "LOCKSMITH", "GLAZING", "PEST", "LIFT", "OTHER"];
+const ESCALATION_REASONS = ["QUALIFICATION", "TOO_BIG", "SYSTEMIC", "SAFETY", "WARRANTY"];
+
 const MAX_OFFERS = 4;
 const OFFER_HORIZON_DAYS = 14;
 
@@ -292,12 +340,12 @@ function validateSlots(raw: unknown): { startsAt: number; endsAt: number }[] {
     const ms = Number(typeof v === "object" && v !== null ? (v as any).startsAt : v);
     if (!Number.isFinite(ms)) throw new HttpError("bad time value");
 
-    const d = new Date(ms);
-    if (d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0) {
+    const { hour, minute } = localHourMinute(ms);
+    if (minute !== 0 || ms % 60000 !== 0) {
       throw new HttpError("appointments start on the hour");
     }
-    if (!SLOT_HOURS.includes(d.getHours())) {
-      throw new HttpError("that hour isn't offered");
+    if (!SLOT_HOURS.includes(hour)) {
+      throw new HttpError(`${String(hour).padStart(2, "0")}:00 isn't one of the offered hours`);
     }
     if (ms < now()) throw new HttpError("that time is in the past");
     if (ms > now() + OFFER_HORIZON_DAYS * DAY) throw new HttpError("that time is too far ahead");
@@ -381,6 +429,7 @@ route("GET", "/api/session", async ({ p, env }) => {
     slotRules: {
       hours: SLOT_HOURS,
       minutes: SLOT_MINUTES,
+      timeZone: BUILDING_TZ,
       maxOffers: MAX_OFFERS,
       horizonDays: OFFER_HORIZON_DAYS,
     },
@@ -539,7 +588,11 @@ route("GET", "/api/my-rooms", async ({ env, p }) => {
 route("GET", "/api/tickets", async ({ env, p }) => {
   const s = ticketScope(p);
   const rows = await env.DB.prepare(
-    `SELECT vtl.*, t.needs_access, t.access_consent, t.note, t.symptom, t.reschedule_count,
+    `SELECT vtl.*, t.needs_access, t.access_consent, t.note, t.symptom, t.reschedule_count, t.handling,
+            (SELECT trade FROM escalations e
+              WHERE e.ticket_id = t.id AND e.closed_at IS NULL) AS trade,
+            (SELECT commissioned_at FROM escalations e
+              WHERE e.ticket_id = t.id AND e.closed_at IS NULL) AS commissioned_at,
             (SELECT COUNT(*) FROM ticket_reporters tr WHERE tr.ticket_id = t.id) AS reporter_count,
             (SELECT starts_at FROM appointments a WHERE a.ticket_id = t.id AND a.status = 'booked') AS appt_at,
             (SELECT description FROM parts_orders po WHERE po.ticket_id = t.id ORDER BY ordered_at DESC LIMIT 1) AS part_what,
@@ -555,7 +608,7 @@ route("GET", "/api/tickets", async ({ env, p }) => {
 route("GET", "/api/tickets/:id", async ({ env, p, params }) => {
   await assertVisible(env, p, params.id);
   const t = await loadTicket(env, params.id);
-  const [events, slots, appts, parts, reporters] = await Promise.all([
+  const [events, slots, appts, parts, reporters, escalation] = await Promise.all([
     env.DB.prepare(`SELECT * FROM ticket_events WHERE ticket_id = ?1 ORDER BY created_at, id`).bind(params.id).all<any>(),
     env.DB.prepare(
       `SELECT so.* FROM slot_offers so
@@ -567,11 +620,14 @@ route("GET", "/api/tickets/:id", async ({ env, p, params }) => {
     env.DB.prepare(`SELECT * FROM appointments WHERE ticket_id = ?1 ORDER BY created_at`).bind(params.id).all<any>(),
     env.DB.prepare(`SELECT * FROM parts_orders WHERE ticket_id = ?1 ORDER BY ordered_at DESC`).bind(params.id).all<any>(),
     env.DB.prepare(`SELECT COUNT(*) AS n FROM ticket_reporters WHERE ticket_id = ?1`).bind(params.id).first<any>(),
+    env.DB.prepare(`SELECT * FROM escalations WHERE ticket_id = ?1 ORDER BY raised_at DESC LIMIT 1`)
+      .bind(params.id).first<any>(),
   ]);
   return json({
     ticket: t, loc: t.loc,
     events: events.results, slots: slots.results, appointments: appts.results,
     parts: parts.results, reporterCount: reporters.n,
+    escalation: escalation && !escalation.closed_at ? escalation : null,
     canBook: mayBookOrConsent(p, t.loc),
   });
 });
@@ -864,6 +920,97 @@ route("POST", "/api/tickets/:id/part-arrived", async ({ env, p, params }) => {
   return json({ ok: true, remaining: left });
 });
 
+/**
+ * Hand the job to an external trade.
+ *
+ * The caretaker raises it; the operator commissions the firm, because that's
+ * who holds the budget and the contracts. The ticket stays open and still needs
+ * an appointment eventually — escalation changes who does the work, not what
+ * stage the work is at.
+ */
+route("POST", "/api/tickets/:id/escalate", async ({ env, req, p, params }) => {
+  if (!isStaff(p)) return bad("staff only", 403);
+  await assertVisible(env, p, params.id);
+  const t = await loadTicket(env, params.id);
+  if (t.state === "done" || t.state === "cancelled") return bad("that ticket is closed", 409);
+  if (t.handling === "external") return bad("already with an external trade", 409);
+
+  const { trade, reason, note } = (await req.json()) as
+    { trade: string; reason: string; note?: string };
+  if (!TRADES.includes(trade)) return bad("unknown trade");
+  if (!ESCALATION_REASONS.includes(reason)) return bad("unknown reason");
+
+  // Any appointment the caretaker had booked is no longer his to keep.
+  const appt = await env.DB.prepare(
+    `SELECT id, slot_offer_id FROM appointments WHERE ticket_id = ?1 AND status = 'booked'`
+  ).bind(t.id).first<any>();
+
+  const stmts = [
+    env.DB.prepare(`UPDATE tickets SET handling = 'external' WHERE id = ?1`).bind(t.id),
+    env.DB.prepare(
+      `INSERT INTO escalations (id, ticket_id, trade, reason, note, raised_by, raised_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7)`
+    ).bind(uid(), t.id, trade, reason, note || null, (p as any).staffId, now()),
+    env.DB.prepare(
+      `INSERT INTO ticket_events (ticket_id, from_state, to_state, actor_kind, actor_id, reason, created_at)
+       VALUES (?1,?2,?2,'staff',?3,?4,?5)`
+    ).bind(t.id, t.state, (p as any).staffId, "escalated_" + trade.toLowerCase(), now()),
+  ];
+  if (appt) {
+    stmts.push(
+      env.DB.prepare(`UPDATE appointments SET status='cancelled_by_staff', resolved_at=?1 WHERE id=?2`)
+        .bind(now(), appt.id),
+      env.DB.prepare(`UPDATE slot_offers SET expires_at = ?1 WHERE id = ?2`).bind(now(), appt.slot_offer_id)
+    );
+  }
+  await env.DB.batch(stmts);
+  return json({ ok: true, trade, reason });
+});
+
+/** The operator commissions the firm and records the order reference. */
+route("POST", "/api/tickets/:id/commission", async ({ env, req, p, params }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+  const esc = await env.DB.prepare(
+    `SELECT * FROM escalations WHERE ticket_id = ?1 AND closed_at IS NULL`
+  ).bind(params.id).first<any>();
+  if (!esc) return bad("nothing to commission", 409);
+
+  const { contractor, reference } = (await req.json()) as
+    { contractor: string; reference?: string };
+  if (!contractor?.trim()) return bad("name the firm");
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE escalations SET commissioned_at = ?1, contractor = ?2, reference = ?3 WHERE id = ?4`
+    ).bind(now(), contractor.trim(), reference?.trim() || null, esc.id),
+    env.DB.prepare(
+      `INSERT INTO ticket_events (ticket_id, from_state, to_state, actor_kind, actor_id, reason, created_at)
+       SELECT ?1, state, state, 'staff', ?2, 'commissioned', ?3 FROM tickets WHERE id = ?1`
+    ).bind(params.id, (p as any).staffId, now()),
+  ]);
+  return json({ ok: true });
+});
+
+/** Wrong call, or the firm handed it back. Returns the job to the caretaker. */
+route("POST", "/api/tickets/:id/deescalate", async ({ env, p, params }) => {
+  if (!isStaff(p)) return bad("staff only", 403);
+  await assertVisible(env, p, params.id);
+  const esc = await env.DB.prepare(
+    `SELECT id FROM escalations WHERE ticket_id = ?1 AND closed_at IS NULL`
+  ).bind(params.id).first<any>();
+  if (!esc) return bad("not with an external trade", 409);
+
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE escalations SET closed_at = ?1 WHERE id = ?2`).bind(now(), esc.id),
+    env.DB.prepare(`UPDATE tickets SET handling = 'caretaker' WHERE id = ?1`).bind(params.id),
+    env.DB.prepare(
+      `INSERT INTO ticket_events (ticket_id, from_state, to_state, actor_kind, actor_id, reason, created_at)
+       SELECT ?1, state, state, 'staff', ?2, 'returned_to_caretaker', ?3 FROM tickets WHERE id = ?1`
+    ).bind(params.id, (p as any).staffId, now()),
+  ]);
+  return json({ ok: true });
+});
+
 route("POST", "/api/tickets/:id/done", async ({ env, req, p, params }) => {
   if (!isStaff(p)) return bad("staff only", 403);
   await assertVisible(env, p, params.id);
@@ -872,6 +1019,8 @@ route("POST", "/api/tickets/:id/done", async ({ env, req, p, params }) => {
   if (!cause) return bad("cause code required");
   await env.DB.batch([
     env.DB.prepare(`UPDATE tickets SET cause = ?1 WHERE id = ?2`).bind(cause, t.id),
+    env.DB.prepare(`UPDATE escalations SET closed_at = ?1 WHERE ticket_id = ?2 AND closed_at IS NULL`)
+      .bind(now(), t.id),
     env.DB.prepare(`UPDATE appointments SET status='completed', resolved_at=?1 WHERE ticket_id=?2 AND status='booked'`)
       .bind(now(), t.id),
     env.DB.prepare(`UPDATE slot_offers SET expires_at = ?1 WHERE ticket_id = ?2 AND expires_at > ?1`).bind(now(), t.id),
@@ -912,7 +1061,7 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
   const bBind = building ? [building] : [];
   const bc = buildingClause(building);
 
-  const [open, parts, closed, visits, repeats, buildings, trend, byType] = await Promise.all([
+  const [open, parts, closed, visits, repeats, buildings, trend, byType, external] = await Promise.all([
     env.DB.prepare(
       `SELECT COUNT(*) AS n FROM v_ticket_location vtl
         WHERE vtl.state NOT IN ('done','cancelled') ${bc}`
@@ -974,6 +1123,16 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
         WHERE vtl.reported_at >= ? ${bc}
         GROUP BY vtl.object_type ORDER BY n DESC LIMIT 8`
     ).bind(since, ...bBind).all<any>(),
+
+    // Work handed to an external trade, split by whether it's been commissioned.
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n,
+              SUM(CASE WHEN e.commissioned_at IS NULL THEN 1 ELSE 0 END) AS uncommissioned
+         FROM tickets t
+         JOIN escalations e ON e.ticket_id = t.id AND e.closed_at IS NULL
+         JOIN v_ticket_location vtl ON vtl.ticket_id = t.id
+        WHERE t.state NOT IN ('done','cancelled') ${bc}`
+    ).bind(...bBind).first<any>(),
   ]);
 
   const ms = closed.results.map((r: any) => r.ms);
@@ -990,6 +1149,8 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
       failedPct: visitTotal ? Math.round((100 * (vc.no_access || 0)) / visitTotal) : 0,
       closedCount: ms.length,
       failedCount: vc.no_access || 0,
+      external: external?.n ?? 0,
+      awaitingCommission: external?.uncommissioned ?? 0,
     },
     trend: trend.results,
     byType: byType.results,
@@ -1019,6 +1180,20 @@ route("GET", "/api/dashboard/tickets", async ({ env, p, url }) => {
          JOIN parts_orders po ON po.ticket_id = vtl.ticket_id AND po.arrived_at IS NULL
         WHERE vtl.state = 'waiting_for_parts' ${bc}
         ORDER BY po.ordered_at`
+    ).bind(...bBind).all<any>();
+    return json({ filter: { which, months, building }, tickets: rows.results });
+  }
+
+  if (which === "trade") {
+    const rows = await env.DB.prepare(
+      `SELECT vtl.ticket_id, vtl.building_code, vtl.unit_code, vtl.room_code, vtl.room_type,
+              vtl.object_type, vtl.state, vtl.reported_at,
+              e.trade, e.reason, e.note, e.raised_at, e.commissioned_at, e.contractor, e.reference
+         FROM escalations e
+         JOIN tickets t ON t.id = e.ticket_id
+         JOIN v_ticket_location vtl ON vtl.ticket_id = t.id
+        WHERE e.closed_at IS NULL AND t.state NOT IN ('done','cancelled') ${bc}
+        ORDER BY e.commissioned_at IS NOT NULL, e.raised_at`
     ).bind(...bBind).all<any>();
     return json({ filter: { which, months, building }, tickets: rows.results });
   }
@@ -1218,7 +1393,9 @@ async function seed(env: Env) {
 
   /* ---- live tickets -------------------------------------------- */
   const live: D1PreparedStatement[] = [];
-  const tmr = (() => { const d = new Date(now() + DAY); d.setHours(10, 0, 0, 0); return d.getTime(); })();
+  // Tomorrow 11:00 in the building's zone — a genuinely offerable hour, so the
+  // seeded appointment reads the same way one created through the picker would.
+  const tmr = buildingHourFromNow(1, 11);
 
   // Kitchen sink in the demo WG: scheduled, then a part was ordered.
   live.push(
@@ -1243,7 +1420,7 @@ async function seed(env: Env) {
     env.DB.prepare(
       `INSERT INTO appointments (id, ticket_id, staff_id, starts_at, ends_at, status, booked_by, created_at)
        VALUES ('ap2','L2','s-hm',?1,?2,'booked','tenant',?3)`
-    ).bind(tmr + 5400e3, tmr + 9000e3, now() - 2 * DAY),
+    ).bind(tmr, tmr + 36e5, now() - 2 * DAY),
     ...(["reported", "accepted", "slots_offered", "scheduled"] as string[]).map((s, i) =>
       env.DB.prepare(`INSERT INTO ticket_events (ticket_id, to_state, actor_kind, reason, created_at) VALUES ('L2',?1,'staff',?2,?3)`)
         .bind(s, s, now() - 3 * DAY + i * 6e6)),
@@ -1265,6 +1442,20 @@ async function seed(env: Env) {
     env.DB.prepare(`INSERT INTO ticket_reporters (id, ticket_id, locale, token, is_primary, created_at) VALUES ('r4','L4','de',?1,1,?2)`)
       .bind(randomToken(), now() - 6e6),
     env.DB.prepare(`INSERT INTO ticket_events (ticket_id, to_state, actor_kind, reason, created_at) VALUES ('L4','reported','tenant','reported',?1)`).bind(now() - 6e6),
+    // A socket with no power: not something a caretaker may legally touch.
+    env.DB.prepare(
+      `INSERT INTO tickets (id, object_id, symptom, state, reported_at, needs_access, handling, note)
+       VALUES ('L5','u-C-201-Z1-SOCKET','NO_POWER','accepted',?1,1,'external','Ganze Wand ohne Strom.')`
+    ).bind(now() - 5 * DAY),
+    env.DB.prepare(`INSERT INTO ticket_reporters (id, ticket_id, locale, token, is_primary, created_at) VALUES ('r5','L5','de',?1,1,?2)`)
+      .bind(randomToken(), now() - 5 * DAY),
+    env.DB.prepare(
+      `INSERT INTO escalations (id, ticket_id, trade, reason, note, raised_by, raised_at)
+       VALUES ('e1','L5','ELECTRICAL','QUALIFICATION','Braucht einen Elektrofachbetrieb.','s-hm',?1)`
+    ).bind(now() - 4 * DAY),
+    env.DB.prepare(`INSERT INTO ticket_events (ticket_id, to_state, actor_kind, reason, created_at) VALUES ('L5','reported','tenant','reported',?1)`).bind(now() - 5 * DAY),
+    env.DB.prepare(`INSERT INTO ticket_events (ticket_id, to_state, actor_kind, reason, created_at) VALUES ('L5','accepted','staff','accepted',?1)`).bind(now() - 5 * DAY + 36e5),
+    env.DB.prepare(`INSERT INTO ticket_events (ticket_id, to_state, actor_kind, reason, created_at) VALUES ('L5','accepted','staff','escalated_electrical',?1)`).bind(now() - 4 * DAY),
   );
   for (let i = 0; i < live.length; i += 30) await env.DB.batch(live.slice(i, i + 30));
 }

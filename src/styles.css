@@ -509,3 +509,11 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   .barreported, .swatch-open { background: rgba(232,232,227,.16); }
   .typebar { background: rgba(232,232,227,.1); }
 }
+
+/* --- escalation to an external trade -------------------------------- */
+
+.extcard {
+  background: rgba(31,90,168,.07);
+  border-color: rgba(31,90,168,.28);
+}
+.extcard .cardtitle { color: var(--blue); }

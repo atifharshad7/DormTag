@@ -82,6 +82,21 @@ export const T = {
   roomsWord:     { de: "Zimmer",                          en: "rooms" },
   openWord:      { de: "offen",                           en: "open" },
   nothingFlagged:{ de: "Keine Auffälligkeiten.",          en: "Nothing flagged." },
+  cantFixMyself:   { de: "Kann ich nicht selbst",    en: "I can't do this myself" },
+  whichTrade:      { de: "Welches Gewerk?",          en: "Which trade?" },
+  whyExternal:     { de: "Warum?",                   en: "Why?" },
+  sendToTrade:     { de: "An Verwaltung weitergeben", en: "Send to the operator" },
+  withExternal:    { de: "Bei externem Betrieb",     en: "With an external firm" },
+  raisedOn:        { de: "weitergegeben",            en: "raised" },
+  notCommissioned: { de: "noch nicht beauftragt",    en: "not commissioned yet" },
+  commissionedTo:  { de: "beauftragt",               en: "commissioned to" },
+  commissionIt:    { de: "Betrieb beauftragen",      en: "Commission a firm" },
+  firmName:        { de: "Firma",                    en: "Firm" },
+  orderRef:        { de: "Auftragsnummer (optional)", en: "Order reference (optional)" },
+  awaitingTrade:   { de: "Bei Fachbetrieb",          en: "Awaiting a trade" },
+  toCommission:    { de: "zu beauftragen",           en: "to commission" },
+  giveBack:        { de: "Zurück an Hausmeister",    en: "Return to caretaker" },
+  externalNote:    { de: "Ein Fachbetrieb übernimmt das.", en: "An external firm is taking this on." },
   period:          { de: "Zeitraum",                 en: "Period" },
   range1:          { de: "Letzter Monat",            en: "Last month" },
   range3:          { de: "Letzte 3 Monate",          en: "Last 3 months" },
@@ -243,6 +258,25 @@ export const SYMPTOMS_FOR: Record<string, (keyof typeof SYMPTOM)[]> = {
   WINDOW: ["BROKEN", "COLD", "LEAKING"],
 };
 
+export const TRADE = {
+  ELECTRICAL: { de: "Elektro",       en: "Electrical" },
+  PLUMBING:   { de: "Sanitär",       en: "Plumbing" },
+  HEATING:    { de: "Heizung",       en: "Heating" },
+  LOCKSMITH:  { de: "Schlosser",     en: "Locksmith" },
+  GLAZING:    { de: "Glaser",        en: "Glazier" },
+  PEST:       { de: "Schädlinge",    en: "Pest control" },
+  LIFT:       { de: "Aufzug",        en: "Lift" },
+  OTHER:      { de: "Sonstiges",     en: "Other" },
+} as const;
+
+export const ESC_REASON = {
+  QUALIFICATION: { de: "Braucht Fachbetrieb", en: "Needs a qualified firm" },
+  TOO_BIG:       { de: "Zu großer Umfang",    en: "Too big a job" },
+  SYSTEMIC:      { de: "Wiederkehrend",       en: "Keeps coming back" },
+  SAFETY:        { de: "Sicherheitsrisiko",   en: "Safety risk" },
+  WARRANTY:      { de: "Garantie/Hersteller", en: "Warranty / manufacturer" },
+} as const;
+
 export const CAUSE = {
   SEAL:        { de: "Dichtung",       en: "Seal" },
   BLOCKAGE:    { de: "Verstopfung",    en: "Blockage" },
@@ -277,6 +311,68 @@ export const fmtDay = (ms: number, l: Locale) =>
 export const fmtTime = (ms: number, l: Locale) =>
   new Date(ms).toLocaleTimeString(tag(l), { hour: "2-digit", minute: "2-digit" });
 export const fmtDT = (ms: number, l: Locale) => `${fmtDay(ms, l)} · ${fmtTime(ms, l)}`;
+
+/* ---------------------------------------------------------------- */
+/* timezone helpers — appointment hours belong to the building        */
+/* ---------------------------------------------------------------- */
+
+/**
+ * Offset of `tz` from UTC at a given instant, in milliseconds.
+ *
+ * Formatting an instant into the zone and reading it back as if it were UTC
+ * gives the offset. This is the standard trick, and it handles DST because the
+ * offset is computed at that instant rather than assumed.
+ */
+function tzOffsetMs(ms: number, tz: string): number {
+  const f = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const p = f.formatToParts(new Date(ms));
+  const g = (t: string) => Number(p.find((x) => x.type === t)?.value ?? 0);
+  return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second")) - ms;
+}
+
+/** The calendar date in `tz` at a given instant. */
+export function buildingDate(ms: number, tz: string) {
+  const shifted = new Date(ms + tzOffsetMs(ms, tz));
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+  };
+}
+
+/** The instant at which it is `hour:00` on the given date in `tz`. */
+export function msAtBuildingHour(
+  d: { year: number; month: number; day: number }, hour: number, tz: string
+): number {
+  const naive = Date.UTC(d.year, d.month - 1, d.day, hour, 0, 0, 0);
+  // Two passes so a DST boundary between the guess and the answer settles.
+  let ms = naive - tzOffsetMs(naive, tz);
+  ms = naive - tzOffsetMs(ms, tz);
+  return ms;
+}
+
+/** The next `count` calendar days in `tz`, starting today. */
+export function buildingDays(count: number, tz: string) {
+  const today = buildingDate(Date.now(), tz);
+  const out: { year: number; month: number; day: number; ms: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    const base = Date.UTC(today.year, today.month - 1, today.day + i);
+    const shifted = new Date(base);
+    const d = { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate() };
+    out.push({ ...d, ms: msAtBuildingHour(d, 12, tz) });   // midday: safe for labelling
+  }
+  return out;
+}
+
+/** Format in the building's zone, so everyone sees the caretaker's clock. */
+export const fmtDayTZ = (ms: number, l: Locale, tz: string) =>
+  new Date(ms).toLocaleDateString(tag(l), { weekday: "short", day: "numeric", month: "short", timeZone: tz });
+export const fmtTimeTZ = (ms: number, l: Locale, tz: string) =>
+  new Date(ms).toLocaleTimeString(tag(l), { hour: "2-digit", minute: "2-digit", timeZone: tz });
 
 export const STATE_TONE: Record<string, string> = {
   reported: "neutral", accepted: "neutral", slots_offered: "warn",
@@ -336,6 +432,11 @@ export const api = {
   orderPart:   (id: string, what: string, eta: string) => post(`/tickets/${id}/part`, { what, eta }),
   partArrived: (id: string) => post(`/tickets/${id}/part-arrived`),
   done:        (id: string, cause: string) => post(`/tickets/${id}/done`, { cause }),
+  escalate:    (id: string, trade: string, reason: string, note: string) =>
+                 post(`/tickets/${id}/escalate`, { trade, reason, note }),
+  commission:  (id: string, contractor: string, reference: string) =>
+                 post(`/tickets/${id}/commission`, { contractor, reference }),
+  deescalate:  (id: string) => post(`/tickets/${id}/deescalate`),
   consent:     (id: string, value: boolean) => post(`/tickets/${id}/consent`, { value }),
 
   dashboard:        (months: number, building: string | null) =>
@@ -363,3 +464,5 @@ export const symptomLabel = (code: string, l: Locale) => pick(SYMPTOM, code, l);
 export const causeLabel   = (code: string, l: Locale) => pick(CAUSE, code, l);
 export const reasonLabel  = (code: string, l: Locale) => pick(REASON, code, l);
 export const objIcon      = (code: string): LucideIcon | undefined => OBJECT_TYPE[code]?.icon;
+export const tradeLabel   = (code: string, l: Locale) => pick(TRADE, code, l);
+export const escReason    = (code: string, l: Locale) => pick(ESC_REASON, code, l);

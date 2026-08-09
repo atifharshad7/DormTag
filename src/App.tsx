@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   QrCode, Calendar, Clock, Check, ChevronLeft, Package, AlertTriangle, Key,
   Building2, Wrench, LayoutDashboard, Languages, User, Users, ArrowRight, Plus,
-  LogOut, Camera,
+  LogOut, Camera, Building, Send,
 } from "lucide-react";
 import {
   api, T, SYMPTOMS_FOR, CAUSE, CAUSES_FOR,
   roomLabel, roomIcon, objLabel, objIcon, symptomLabel, causeLabel, reasonLabel,
+  tradeLabel, escReason, TRADE, ESC_REASON,
   fmtDay, fmtDT, fmtTime, plate, title, STATE_TONE, type Locale, type StrKey,
 } from "./lib";
 import { SignIn, ScanLanding, ReportDone, StickerSheet } from "./Auth";
@@ -238,7 +239,12 @@ function TenantTicket({ l, t, id, onBack }: any) {
         )}
       </div>
 
-      {d.ticket.state === "accepted" && d.events.length > 2 && (
+      {d.escalation ? (
+        <div className="card extcard">
+          <p className="cardtitle">{t("externalNote")}</p>
+          <p className="muted">{tradeLabel(d.escalation.trade, l)}</p>
+        </div>
+      ) : d.ticket.state === "accepted" && d.events.length > 2 && (
         <div className="card">
           <p className="cardtitle">{t("awaitingTimes")}</p>
         </div>
@@ -291,7 +297,9 @@ function StaffView({ l, t, tickets, reload, rules }: { l: Locale; t: (k: StrKey)
   const [openId, setOpenId] = useState<string | null>(null);
   if (openId) return <StaffTicket l={l} t={t} id={openId} rules={rules} onBack={() => { setOpenId(null); reload(); }} />;
 
-  const live = tickets.filter((x: any) => x.state !== "done" && x.state !== "cancelled");
+  const all = tickets.filter((x: any) => x.state !== "done" && x.state !== "cancelled");
+  const external = all.filter((x: any) => x.handling === "external");
+  const live = all.filter((x: any) => x.handling !== "external");
   const booked = live.filter((x: any) => x.appt_at).sort((a: any, b: any) => a.appt_at - b.appt_at);
   const noSlot = live.filter((x: any) => !x.appt_at && x.state !== "waiting_for_parts");
   const waiting = live.filter((x: any) => !x.appt_at && x.state === "waiting_for_parts");
@@ -306,6 +314,7 @@ function StaffView({ l, t, tickets, reload, rules }: { l: Locale; t: (k: StrKey)
         </div>
         <p className="muted">
           {title(x, x.symptom, l)}
+          {x.trade && ` · ${tradeLabel(x.trade, l)}`}
           {x.reporter_count > 1 && ` · ${x.reporter_count} ${t("reports")}`}
           {!!x.access_consent && <> · <Key size={12} aria-hidden /></>}
         </p>
@@ -321,6 +330,8 @@ function StaffView({ l, t, tickets, reload, rules }: { l: Locale; t: (k: StrKey)
       {noSlot.map((x: any) => <Row key={x.ticket_id} x={x} />)}
       {waiting.length > 0 && <p className="eyebrow">{t("queueWaiting")}</p>}
       {waiting.map((x: any) => <Row key={x.ticket_id} x={x} />)}
+      {external.length > 0 && <p className="eyebrow">{t("withExternal")}</p>}
+      {external.map((x: any) => <Row key={x.ticket_id} x={x} />)}
     </div>
   );
 }
@@ -328,7 +339,10 @@ function StaffView({ l, t, tickets, reload, rules }: { l: Locale; t: (k: StrKey)
 function StaffTicket({ l, t, id, onBack, rules }: any) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
-  const [mode, setMode] = useState<"main" | "close" | "times">("main");
+  const [mode, setMode] = useState<"main" | "close" | "times" | "escalate">("main");
+  const [trade, setTrade] = useState<string | null>(null);
+  const [escWhy, setEscWhy] = useState<string | null>(null);
+  const [escNote, setEscNote] = useState("");
   const [notice, setNotice] = useState("");
   const [cause, setCause] = useState<string | null>(null);
   const [what, setWhat] = useState("");
@@ -361,17 +375,37 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
       )}
       <Err msg={err} onClose={() => setErr("")} />
 
-      {d.ticket.state === "reported" && (
+      {d.ticket.state === "reported" && !d.escalation && (
         <button className="btn btn-primary" onClick={() => act(() => api.accept(id))}>
           <Check size={16} /> {t("accept")}
         </button>
       )}
 
-      {d.ticket.state === "accepted" && mode === "main" && d.events.length > 2 && (
+      {d.escalation && (
+        <div className="card extcard">
+          <p className="cardtitle">
+            <Building size={15} aria-hidden /> {tradeLabel(d.escalation.trade, l)}
+          </p>
+          <p className="muted">{escReason(d.escalation.reason, l)}</p>
+          {d.escalation.note && <p className="quote">{d.escalation.note}</p>}
+          <p className="muted mono">
+            {t("raisedOn")} {fmtDT(d.escalation.raised_at, l)}
+            {" · "}
+            {d.escalation.commissioned_at
+              ? `${t("commissionedTo")} ${d.escalation.contractor}`
+              : t("notCommissioned")}
+          </p>
+          <button className="btn" onClick={() => act(() => api.deescalate(id))}>
+            {t("giveBack")}
+          </button>
+        </div>
+      )}
+
+      {d.ticket.state === "accepted" && mode === "main" && !d.escalation && d.events.length > 2 && (
         <div className="err">{t("noTimesLeft")}</div>
       )}
 
-      {d.ticket.state === "accepted" && mode === "main" && (
+      {d.ticket.state === "accepted" && mode === "main" && !d.escalation && (
         <>
           <button className="btn btn-primary" onClick={() => setMode("times")}>
             <Calendar size={16} /> {t("chooseTimes")}
@@ -426,6 +460,38 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
             <AlertTriangle size={16} /> {t("noAccess")}
           </button>
         </>
+      )}
+
+      {mode === "main" && !d.escalation && d.ticket.state !== "done" && (
+        <button className="btn" onClick={() => setMode("escalate")}>
+          <Building size={16} aria-hidden /> {t("cantFixMyself")}
+        </button>
+      )}
+
+      {mode === "escalate" && (
+        <div className="card">
+          <p className="cardtitle">{t("whichTrade")}</p>
+          <div className="grid2">
+            {Object.keys(TRADE).map((k) => (
+              <Tile key={k} label={tradeLabel(k, l)} active={trade === k} onClick={() => setTrade(k)} />
+            ))}
+          </div>
+          <p className="cardtitle">{t("whyExternal")}</p>
+          <div className="grid2">
+            {Object.keys(ESC_REASON).map((k) => (
+              <Tile key={k} label={escReason(k, l)} active={escWhy === k} onClick={() => setEscWhy(k)} />
+            ))}
+          </div>
+          <textarea className="ta" rows={2} placeholder={t("noteOptional")}
+            value={escNote} onChange={(e) => setEscNote(e.target.value)} />
+          <div className="row">
+            <button className="btn" onClick={() => setMode("main")}>{t("cancel")}</button>
+            <button className="btn btn-primary" disabled={!trade || !escWhy}
+              onClick={() => act(() => api.escalate(id, trade!, escWhy!, escNote), true)}>
+              <Send size={16} aria-hidden /> {t("sendToTrade")}
+            </button>
+          </div>
+        </div>
       )}
 
       {mode === "close" && (

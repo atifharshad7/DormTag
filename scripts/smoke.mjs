@@ -56,6 +56,26 @@ async function login(as) {
 
 const section = (s) => console.log(`\n${s}`);
 
+// Build timestamps in the building's zone, the way the picker does. The test
+// process runs in UTC, so setHours() alone would land on the wrong hour.
+const TZ = "Europe/Berlin";
+function tzOffsetMs(ms) {
+  const f = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const p = f.formatToParts(new Date(ms));
+  const g = (t) => Number(p.find((x) => x.type === t)?.value ?? 0);
+  return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second")) - ms;
+}
+function nextAt(hour, daysAhead = 1) {
+  const nowShift = new Date(Date.now() + tzOffsetMs(Date.now()));
+  const naive = Date.UTC(nowShift.getUTCFullYear(), nowShift.getUTCMonth(),
+    nowShift.getUTCDate() + daysAhead, hour, 0, 0, 0);
+  let ms = naive - tzOffsetMs(naive);
+  return naive - tzOffsetMs(ms);
+}
+
+
 /* ---------------------------------------------------------------- */
 
 section("seed");
@@ -132,7 +152,7 @@ let st0 = (await req("/api/tickets/L1", { cookie: staff })).json;
 ok("no times are invented when the part lands", st0.slots.length === 0);
 ok("ticket waits on the caretaker", st0.ticket.state === "accepted", st0.ticket.state);
 
-const near = (h, d = 1) => { const x = new Date(); x.setDate(x.getDate() + d); x.setHours(h, 0, 0, 0); return x.getTime(); };
+const near = (h, d = 1) => nextAt(h, d);
 ok("caretaker offers two times", (await req("/api/tickets/L1/offer", { method: "POST", cookie: staff,
   body: { slots: [near(8), near(9)] } })).status === 200);
 
@@ -165,8 +185,8 @@ st0 = (await req("/api/tickets/L1", { cookie: staff })).json;
 ok("state is accepted, awaiting new times", st0.ticket.state === "accepted", st0.ticket.state);
 ok("still no invented times", st0.slots.length === 0);
 
-// Avoid 11:00-12:00 — the seed already books this caretaker at 11:30 tomorrow,
-// and the overlap filter would (correctly) drop it.
+// Avoid 11:00 — the seed already books this caretaker at 11:00 tomorrow
+// (building time), and the overlap filter would correctly drop it.
 ok("caretaker proposes again", (await req("/api/tickets/L1/offer", { method: "POST", cookie: staff,
   body: { slots: [near(14), near(15)] } })).status === 200);
 ok("both proposals survive the overlap filter", (await slots(tenant)).length === 2);
@@ -283,13 +303,6 @@ ok("a resident cannot become staff by asking",
 section("caretaker chooses the times");
 // Self-contained: open a fresh ticket on a shared room the resident can see,
 // so this section doesn't depend on state left by the tests above.
-function nextAt(hour, daysAhead = 1) {
-  const d = new Date();
-  d.setDate(d.getDate() + daysAhead);
-  d.setHours(hour, 0, 0, 0);
-  return d.getTime();
-}
-
 const fresh = await req("/api/tickets", { method: "POST", cookie: tenant,
   body: { objectId: "u-B-312-FL-DOOR", symptom: "BROKEN" } });
 ok("fresh ticket opened for the slot tests", fresh.status === 200, JSON.stringify(fresh.json));
@@ -308,6 +321,9 @@ ok("offered times match what was sent",
 
 ok("a past time is refused", (await at("/offer", staff, { slots: [Date.now() - 36e5] })).status === 400);
 ok("an hour outside the offered range is refused", (await at("/offer", staff, { slots: [nextAt(3)] })).status === 400);
+ok("hours are the building's, not the server's UTC clock",
+  (await at("/offer", staff, { slots: [nextAt(8)] })).status === 200,
+  "08:00 Berlin is 06:00 UTC — validating in UTC would reject it");
 ok("a half-hour start is refused", (await at("/offer", staff, { slots: [nextAt(9) + 18e5] })).status === 400);
 ok("seconds are refused", (await at("/offer", staff, { slots: [nextAt(9) + 1234] })).status === 400);
 ok("the lunch hour is not offered", (await at("/offer", staff, { slots: [nextAt(12)] })).status === 400);
@@ -385,6 +401,81 @@ ok("the same hour is not offered twice",
 const clear = await req(`/api/tickets/${ovB}/offer`, { method: "POST", cookie: staff,
   body: { slots: [base + 36e5] } });
 ok("the next hour along is fine", clear.status === 200, JSON.stringify(clear.json));
+
+section("handing work to an external trade");
+const escT = await mkTicket("u-B-312-KU-LIGHT", tenant);
+await req(`/api/tickets/${escT}/accept`, { method: "POST", cookie: staff });
+
+ok("an unknown trade is refused",
+  (await req(`/api/tickets/${escT}/escalate`, { method: "POST", cookie: staff,
+    body: { trade: "WIZARDRY", reason: "QUALIFICATION" } })).status === 400);
+ok("an unknown reason is refused",
+  (await req(`/api/tickets/${escT}/escalate`, { method: "POST", cookie: staff,
+    body: { trade: "ELECTRICAL", reason: "BECAUSE" } })).status === 400);
+ok("a resident cannot escalate",
+  (await req(`/api/tickets/${escT}/escalate`, { method: "POST", cookie: tenant,
+    body: { trade: "ELECTRICAL", reason: "QUALIFICATION" } })).status === 403);
+
+ok("the caretaker hands it to an electrician",
+  (await req(`/api/tickets/${escT}/escalate`, { method: "POST", cookie: staff,
+    body: { trade: "ELECTRICAL", reason: "QUALIFICATION", note: "Ganze Wand tot." } })).status === 200);
+
+let escDetail = (await req(`/api/tickets/${escT}`, { cookie: staff })).json;
+ok("the escalation is attached to the ticket", escDetail.escalation?.trade === "ELECTRICAL");
+ok("the reason is recorded", escDetail.escalation?.reason === "QUALIFICATION");
+ok("it isn't commissioned yet", !escDetail.escalation?.commissioned_at);
+ok("the ticket is still open", escDetail.ticket.state !== "done");
+ok("handling moved to external", escDetail.ticket.handling === "external");
+ok("escalating twice is refused",
+  (await req(`/api/tickets/${escT}/escalate`, { method: "POST", cookie: staff,
+    body: { trade: "PLUMBING", reason: "TOO_BIG" } })).status === 409);
+ok("the audit trail records it",
+  escDetail.events.some((e) => e.reason === "escalated_electrical"));
+
+ok("the resident can see an external firm has it",
+  (await req(`/api/tickets/${escT}`, { cookie: tenant })).json.escalation?.trade === "ELECTRICAL");
+
+ok("a caretaker cannot commission a firm",
+  (await req(`/api/tickets/${escT}/commission`, { method: "POST", cookie: staff,
+    body: { contractor: "Elektro Meyer" } })).status === 403);
+ok("commissioning needs a firm name",
+  (await req(`/api/tickets/${escT}/commission`, { method: "POST", cookie: operator,
+    body: { contractor: "  " } })).status === 400);
+ok("the operator commissions a firm",
+  (await req(`/api/tickets/${escT}/commission`, { method: "POST", cookie: operator,
+    body: { contractor: "Elektro Meyer GmbH", reference: "AB-2026-114" } })).status === 200);
+
+escDetail = (await req(`/api/tickets/${escT}`, { cookie: staff })).json;
+ok("the firm and reference are recorded",
+  escDetail.escalation.contractor === "Elektro Meyer GmbH" && escDetail.escalation.reference === "AB-2026-114");
+ok("commissioning is in the audit trail",
+  escDetail.events.some((e) => e.reason === "commissioned"));
+
+section("escalation on the dashboard");
+const escDash = (await req("/api/dashboard?months=12", { cookie: operator })).json;
+ok("the external metric counts it", escDash.metrics.external >= 1, `${escDash.metrics.external}`);
+const tradeList = (await req("/api/dashboard/tickets?filter=trade&months=12", { cookie: operator })).json;
+ok("trade drill-down matches the metric", tradeList.tickets.length === escDash.metrics.external,
+  `${tradeList.tickets.length} vs ${escDash.metrics.external}`);
+ok("trade rows name the trade and the unit",
+  tradeList.tickets.every((x) => !!x.trade && !!x.building_code && !!x.unit_code));
+ok("uncommissioned work is listed first",
+  tradeList.tickets.every((x, i, a) => i === 0 || !(a[i - 1].commissioned_at && !x.commissioned_at)));
+ok("a caretaker cannot see the trade drill-down",
+  (await req("/api/dashboard/tickets?filter=trade", { cookie: staff })).status === 403);
+
+ok("returning it to the caretaker clears the escalation",
+  (await req(`/api/tickets/${escT}/deescalate`, { method: "POST", cookie: staff })).status === 200);
+escDetail = (await req(`/api/tickets/${escT}`, { cookie: staff })).json;
+ok("handling is back with the caretaker", escDetail.ticket.handling === "caretaker");
+ok("no open escalation remains", !escDetail.escalation);
+ok("it can be escalated again after being returned",
+  (await req(`/api/tickets/${escT}/escalate`, { method: "POST", cookie: staff,
+    body: { trade: "PLUMBING", reason: "SYSTEMIC" } })).status === 200);
+ok("closing the ticket closes the escalation too",
+  (await req(`/api/tickets/${escT}/done`, { method: "POST", cookie: staff, body: { cause: "WIRING" } })).status === 200);
+ok("no escalation left on a closed ticket",
+  !(await req(`/api/tickets/${escT}`, { cookie: staff })).json.escalation);
 
 section("qr stickers");
 const sheet = await req("/api/stickers/B", { cookie: staff });

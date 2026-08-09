@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, Package, AlertTriangle, Clock, X } from "lucide-react";
+import { ChevronLeft, Package, AlertTriangle, Clock, X, Building, Check } from "lucide-react";
 import {
-  api, objLabel, roomLabel, fmtDay, fmtDT, STATE_TONE,
+  api, objLabel, roomLabel, fmtDay, fmtDT, STATE_TONE, tradeLabel, escReason,
   type Locale, type StrKey,
 } from "./lib";
 
@@ -55,14 +55,22 @@ function TicketList({ l, t, which, months, building, onBack }: {
 }) {
   const [rows, setRows] = useState<any[] | null>(null);
   const [err, setErr] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [firm, setFirm] = useState("");
+  const [ref, setRef] = useState("");
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.dashboardTickets(which, months, building)
       .then((d) => setRows(d.tickets))
       .catch((e) => setErr(e.message));
   }, [which, months, building]);
 
-  const heading = which === "parts" ? t("waitingParts") : which === "failed" ? t("failedVisits") : t("openTickets");
+  useEffect(() => { load(); }, [load]);
+
+  const heading = which === "parts" ? t("waitingParts")
+    : which === "failed" ? t("failedVisits")
+    : which === "trade" ? t("awaitingTrade")
+    : t("openTickets");
 
   return (
     <div className="col">
@@ -98,6 +106,42 @@ function TicketList({ l, t, which, months, building, onBack }: {
             <p className="muted"><AlertTriangle size={13} aria-hidden /> {fmtDT(r.missed_at, l)}</p>
           )}
           {r.appt_at && <p className="muted mono">{fmtDT(r.appt_at, l)}</p>}
+
+          {r.trade && (
+            <>
+              <p className="muted">
+                <Building size={13} aria-hidden /> {tradeLabel(r.trade, l)} · {escReason(r.reason, l)}
+              </p>
+              {r.note && <p className="quote">{r.note}</p>}
+              {r.commissioned_at ? (
+                <p className="muted">
+                  <Check size={13} aria-hidden /> {t("commissionedTo")} {r.contractor}
+                  {r.reference ? ` · ${r.reference}` : ""}
+                </p>
+              ) : openId === r.ticket_id ? (
+                <>
+                  <input className="in" placeholder={t("firmName")} value={firm}
+                    onChange={(e) => setFirm(e.target.value)} />
+                  <input className="in" placeholder={t("orderRef")} value={ref}
+                    onChange={(e) => setRef(e.target.value)} />
+                  <div className="row">
+                    <button className="btn" onClick={() => setOpenId(null)}>{t("cancel")}</button>
+                    <button className="btn btn-primary" disabled={!firm.trim()}
+                      onClick={async () => {
+                        try {
+                          await api.commission(r.ticket_id, firm, ref);
+                          setFirm(""); setRef(""); setOpenId(null); load();
+                        } catch (e: any) { setErr(e.message); }
+                      }}>{t("commissionIt")}</button>
+                  </div>
+                </>
+              ) : (
+                <button className="btn" onClick={() => setOpenId(r.ticket_id)}>
+                  <Building size={16} aria-hidden /> {t("commissionIt")}
+                </button>
+              )}
+            </>
+          )}
         </div>
       ))}
     </div>
@@ -171,6 +215,14 @@ export function OperatorView({ l, t }: { l: Locale; t: T }) {
               <p className="muted">{t("waitingParts")}</p>
               <p className="big mono">{d.metrics.waitingParts}</p>
               <p className="metrichint">{t("seeList")} →</p>
+            </button>
+
+            <button className="metric metriclink" onClick={() => setDrill("trade")}>
+              <p className="muted">{t("awaitingTrade")}</p>
+              <p className="big mono">{d.metrics.external}</p>
+              <p className="metrichint">
+                {d.metrics.awaitingCommission} {t("toCommission")} →
+              </p>
             </button>
 
             <button className="metric metriclink" onClick={() => setDrill("failed")}>
