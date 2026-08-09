@@ -380,3 +380,43 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 }
 .roomrow:hover { border-color: var(--slate); }
 .roomname { display: inline-flex; align-items: center; gap: 9px; font-size: 14px; }
+
+/* --- caretaker slot picker ----------------------------------------- */
+
+.daystrip {
+  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.daystrip::-webkit-scrollbar { display: none; }
+.daychip {
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 46px; padding: 7px 6px; border: 1px solid var(--line);
+  background: var(--card); border-radius: 8px; cursor: pointer; font: inherit;
+  color: var(--muted);
+}
+.daychip-on { border: 2px solid var(--slate); color: var(--ink); }
+.dayname { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.daynum { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; }
+
+.hourgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(66px, 1fr)); gap: 6px; }
+.hourchip {
+  padding: 11px 4px; min-height: 44px; border: 1px solid var(--line);
+  background: var(--card); border-radius: 8px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink);
+}
+.hourchip:hover:not(:disabled) { border-color: var(--slate); }
+.hourchip-on { background: var(--slate); color: #f5f5f1; border-color: var(--slate); }
+.hourchip:disabled { opacity: .3; cursor: not-allowed; }
+
+.pickedlist { display: flex; flex-wrap: wrap; gap: 6px; }
+.pickedchip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px;
+  background: rgba(31,90,168,.1); border: 1px solid rgba(31,90,168,.3);
+  color: var(--blue); border-radius: 99px; cursor: pointer; font: inherit; font-size: 12px;
+}
+
+.brandbtn {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  color: inherit; font: inherit; font-weight: 600; letter-spacing: -.02em;
+}
+.brandbtn:hover { opacity: .85; }

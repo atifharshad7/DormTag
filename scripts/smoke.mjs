@@ -205,6 +205,58 @@ ok("no role-switch endpoint exists",
 ok("a resident cannot become staff by asking",
   (await req("/api/auth/staff", { method: "POST", body: { email: CREDS.resident.code, password: CREDS.resident.code } })).status === 401);
 
+section("caretaker chooses the times");
+// Self-contained: open a fresh ticket on a shared room the resident can see,
+// so this section doesn't depend on state left by the tests above.
+function nextAt(hour, daysAhead = 1) {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
+  d.setHours(hour, 0, 0, 0);
+  return d.getTime();
+}
+
+const fresh = await req("/api/tickets", { method: "POST", cookie: tenant,
+  body: { objectId: "u-B-312-FL-DOOR", symptom: "BROKEN" } });
+ok("fresh ticket opened for the slot tests", fresh.status === 200, JSON.stringify(fresh.json));
+const FID = fresh.json.id;
+const at = (path, cookie, body) => req(`/api/tickets/${FID}${path}`, { method: "POST", cookie, body });
+
+ok("caretaker accepts it", (await at("/accept", staff)).status === 200);
+
+const chosen = [nextAt(9), nextAt(14), nextAt(10, 2)];
+ok("caretaker offers their own times", (await at("/offer", staff, { slots: chosen })).status === 200);
+
+let offered = (await req(`/api/tickets/${FID}`, { cookie: tenant })).json.slots;
+ok("exactly the chosen times are offered", offered.length === chosen.length, `${offered.length} vs ${chosen.length}`);
+ok("offered times match what was sent",
+  offered.map((s) => s.starts_at).sort().join() === [...chosen].sort().join());
+
+ok("a past time is refused", (await at("/offer", staff, { slots: [Date.now() - 36e5] })).status === 400);
+ok("a time outside working hours is refused", (await at("/offer", staff, { slots: [nextAt(3)] })).status === 400);
+ok("a half-hour time is refused", (await at("/offer", staff, { slots: [nextAt(9) + 18e5] })).status === 400);
+ok("too many times are refused",
+  (await at("/offer", staff, { slots: [nextAt(8), nextAt(9), nextAt(10), nextAt(11), nextAt(13)] })).status === 400);
+ok("a time beyond the horizon is refused", (await at("/offer", staff, { slots: [nextAt(9, 60)] })).status === 400);
+ok("duplicate times are refused", (await at("/offer", staff, { slots: [nextAt(9), nextAt(9)] })).status === 400);
+ok("an empty list is refused", (await at("/offer", staff, { slots: [] })).status === 400);
+ok("a resident cannot offer times", (await at("/offer", tenant, { slots: chosen })).status === 403);
+
+ok("caretaker can replace the offered set", (await at("/offer", staff, { slots: [nextAt(15), nextAt(16)] })).status === 200);
+offered = (await req(`/api/tickets/${FID}`, { cookie: tenant })).json.slots;
+ok("replacing expires the previous offers", offered.length === 2, `${offered.length}`);
+ok("resident books one of the caretaker's times",
+  (await at("/book", tenant, { slotId: offered[0].id })).status === 200);
+ok("the booked time is one the caretaker chose",
+  [nextAt(15), nextAt(16)].includes(
+    (await req(`/api/tickets/${FID}`, { cookie: staff })).json.appointments.find((a) => a.status === "booked").starts_at));
+
+// That hour is now committed, so it must not be offered on another ticket.
+await req("/api/tickets/L4/accept", { method: "POST", cookie: staff });
+const clash = await req("/api/tickets/L4/offer", { method: "POST", cookie: staff,
+  body: { slots: [offered[0].starts_at] } });
+ok("a time the caretaker is already booked for is not offered again",
+  clash.status === 409 || clash.json.skipped === 1, JSON.stringify(clash.json));
+
 section("qr stickers");
 const sheet = await req("/api/stickers/B", { cookie: staff });
 ok("caretaker can print their own building", sheet.status === 200 && sheet.json.stickers.length > 0,

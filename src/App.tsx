@@ -11,6 +11,7 @@ import {
 } from "./lib";
 import { SignIn, ScanLanding, ReportDone, StickerSheet } from "./Auth";
 import { ScannerModal } from "./Scanner";
+import { SlotPicker, type SlotRules } from "./SlotPicker";
 
 /* ---------------------------------------------------------------- */
 /* small shared pieces                                              */
@@ -279,9 +280,9 @@ function TenantTicket({ l, t, id, onBack }: any) {
 /* caretaker                                                        */
 /* ---------------------------------------------------------------- */
 
-function StaffView({ l, t, tickets, reload }: { l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void> }) {
+function StaffView({ l, t, tickets, reload, rules }: { l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>; rules: SlotRules }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  if (openId) return <StaffTicket l={l} t={t} id={openId} onBack={() => { setOpenId(null); reload(); }} />;
+  if (openId) return <StaffTicket l={l} t={t} id={openId} rules={rules} onBack={() => { setOpenId(null); reload(); }} />;
 
   const live = tickets.filter((x: any) => x.state !== "done" && x.state !== "cancelled");
   const booked = live.filter((x: any) => x.appt_at).sort((a: any, b: any) => a.appt_at - b.appt_at);
@@ -317,10 +318,11 @@ function StaffView({ l, t, tickets, reload }: { l: Locale; t: (k: StrKey) => str
   );
 }
 
-function StaffTicket({ l, t, id, onBack }: any) {
+function StaffTicket({ l, t, id, onBack, rules }: any) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
-  const [mode, setMode] = useState<"main" | "close">("main");
+  const [mode, setMode] = useState<"main" | "close" | "times">("main");
+  const [notice, setNotice] = useState("");
   const [cause, setCause] = useState<string | null>(null);
   const [what, setWhat] = useState("");
   const [eta, setEta] = useState("");
@@ -359,8 +361,8 @@ function StaffTicket({ l, t, id, onBack }: any) {
       )}
 
       {d.ticket.state === "accepted" && (d.ticket.needs_access ? (
-        <button className="btn btn-primary" onClick={() => act(() => api.offer(id))}>
-          <Calendar size={16} /> {t("offerSlots")}
+        <button className="btn btn-primary" onClick={() => setMode("times")}>
+          <Calendar size={16} /> {t("chooseTimes")}
         </button>
       ) : (
         <button className="btn btn-primary" onClick={() => setMode("close")}>
@@ -368,11 +370,28 @@ function StaffTicket({ l, t, id, onBack }: any) {
         </button>
       ))}
 
-      {d.ticket.state === "slots_offered" && (
+      {mode === "times" && (
+        <SlotPicker l={l} t={t} rules={rules} busy={false}
+          onCancel={() => setMode("main")}
+          onOffer={async (slots) => {
+            setErr(""); setNotice("");
+            try {
+              const r = await api.offer(id, slots);
+              if (r.skipped > 0) setNotice(t("skippedBusy"));
+              setMode("main");
+              await load();
+            } catch (e: any) { setErr(e.message); }
+          }} />
+      )}
+
+      {notice && <div className="flash" onClick={() => setNotice("")}>{notice}</div>}
+
+      {d.ticket.state === "slots_offered" && mode !== "times" && (
         <div className="card">
           <p className="cardtitle">{t("slotsOffered")}</p>
           {d.slots.map((s: any) => <p key={s.id} className="mono muted">{fmtDT(s.starts_at, l)}</p>)}
           <p className="muted">{t("awaitingPick")}</p>
+          <button className="btn" onClick={() => setMode("times")}>{t("reoffer")}</button>
         </div>
       )}
 
@@ -503,11 +522,25 @@ export default function App() {
   const [screen, setScreen] = useState<"main" | "stickers" | "sent">("main");
   const [sent, setSent] = useState<{ id: string; token?: string } | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [homeKey, setHomeKey] = useState(0);
 
   const goScan = useCallback((slug: string) => {
     history.pushState({}, "", `/r/${slug}`);
     setRoute({ kind: "scan", slug });
     setScreen("main");
+  }, []);
+
+  /**
+   * The logo is "home". Each role view keeps its own screen state, so bumping
+   * homeKey remounts it — that's what takes a resident back to My reports and
+   * a caretaker back to the queue, from wherever they were.
+   */
+  const goHome = useCallback(() => {
+    history.pushState({}, "", "/");
+    setRoute({ kind: "app" });
+    setScreen("main");
+    setSent(null);
+    setHomeKey((n) => n + 1);
   }, []);
 
   const goApp = useCallback(() => {
@@ -541,7 +574,9 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand"><Building2 size={18} strokeWidth={1.75} aria-hidden /><span>{t("appName")}</span></div>
+        <button className="brand brandbtn" onClick={goHome} aria-label={t("appName")}>
+          <Building2 size={18} strokeWidth={1.75} aria-hidden /><span>{t("appName")}</span>
+        </button>
         <div className="row">
           <button className="lang" onClick={() => setScanning(true)} aria-label={t("scanOpen")}>
             <Camera size={14} aria-hidden />
@@ -577,9 +612,9 @@ export default function App() {
         ) : kind === "anonymous" ? (
           <SignIn l={l} t={t} session={session} onDone={loadSession} />
         ) : kind === "tenant" ? (
-          <TenantView l={l} t={t} tickets={tickets} reload={reload} home={session.home} onScan={() => setScanning(true)} />
+          <TenantView key={homeKey} l={l} t={t} tickets={tickets} reload={reload} home={session.home} onScan={() => setScanning(true)} />
         ) : kind === "staff" ? (
-          <StaffView l={l} t={t} tickets={tickets} reload={reload} />
+          <StaffView key={homeKey} l={l} t={t} tickets={tickets} reload={reload} rules={session.slotRules} />
         ) : (
           <OperatorView l={l} t={t} />
         )}

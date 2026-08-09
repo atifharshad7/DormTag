@@ -260,6 +260,17 @@ function transitionStmts(env: Env, ticket: any, to: State, reason: string, p: Pr
 }
 
 /** Slots land on a fixed hourly grid so the staff_not_double_booked index bites. */
+/** The hours a caretaker works. Offers must land on this grid. */
+const SLOT_HOURS = [8, 9, 10, 11, 13, 14, 15, 16];
+const SLOT_MINUTES = 60;
+const MAX_OFFERS = 4;
+const OFFER_HORIZON_DAYS = 14;
+
+/**
+ * Fallback offers, used when the system re-opens scheduling on its own — after
+ * a no-show or when a part arrives. A caretaker choosing times explicitly goes
+ * through the picker instead.
+ */
 function generateSlots(base: number) {
   const out: { startsAt: number; endsAt: number }[] = [];
   const hours = [9, 14, 11];
@@ -269,6 +280,35 @@ function generateSlots(base: number) {
     out.push({ startsAt: s.getTime(), endsAt: s.getTime() + 36e5 });
   }
   return out;
+}
+
+/**
+ * Validate caretaker-chosen times. Rejects anything in the past, off-grid, too
+ * far out, or duplicated — the client shouldn't be trusted to have done this.
+ */
+function validateSlots(raw: unknown): { startsAt: number; endsAt: number }[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new HttpError("choose at least one time");
+  }
+  if (raw.length > MAX_OFFERS) {
+    throw new HttpError(`at most ${MAX_OFFERS} times`);
+  }
+  const seen = new Set<number>();
+  const out: { startsAt: number; endsAt: number }[] = [];
+  for (const v of raw) {
+    const ms = Number(v);
+    if (!Number.isFinite(ms)) throw new HttpError("bad time value");
+    const d = new Date(ms);
+    if (d.getMinutes() !== 0 || d.getSeconds() !== 0 || !SLOT_HOURS.includes(d.getHours())) {
+      throw new HttpError("that time is outside working hours");
+    }
+    if (ms < now()) throw new HttpError("that time is in the past");
+    if (ms > now() + OFFER_HORIZON_DAYS * DAY) throw new HttpError("that time is too far ahead");
+    if (seen.has(ms)) throw new HttpError("duplicate time");
+    seen.add(ms);
+    out.push({ startsAt: ms, endsAt: ms + SLOT_MINUTES * 60e3 });
+  }
+  return out.sort((a, b) => a.startsAt - b.startsAt);
 }
 
 /* ================================================================ */
@@ -335,6 +375,13 @@ route("GET", "/api/session", async ({ p, env }) => {
     home,
     demo,
     demoHints: demo ? DEMO_HINTS : null,
+    // The client builds its time picker from these, so the two can't drift.
+    slotRules: {
+      hours: SLOT_HOURS,
+      minutes: SLOT_MINUTES,
+      maxOffers: MAX_OFFERS,
+      horizonDays: OFFER_HORIZON_DAYS,
+    },
   });
 });
 
@@ -592,23 +639,61 @@ route("POST", "/api/tickets/:id/accept", async ({ env, p, params }) => {
   return json({ ok: true });
 });
 
-route("POST", "/api/tickets/:id/offer", async ({ env, p, params }) => {
+/**
+ * Offer appointment times. The caretaker picks them; `slots` is a list of epoch
+ * milliseconds. Omitting it falls back to generated times, which is what the
+ * automatic re-offer paths rely on.
+ *
+ * Re-offering while already in slots_offered replaces the previous set without
+ * a state change — a caretaker correcting their availability isn't a workflow
+ * transition.
+ */
+route("POST", "/api/tickets/:id/offer", async ({ env, req, p, params }) => {
   if (!isStaff(p)) return bad("staff only", 403);
   await assertVisible(env, p, params.id);
   const t = await loadTicket(env, params.id);
   const staffId = (p as any).staffId;
+
+  let body: any = {};
+  try { body = await req.json(); } catch { /* no body: use fallback times */ }
+  const chosen = body?.slots ? validateSlots(body.slots) : generateSlots(now());
+
+  // Don't offer a time this caretaker is already committed to elsewhere.
+  const busy = await env.DB.prepare(
+    `SELECT starts_at FROM appointments
+      WHERE staff_id = ?1 AND status = 'booked' AND starts_at >= ?2`
+  ).bind(staffId, now()).all<any>();
+  const taken = new Set(busy.results.map((r: any) => r.starts_at));
+  const free = chosen.filter((c) => !taken.has(c.startsAt));
+  if (free.length === 0) return bad("you're already booked at all of those times", 409);
+
   const stmts = [
-    env.DB.prepare(`UPDATE slot_offers SET expires_at = ?1 WHERE ticket_id = ?2 AND expires_at > ?1`).bind(now(), t.id),
-    ...generateSlots(now()).map((s) =>
+    env.DB.prepare(`UPDATE slot_offers SET expires_at = ?1 WHERE ticket_id = ?2 AND expires_at > ?1`)
+      .bind(now(), t.id),
+    ...free.map((s) =>
       env.DB.prepare(
         `INSERT INTO slot_offers (id, ticket_id, staff_id, starts_at, ends_at, offered_at, expires_at)
          VALUES (?1,?2,?3,?4,?5,?6,?7)`
-      ).bind(uid(), t.id, staffId, s.startsAt, s.endsAt, now(), now() + 5 * DAY)
+      ).bind(uid(), t.id, staffId, s.startsAt, s.endsAt, now(), now() + 7 * DAY)
     ),
-    ...transitionStmts(env, t, "slots_offered", "slots_offered", p),
   ];
+  // Already offering? Replace the set, don't re-transition.
+  if (t.state !== "slots_offered") {
+    stmts.push(...transitionStmts(env, t, "slots_offered", "slots_offered", p));
+  }
   await env.DB.batch(stmts);
-  return json({ ok: true });
+  return json({ ok: true, offered: free.length, skipped: chosen.length - free.length });
+});
+
+/** The caretaker's own committed times, so the picker can grey them out. */
+route("GET", "/api/my-schedule", async ({ env, p }) => {
+  if (!isStaff(p)) return bad("staff only", 403);
+  const rows = await env.DB.prepare(
+    `SELECT starts_at, ends_at FROM appointments
+      WHERE staff_id = ?1 AND status = 'booked' AND starts_at >= ?2
+      ORDER BY starts_at`
+  ).bind((p as any).staffId, now()).all<any>();
+  return json({ busy: rows.results, hours: SLOT_HOURS, maxOffers: MAX_OFFERS, horizonDays: OFFER_HORIZON_DAYS });
 });
 
 route("POST", "/api/tickets/:id/book", async ({ env, req, p, params }) => {

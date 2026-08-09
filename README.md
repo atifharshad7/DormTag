@@ -95,6 +95,14 @@ reported → accepted → slots_offered → scheduled → done
 Transitions are declared in one table in `worker/index.ts` and checked on every
 write; an illegal one returns 409 rather than silently corrupting state.
 
+The caretaker chooses the offered times himself — a day strip plus an hour grid,
+because he's on a phone in a corridor. Slots sit on the whole hour with a fixed
+duration, which is what makes a single unique index on `(staff_id, starts_at)`
+sufficient to prevent double booking without Postgres range types. Times he's
+already committed to elsewhere are filtered out of the offer rather than
+silently colliding at booking time. The picker is built from `slotRules` served
+by `/api/session`, so the client and the validator can't drift apart.
+
 The `waiting_for_parts` branch looping **back to slot offering** is the piece a
 naive implementation misses. Without it the caretaker either closes the ticket
 early or leaves it open forever.
