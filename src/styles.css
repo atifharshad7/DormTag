@@ -571,9 +571,7 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 
 .aboutmark {
   align-self: center; display: grid; place-items: center;
-  width: 66px; height: 66px; border-radius: 50%;
-  background: rgba(242,176,8,.14); color: var(--amber);
-  border: 1px solid rgba(169,106,16,.3);
+  width: 62px; height: 62px; color: var(--ink);
 }
 .abouttitle { font-size: 26px; letter-spacing: -.03em; margin: 0; }
 .aboutlead { font-size: 15px; line-height: 1.6; margin: 0; color: #33383b; }
@@ -612,3 +610,9 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 @media (prefers-color-scheme: dark) {
   .grpcount { background: rgba(232,232,227,.12); }
 }
+
+
+/* --- brand mark ----------------------------------------------------- */
+
+.brand svg { flex: none; }
+.brandbtn { display: flex; align-items: center; gap: 8px; }

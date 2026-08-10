@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   QrCode, Calendar, Clock, Check, ChevronLeft, Package, AlertTriangle, Key,
-  Building2, Wrench, LayoutDashboard, Languages, User, Users, ArrowRight, Plus,
+  Wrench, LayoutDashboard, Languages, User, Users, ArrowRight, Plus,
   LogOut, Camera, Building, Send,
 } from "lucide-react";
 import {
@@ -14,6 +14,7 @@ import { SignIn, ScanLanding, ReportDone, StickerSheet } from "./Auth";
 import { ScannerModal } from "./Scanner";
 import { SlotPicker, type SlotRules } from "./SlotPicker";
 import { OperatorView } from "./Operator";
+import { Logo } from "./Logo";
 
 /* ---------------------------------------------------------------- */
 /* small shared pieces                                              */
@@ -634,7 +635,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <button className="brand brandbtn" onClick={goHome} aria-label={t("appName")}>
-          <Building2 size={18} strokeWidth={1.75} aria-hidden /><span>{t("appName")}</span>
+          <Logo size={22} /><span>{t("appName")}</span>
         </button>
         <div className="row">
           <button className="lang" onClick={() => setScanning(true)} aria-label={t("scanOpen")}>

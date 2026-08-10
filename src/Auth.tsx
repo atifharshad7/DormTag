@@ -8,6 +8,7 @@ import {
   api, roomLabel, objLabel, objIcon, symptomLabel, SYMPTOMS_FOR,
   type Locale, type StrKey,
 } from "./lib";
+import { Logo } from "./Logo";
 
 type T = (k: StrKey) => string;
 
@@ -23,7 +24,7 @@ export function About({ t, onBack }: { t: T; onBack: () => void }) {
       </button>
 
       <div className="aboutmark">
-        <QrCode size={34} strokeWidth={1.25} aria-hidden />
+        <Logo size={62} label="DormTag" />
       </div>
       <h2 className="abouttitle">{t("aboutTitle")}</h2>
 

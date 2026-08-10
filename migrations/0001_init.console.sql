@@ -1,3 +1,4 @@
+PRAGMA foreign_keys = ON;
 CREATE TABLE buildings ( id          TEXT PRIMARY KEY, code        TEXT NOT NULL UNIQUE, name        TEXT NOT NULL, room_count  INTEGER NOT NULL DEFAULT 0 );
 CREATE TABLE units ( id          TEXT PRIMARY KEY, building_id TEXT NOT NULL REFERENCES buildings, code        TEXT NOT NULL, floor       INTEGER NOT NULL, kind        TEXT NOT NULL CHECK (kind IN ('studio','wg')), UNIQUE (building_id, code) );
 CREATE TABLE rooms ( id        TEXT PRIMARY KEY, unit_id   TEXT NOT NULL REFERENCES units, code      TEXT NOT NULL, room_type TEXT NOT NULL, kind      TEXT NOT NULL CHECK (kind IN ('private','shared')), UNIQUE (unit_id, code) );
