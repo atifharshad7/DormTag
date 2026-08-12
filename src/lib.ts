@@ -62,6 +62,8 @@ export const T = {
   jobs:          { de: "Aufträge",                        en: "jobs" },
   queueNew:      { de: "Ohne Termin",                     en: "No appointment" },
   queueWaiting:  { de: "Wartet auf Teil",                 en: "Waiting for parts" },
+  searchQueue:     { de: "Suchen: Wohnung, Raum, Objekt, Notiz", en: "Search unit, room, fixture, note" },
+  oldestFirst:     { de: "Älteste zuerst",           en: "Oldest first" },
   accept:        { de: "Annehmen",                        en: "Accept" },
   offerSlots:    { de: "Termine anbieten",                en: "Offer times" },
   slotsOffered:  { de: "Termine angeboten",               en: "Times offered" },
