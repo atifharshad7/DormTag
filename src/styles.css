@@ -711,13 +711,10 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 
 /* --- queue filters -------------------------------------------------- */
 
-.chiprow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.filterchip {
-  padding: 7px 11px; min-height: 34px; border: 1px solid var(--line);
-  background: var(--card); border-radius: 99px; cursor: pointer;
-  font: inherit; font-size: 12.5px; color: var(--muted);
-}
-.filterchip:hover { border-color: var(--slate); color: var(--ink); }
-.filterchip-on {
-  background: var(--slate); border-color: var(--slate); color: #f5f5f1; font-weight: 500;
-}
+.queuefilters { display: flex; flex-wrap: wrap; gap: 6px; }
+.queuesearch { flex: 1 1 100%; min-height: 44px; }
+.queuesel { flex: 1 1 120px; min-width: 110px; min-height: 42px; font-size: 13.5px; }
+
+/* Native selects default to a light palette in some browsers, which makes the
+   option list unreadable on a dark page. */
+.in, select.in { color-scheme: light dark; }
