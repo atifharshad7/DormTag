@@ -217,15 +217,20 @@ The site auto-builds on every push to `main` once you've connected the repo unde
 * **Scheduling with an external firm.** `slot_offers.staff_id` points at staff, so the caretaker still offers the times. In practice he often attends to let them in, so it half works, but it's a modelling gap rather than a decision.
 
 ## Screenshots
-<img width="590" height="1278" alt="IMG_7749" src="https://github.com/user-attachments/assets/d472aaa2-38c3-40f6-895e-3d7c2dbacff9" />
-<img width="590" height="1278" alt="IMG_7746" src="https://github.com/user-attachments/assets/81b378b0-f0c4-44d0-866b-d883d60d422e" />
-<img width="590" height="1278" alt="IMG_7752" src="https://github.com/user-attachments/assets/ac9175a5-1f6f-4d6e-a542-f869844b9195" />
-<img width="1179" height="2379" alt="IMG_7748" src="https://github.com/user-attachments/assets/7fdb860a-5126-44f9-bd62-c566ffdd311d" />
 
-<img width="590" height="1278" alt="IMG_7750" src="https://github.com/user-attachments/assets/3eec3556-3ec3-4f15-910c-fc2fde34a1ab" />
+<img width="590" height="1278" alt="IMG_7766" src="https://github.com/user-attachments/assets/6131b02e-ef44-4aea-8b4a-904e2aff3e8e" />
+<img width="1179" height="2379" alt="IMG_7774" src="https://github.com/user-attachments/assets/f7a3c0ea-06e1-4525-bacd-dd04710a52e6" />
+<img width="590" height="1278" alt="IMG_7775" src="https://github.com/user-attachments/assets/9d434d3f-5607-4f93-a04c-c2ddcf12df6a" />
+<img width="590" height="1278" alt="IMG_7768" src="https://github.com/user-attachments/assets/a936f9e7-97ac-49f0-b87c-b4736e148591" />
+<img width="1511" height="864" alt="Screenshot 2026-08-12 at 10 34 00 PM" src="https://github.com/user-attachments/assets/f4321c62-55be-4dac-a7d1-35f5a974c29c" />
+<img width="1511" height="864" alt="Screenshot 2026-08-12 at 10 34 15 PM" src="https://github.com/user-attachments/assets/2f00885d-7728-4b1b-92ea-1668aef9f52d" />
+<img width="1511" height="864" alt="Screenshot 2026-08-12 at 10 36 10 PM" src="https://github.com/user-attachments/assets/fa6a5e7d-7c73-482f-bc59-161bc2807e4e" />
+<img width="1511" height="864" alt="Screenshot 2026-08-12 at 10 56 45 PM" src="https://github.com/user-attachments/assets/b107c041-771f-47fb-a446-f27872531469" />
+<img width="1511" height="864" alt="Screenshot 2026-08-12 at 10 50 41 PM" src="https://github.com/user-attachments/assets/ed0c7f86-4d52-4287-8ee3-a5fffe641f8f" />
 
-<img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 26 00 PM" src="https://github.com/user-attachments/assets/615d00e3-6a49-4b90-8913-23c28875cd8d" />
-<img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 26 15 PM" src="https://github.com/user-attachments/assets/605543a8-10b8-49c1-9a4a-3b9533abfeeb" />
-<img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 28 22 PM" src="https://github.com/user-attachments/assets/23f49d47-1fe6-4af1-ac80-30c0f00c3165" />
+
+
+
+
 
 
