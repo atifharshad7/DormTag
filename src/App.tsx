@@ -422,27 +422,42 @@ function StaffView({ l, t, tickets, reload, rules, initialTicket }: {
         </span>
       </div>
 
-      <input className="in" value={q} onChange={(e) => setQ(e.target.value)}
-        placeholder={t("searchQueue")} aria-label={t("searchQueue")} />
+      <div className="queuefilters">
+        <input className="in queuesearch" value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder={t("searchQueue")} aria-label={t("searchQueue")} />
 
-      <div className="chiprow">
-        {buildingCodes.length > 1 && buildingCodes.map((c: any) => (
-          <button key={c} className={"filterchip" + (buildingF === c ? " filterchip-on" : "")}
-            onClick={() => setBuildingF(buildingF === c ? "" : c)}>{c}</button>
-        ))}
-        {[["needs_time", "queueNew"], ["booked", "grpBooked"],
-          ["parts", "queueWaiting"], ["external", "withExternal"]].map(([k, label]) => (
-          <button key={k} className={"filterchip" + (stateF === k ? " filterchip-on" : "")}
-            onClick={() => setStateF(stateF === k ? "" : k)}>{t(label as StrKey)}</button>
-        ))}
-        <button className={"filterchip" + (oldestFirst ? " filterchip-on" : "")}
-          onClick={() => setOldestFirst((v) => !v)}>{t("oldestFirst")}</button>
-        {(filtering || oldestFirst) && (
-          <button className="linkmore" onClick={() => {
-            setQ(""); setBuildingF(""); setStateF(""); setOldestFirst(false);
-          }}>{t("clearFilter")}</button>
+        {/* Selects rather than a row of chips: three controls that name
+            themselves take less room than eight toggles, and they don't push the
+            first actual job below the fold on a phone. */}
+        {buildingCodes.length > 1 && (
+          <select className="in queuesel" value={buildingF} aria-label={t("buildingLabel")}
+            onChange={(e) => setBuildingF(e.target.value)}>
+            <option value="">{t("allBuildings")}</option>
+            {buildingCodes.map((c: any) => <option key={c} value={c}>{c}</option>)}
+          </select>
         )}
+
+        <select className="in queuesel" value={stateF} aria-label={t("statusLabel")}
+          onChange={(e) => setStateF(e.target.value)}>
+          <option value="">{t("allJobs")}</option>
+          <option value="needs_time">{t("queueNew")}</option>
+          <option value="booked">{t("grpBooked")}</option>
+          <option value="parts">{t("queueWaiting")}</option>
+          <option value="external">{t("withExternal")}</option>
+        </select>
+
+        <select className="in queuesel" value={oldestFirst ? "age" : "day"} aria-label={t("sortLabel")}
+          onChange={(e) => setOldestFirst(e.target.value === "age")}>
+          <option value="day">{t("sortByDay")}</option>
+          <option value="age">{t("oldestFirst")}</option>
+        </select>
       </div>
+
+      {(filtering || oldestFirst) && (
+        <button className="linkmore" onClick={() => {
+          setQ(""); setBuildingF(""); setStateF(""); setOldestFirst(false);
+        }}>{t("clearFilter")}</button>
+      )}
 
       {shown.length === 0 && (
         <div className="empty"><p className="muted">{t("nothingHere")}</p></div>
