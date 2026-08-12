@@ -1,0 +1,486 @@
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  ChevronLeft, Plus, Building, Users, Copy, Check, Ban, RotateCcw,
+  Pencil, AlertTriangle,
+} from "lucide-react";
+import { api, roomLabel, objLabel, type Locale, type StrKey } from "./lib";
+
+type T = (k: StrKey) => string;
+
+/* ================================================================== */
+/* First-run setup: there is nobody to log in as yet                   */
+/* ================================================================== */
+
+export function FirstRunSetup({ t, onDone }: { t: T; onDone: () => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const go = async () => {
+    setBusy(true); setErr("");
+    try { await api.bootstrap(email, name, password); await onDone(); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="col signin">
+      <h2>{t("setupTitle")}</h2>
+      <p className="muted">{t("setupHint")}</p>
+      {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+      <label className="field"><span>{t("nameLabel")}</span>
+        <input className="in" value={name} onChange={(e) => setName(e.target.value)} /></label>
+      <label className="field"><span>{t("emailLabel")}</span>
+        <input className="in" type="email" autoComplete="username"
+          value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+      <label className="field"><span>{t("passwordLabel")}</span>
+        <input className="in" type="password" autoComplete="new-password"
+          value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+      <p className="muted">{t("pwRule")}</p>
+      <button className="btn btn-primary btn-big" disabled={busy} onClick={go}>
+        {t("createOperator")}
+      </button>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Accepting a setup link at /setup/:token                             */
+/* ================================================================== */
+
+export function AcceptInvite({ t, token, onDone }: { t: T; token: string; onDone: () => Promise<void> }) {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  return (
+    <div className="col signin">
+      <h2>{t("setPassword")}</h2>
+      <p className="muted">{t("setPasswordHint")}</p>
+      {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+      <label className="field"><span>{t("passwordLabel")}</span>
+        <input className="in" type="password" autoComplete="new-password" value={password}
+          onChange={(e) => setPassword(e.target.value)} /></label>
+      <p className="muted">{t("pwRule")}</p>
+      <button className="btn btn-primary btn-big" disabled={busy}
+        onClick={async () => {
+          setBusy(true); setErr("");
+          try { await api.acceptInvite(token, password); await onDone(); }
+          catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+        }}>
+        {t("signInBtn")}
+      </button>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Manage: buildings and staff                                         */
+/* ================================================================== */
+
+function CopyLink({ t, token }: { t: T; token: string }) {
+  const [done, setDone] = useState(false);
+  const url = `${location.origin}/setup/${token}`;
+  return (
+    <div className="card demo">
+      <p className="cardtitle">{t("setupLink")}</p>
+      <p className="mono breakall">{url}</p>
+      <p className="muted">{t("setupLinkHint")}</p>
+      <button className="btn" onClick={async () => {
+        try { await navigator.clipboard.writeText(url); setDone(true); } catch { /* ignore */ }
+      }}>
+        {done ? <><Check size={16} /> {t("copied")}</> : <><Copy size={16} /> {t("copyLink")}</>}
+      </button>
+    </div>
+  );
+}
+
+function Buildings({ l, t }: { l: Locale; t: T }) {
+  const [rows, setRows] = useState<any[] | null>(null);
+  const [err, setErr] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [count, setCount] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    api.adminBuildings().then((d) => setRows(d.buildings)).catch((e) => setErr(e.message));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  if (openId) {
+    const b = rows?.find((x) => x.id === openId);
+    return <BuildingDetail l={l} t={t} building={b} onBack={() => { setOpenId(null); load(); }} />;
+  }
+
+  return (
+    <div className="col">
+      <div className="rowspread">
+        <h2>{t("buildings")}</h2>
+        <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
+          <Plus size={16} /> {t("addBuilding")}
+        </button>
+      </div>
+      {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+
+      {adding && (
+        <div className="card">
+          <label className="field"><span>{t("buildingCode")}</span>
+            <input className="in mono" value={code} maxLength={6}
+              onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="A" /></label>
+          <p className="muted">{t("codeFixedHint")}</p>
+          <label className="field"><span>{t("buildingName")}</span>
+            <input className="in" value={name} onChange={(e) => setName(e.target.value)}
+              placeholder="Haus A" /></label>
+          <label className="field"><span>{t("roomCount")}</span>
+            <input className="in" type="number" value={count}
+              onChange={(e) => setCount(e.target.value)} /></label>
+          <div className="row">
+            <button className="btn" onClick={() => setAdding(false)}>{t("cancel")}</button>
+            <button className="btn btn-primary" disabled={!code || !name}
+              onClick={async () => {
+                setErr("");
+                try {
+                  await api.createBuilding(code, name, Number(count) || 0);
+                  setCode(""); setName(""); setCount(""); setAdding(false); load();
+                } catch (e: any) { setErr(e.message); }
+              }}>{t("create")}</button>
+          </div>
+        </div>
+      )}
+
+      {!rows && !err && <p className="muted">…</p>}
+      {rows?.length === 0 && <div className="empty"><p className="muted">{t("noBuildings")}</p></div>}
+
+      {rows?.map((b) => (
+        <button className="card cardlink" key={b.id} onClick={() => setOpenId(b.id)}>
+          <div className="rowspread">
+            <p className="cardtitle">{b.name}</p>
+            <span className="plate plate-sm">{b.code}</span>
+          </div>
+          <p className="muted mono">
+            {b.units} {t("unitsWord")} · {b.rooms} {t("roomsWord")} · {b.room_count} {t("plannedWord")}
+          </p>
+          {b.caretakers.length === 0
+            ? <p className="muted warnline"><AlertTriangle size={13} /> {t("noCaretaker")}</p>
+            : <p className="muted">{b.caretakers.map((c: any) => c.name).join(", ")}</p>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BuildingDetail({ l, t, building, onBack }: any) {
+  const [data, setData] = useState<any>(null);
+  const [vocab, setVocab] = useState<any>(null);
+  const [err, setErr] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [unitCode, setUnitCode] = useState("");
+  const [floor, setFloor] = useState("1");
+  const [kind, setKind] = useState<"studio" | "wg">("studio");
+  const [isCommon, setIsCommon] = useState(false);
+  const [rooms, setRooms] = useState<{ code: string; roomType: string; kind: string }[]>([
+    { code: "Z1", roomType: "BEDROOM", kind: "private" },
+    { code: "BA", roomType: "BATHROOM", kind: "private" },
+  ]);
+  const [editRoom, setEditRoom] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft] = useState("");
+
+  const load = useCallback(() => {
+    api.adminUnits(building.id).then((d) => setData(d)).catch((e) => setErr(e.message));
+  }, [building.id]);
+  useEffect(() => { load(); api.adminVocabulary().then(setVocab).catch(() => {}); }, [load]);
+
+  const addRoomRow = () =>
+    setRooms((r) => [...r, { code: "", roomType: "BEDROOM", kind: "private" }]);
+
+  return (
+    <div className="col">
+      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToDash")}</button>
+      <div className="rowspread">
+        <h2>{building.name}</h2>
+        <span className="plate plate-sm">{building.code}</span>
+      </div>
+      {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+
+      <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
+        <Plus size={16} /> {t("addUnit")}
+      </button>
+
+      {adding && (
+        <div className="card">
+          <div className="row">
+            <label className="field" style={{ flex: 1 }}><span>{t("unitCode")}</span>
+              <input className="in mono" value={unitCode} maxLength={8}
+                onChange={(e) => setUnitCode(e.target.value.toUpperCase())} placeholder="112" /></label>
+            <label className="field" style={{ flex: 1 }}><span>{t("floorLabel")}</span>
+              <input className="in" type="number" value={floor}
+                onChange={(e) => setFloor(e.target.value)} /></label>
+          </div>
+          <div className="tabs">
+            <button className={"tab" + (kind === "studio" ? " tab-on" : "")}
+              onClick={() => setKind("studio")}>{t("studio")}</button>
+            <button className={"tab" + (kind === "wg" ? " tab-on" : "")}
+              onClick={() => setKind("wg")}>{t("wg")}</button>
+          </div>
+          <button className="consent" onClick={() => setIsCommon((v) => !v)}>
+            <span>{t("isCommonArea")}</span>
+            <span className={"pill pill-" + (isCommon ? "info" : "neutral")}>
+              {isCommon ? t("yes") : t("no")}
+            </span>
+          </button>
+
+          <p className="steplabel">{t("roomsInUnit")}</p>
+          {rooms.map((r, i) => (
+            <div className="row roomrowedit" key={i}>
+              <input className="in mono roomcodein" value={r.code} maxLength={6}
+                placeholder="Z1"
+                onChange={(e) => setRooms((rs) => rs.map((x, j) =>
+                  j === i ? { ...x, code: e.target.value.toUpperCase() } : x))} />
+              <select className="in" value={r.roomType}
+                onChange={(e) => setRooms((rs) => rs.map((x, j) =>
+                  j === i ? { ...x, roomType: e.target.value } : x))}>
+                {(vocab?.roomTypes ?? []).map((rt: string) =>
+                  <option key={rt} value={rt}>{roomLabel(rt, l)}</option>)}
+              </select>
+              <select className="in" value={r.kind}
+                onChange={(e) => setRooms((rs) => rs.map((x, j) =>
+                  j === i ? { ...x, kind: e.target.value } : x))}>
+                <option value="private">{t("privateRoom")}</option>
+                <option value="shared">{t("sharedTag")}</option>
+              </select>
+              <button className="offerx" onClick={() => setRooms((rs) => rs.filter((_, j) => j !== i))}>×</button>
+            </div>
+          ))}
+          <button className="linkmore" onClick={addRoomRow}>+ {t("addRoom")}</button>
+
+          <div className="row">
+            <button className="btn" onClick={() => setAdding(false)}>{t("cancel")}</button>
+            <button className="btn btn-primary" disabled={!unitCode || rooms.length === 0}
+              onClick={async () => {
+                setErr("");
+                try {
+                  await api.createUnit(building.id, {
+                    code: unitCode, floor: Number(floor) || 0, kind, isCommon, rooms,
+                  });
+                  setUnitCode(""); setAdding(false); load();
+                } catch (e: any) { setErr(e.message); }
+              }}>{t("create")}</button>
+          </div>
+        </div>
+      )}
+
+      {!data && !err && <p className="muted">…</p>}
+      {data?.units.length === 0 && <div className="empty"><p className="muted">{t("noUnits")}</p></div>}
+
+      {data?.units.map((u: any) => (
+        <div className="card" key={u.id}>
+          <div className="rowspread">
+            <span className="plate plate-sm">{building.code}-{u.code}</span>
+            <span className="muted mono">
+              {t("floorShort")}{u.floor} · {u.kind === "wg" ? t("wg") : t("studio")}
+              {u.is_common ? ` · ${t("commonShort")}` : ""}
+            </span>
+          </div>
+          {u.rooms.map((r: any) => (
+            <div className="unitroom" key={r.id}>
+              <span className="mono">{r.code}</span>
+              <span>{r.label || roomLabel(r.room_type, l)}</span>
+              <span className="muted mono">{r.qr_slug}</span>
+              {editRoom === r.id ? (
+                <div className="row">
+                  <input className="in" value={labelDraft} maxLength={40}
+                    placeholder={roomLabel(r.room_type, l)}
+                    onChange={(e) => setLabelDraft(e.target.value)} />
+                  <button className="btn" onClick={async () => {
+                    try { await api.setRoomLabel(r.id, labelDraft); setEditRoom(null); load(); }
+                    catch (e: any) { setErr(e.message); }
+                  }}><Check size={15} /></button>
+                </div>
+              ) : (
+                <button className="offerx" aria-label={t("renameRoom")}
+                  onClick={() => { setEditRoom(r.id); setLabelDraft(r.label || ""); }}>
+                  <Pencil size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Staff({ l, t, me }: { l: Locale; t: T; me: string }) {
+  const [rows, setRows] = useState<any[] | null>(null);
+  const [buildings, setBuildings] = useState<any[]>([]);
+  const [err, setErr] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [isOp, setIsOp] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [token, setToken] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editPicked, setEditPicked] = useState<string[]>([]);
+
+  const load = useCallback(() => {
+    api.adminStaff().then((d) => setRows(d.staff)).catch((e) => setErr(e.message));
+    api.adminBuildings().then((d) => setBuildings(d.buildings)).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = (arr: string[], id: string) =>
+    arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id];
+
+  return (
+    <div className="col">
+      <div className="rowspread">
+        <h2>{t("staffWord")}</h2>
+        <button className="btn btn-primary" onClick={() => { setAdding((v) => !v); setToken(null); }}>
+          <Plus size={16} /> {t("addStaff")}
+        </button>
+      </div>
+      {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+      {token && <CopyLink t={t} token={token} />}
+
+      {adding && (
+        <div className="card">
+          <label className="field"><span>{t("nameLabel")}</span>
+            <input className="in" value={name} onChange={(e) => setName(e.target.value)} /></label>
+          <label className="field"><span>{t("emailLabel")}</span>
+            <input className="in" type="email" value={email}
+              onChange={(e) => setEmail(e.target.value)} /></label>
+          <div className="tabs">
+            <button className={"tab" + (!isOp ? " tab-on" : "")} onClick={() => setIsOp(false)}>
+              {t("staff")}
+            </button>
+            <button className={"tab" + (isOp ? " tab-on" : "")} onClick={() => setIsOp(true)}>
+              {t("operator")}
+            </button>
+          </div>
+          {!isOp && (
+            <>
+              <p className="steplabel">{t("coversWhich")}</p>
+              {buildings.map((b) => (
+                <button key={b.id} className="consent" onClick={() => setPicked((a) => toggle(a, b.id))}>
+                  <span>{b.name}</span>
+                  <span className={"pill pill-" + (picked.includes(b.id) ? "info" : "neutral")}>
+                    {picked.includes(b.id) ? t("yes") : t("no")}
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
+          <div className="row">
+            <button className="btn" onClick={() => setAdding(false)}>{t("cancel")}</button>
+            <button className="btn btn-primary" disabled={!name || !email}
+              onClick={async () => {
+                setErr("");
+                try {
+                  const r = await api.createStaff(email, name, isOp, picked);
+                  setToken(r.setupToken); setName(""); setEmail("");
+                  setPicked([]); setAdding(false); load();
+                } catch (e: any) { setErr(e.message); }
+              }}>{t("create")}</button>
+          </div>
+        </div>
+      )}
+
+      {!rows && !err && <p className="muted">…</p>}
+
+      {rows?.map((s) => (
+        <div className={"card" + (s.disabled_at ? " cardmuted" : "")} key={s.id}>
+          <div className="rowspread">
+            <p className="cardtitle">{s.display_name}</p>
+            <span className={"pill pill-" + (s.is_operator ? "info" : "neutral")}>
+              {s.is_operator ? t("operator") : t("staff")}
+            </span>
+          </div>
+          <p className="muted mono">{s.email}</p>
+          {!s.has_password && <p className="muted"><AlertTriangle size={13} /> {t("neverSignedIn")}</p>}
+          {s.disabled_at && <p className="muted"><Ban size={13} /> {t("disabledWord")}</p>}
+
+          {!s.is_operator && !s.disabled_at && (
+            editing === s.id ? (
+              <>
+                <p className="steplabel">{t("coversWhich")}</p>
+                {buildings.map((b) => (
+                  <button key={b.id} className="consent"
+                    onClick={() => setEditPicked((a) => toggle(a, b.id))}>
+                    <span>{b.name}</span>
+                    <span className={"pill pill-" + (editPicked.includes(b.id) ? "info" : "neutral")}>
+                      {editPicked.includes(b.id) ? t("yes") : t("no")}
+                    </span>
+                  </button>
+                ))}
+                <div className="row">
+                  <button className="btn" onClick={() => setEditing(null)}>{t("cancel")}</button>
+                  <button className="btn btn-primary" onClick={async () => {
+                    setErr("");
+                    try { await api.setStaffBuildings(s.id, editPicked); setEditing(null); load(); }
+                    catch (e: any) { setErr(e.message); }
+                  }}>{t("save")}</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="muted">
+                  {s.buildings.length === 0
+                    ? t("noBuildingsAssigned")
+                    : s.buildings.map((b: any) => b.name).join(", ")}
+                </p>
+                <button className="btn" onClick={() => {
+                  setEditing(s.id); setEditPicked(s.buildings.map((b: any) => b.id));
+                }}>{t("editCoverage")}</button>
+              </>
+            )
+          )}
+
+          <div className="row">
+            {!s.disabled_at && (
+              <button className="btn" onClick={async () => {
+                setErr("");
+                try { const r = await api.inviteStaff(s.id); setToken(r.setupToken); }
+                catch (e: any) { setErr(e.message); }
+              }}>{t("newSetupLink")}</button>
+            )}
+            {s.id !== me && (s.disabled_at ? (
+              <button className="btn" onClick={async () => {
+                setErr("");
+                try { await api.enableStaff(s.id); load(); } catch (e: any) { setErr(e.message); }
+              }}><RotateCcw size={15} /> {t("enableWord")}</button>
+            ) : (
+              <button className="btn btn-warn" onClick={async () => {
+                setErr("");
+                try { await api.disableStaff(s.id); load(); } catch (e: any) { setErr(e.message); }
+              }}><Ban size={15} /> {t("disableWord")}</button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function Manage({ l, t, me, onBack }: { l: Locale; t: T; me: string; onBack: () => void }) {
+  const [tab, setTab] = useState<"buildings" | "staff">("buildings");
+  return (
+    <div className="col">
+      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
+      <div className="tabs">
+        <button className={"tab" + (tab === "buildings" ? " tab-on" : "")}
+          onClick={() => setTab("buildings")}>
+          <Building size={15} strokeWidth={1.75} aria-hidden /> {t("buildings")}
+        </button>
+        <button className={"tab" + (tab === "staff" ? " tab-on" : "")}
+          onClick={() => setTab("staff")}>
+          <Users size={15} strokeWidth={1.75} aria-hidden /> {t("staffWord")}
+        </button>
+      </div>
+      {tab === "buildings" ? <Buildings l={l} t={t} /> : <Staff l={l} t={t} me={me} />}
+    </div>
+  );
+}

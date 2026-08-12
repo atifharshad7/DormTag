@@ -621,6 +621,183 @@ ok("closing a ticket revokes its capability token", await (async () => {
 ok("the resident window is published to the client",
   (await req("/api/session", { cookie: tenant })).json.retention.residentRecentDays === 90);
 
+section("admin: buildings");
+ok("setup is not offered once staff exist",
+  (await req("/api/setup-state")).json.needsSetup === false);
+ok("bootstrap is refused once staff exist",
+  (await req("/api/admin/bootstrap", { method: "POST",
+    body: { email: "x@y.z", name: "X", password: "aaaaaaaaaa" } })).status === 409);
+
+ok("a caretaker cannot list buildings", (await req("/api/admin/buildings", { cookie: staff })).status === 403);
+ok("a resident cannot list buildings", (await req("/api/admin/buildings", { cookie: tenant })).status === 403);
+
+const bList = await req("/api/admin/buildings", { cookie: operator });
+ok("operator sees buildings with counts", bList.status === 200 && bList.json.buildings.length === 3);
+ok("buildings report their caretakers",
+  bList.json.buildings.some((b) => b.caretakers.length > 0));
+
+const made = await req("/api/admin/buildings", { method: "POST", cookie: operator,
+  body: { code: "N", name: "Wohnheim Nordpark", roomCount: 60 } });
+ok("operator creates a building", made.status === 200, JSON.stringify(made.json));
+const NB = made.json.id;
+ok("a duplicate code is refused",
+  (await req("/api/admin/buildings", { method: "POST", cookie: operator,
+    body: { code: "N", name: "Another", roomCount: 1 } })).status === 409);
+ok("a code with punctuation is cleaned or refused",
+  [200, 400].includes((await req("/api/admin/buildings", { method: "POST", cookie: operator,
+    body: { code: "!!!", name: "Bad", roomCount: 1 } })).status));
+
+ok("the name can be changed",
+  (await req(`/api/admin/buildings/${NB}`, { method: "PATCH", cookie: operator,
+    body: { name: "Nordpark", roomCount: 62 } })).status === 200);
+const renamed = (await req("/api/admin/buildings", { cookie: operator })).json.buildings
+  .find((b) => b.id === NB);
+ok("the new name is stored", renamed.name === "Nordpark");
+ok("the code is untouched by a rename", renamed.code === "N");
+ok("a new building has no caretaker and says so", renamed.caretakers.length === 0);
+
+section("admin: units, rooms and slugs");
+const unit = await req(`/api/admin/buildings/${NB}/units`, { method: "POST", cookie: operator,
+  body: { code: "112", floor: 1, kind: "wg", rooms: [
+    { code: "Z1", roomType: "BEDROOM", kind: "private" },
+    { code: "BA", roomType: "BATHROOM", kind: "shared" },
+    { code: "KU", roomType: "KITCHEN", kind: "shared" },
+  ] } });
+ok("operator creates a unit with rooms", unit.status === 200 && unit.json.rooms === 3,
+  JSON.stringify(unit.json));
+
+const units = await req(`/api/admin/buildings/${NB}/units`, { cookie: operator });
+const u112 = units.json.units.find((u) => u.code === "112");
+ok("the unit comes back with its rooms", u112?.rooms.length === 3);
+ok("QR slugs are generated from building and room",
+  u112.rooms.some((r) => r.qr_slug === "n112-ba"), JSON.stringify(u112.rooms.map((r) => r.qr_slug)));
+ok("fixtures are created from the room type",
+  u112.rooms.find((r) => r.room_type === "BATHROOM").objects === 3);
+
+const newSlug = await req("/api/r/n112-ba");
+ok("a brand new sticker resolves immediately", newSlug.status === 200);
+ok("it offers the bathroom's fixtures", newSlug.json.siblings.length === 3);
+
+ok("a duplicate unit code is refused",
+  (await req(`/api/admin/buildings/${NB}/units`, { method: "POST", cookie: operator,
+    body: { code: "112", floor: 1, kind: "studio", rooms: [{ code: "Z1", roomType: "BEDROOM", kind: "private" }] } })).status === 409);
+ok("an unknown room type is refused",
+  (await req(`/api/admin/buildings/${NB}/units`, { method: "POST", cookie: operator,
+    body: { code: "113", floor: 1, kind: "studio", rooms: [{ code: "Z1", roomType: "DUNGEON", kind: "private" }] } })).status === 400);
+ok("a unit with no rooms is refused",
+  (await req(`/api/admin/buildings/${NB}/units`, { method: "POST", cookie: operator,
+    body: { code: "114", floor: 1, kind: "studio", rooms: [] } })).status === 400);
+ok("a caretaker cannot create units",
+  (await req(`/api/admin/buildings/${NB}/units`, { method: "POST", cookie: staff,
+    body: { code: "115", floor: 1, kind: "studio", rooms: [{ code: "Z1", roomType: "BEDROOM", kind: "private" }] } })).status === 403);
+
+section("admin: room labels");
+const bathId = u112.rooms.find((r) => r.room_type === "BATHROOM").id;
+ok("operator sets a room label",
+  (await req(`/api/admin/rooms/${bathId}`, { method: "PATCH", cookie: operator,
+    body: { label: "Bad links" } })).status === 200);
+const labelled = (await req(`/api/admin/buildings/${NB}/units`, { cookie: operator }))
+  .json.units.find((u) => u.code === "112").rooms.find((r) => r.id === bathId);
+ok("the label is stored", labelled.label === "Bad links");
+ok("the type is still a code, so grouping survives", labelled.room_type === "BATHROOM");
+
+// The caretaker is the one standing in the room, but only in his own buildings.
+const bBath = (await req("/api/admin/buildings", { cookie: operator })).json.buildings
+  .find((b) => b.code === "B");
+const bUnits = await req(`/api/admin/buildings/${bBath.id}/units`, { cookie: operator });
+const bRoom = bUnits.json.units.find((u) => u.code === "312").rooms.find((r) => r.room_type === "BATHROOM");
+ok("a caretaker can label a room in his building",
+  (await req(`/api/admin/rooms/${bRoom.id}`, { method: "PATCH", cookie: staff,
+    body: { label: "Bad" } })).status === 200);
+ok("a caretaker cannot label a room he doesn't cover",
+  (await req(`/api/admin/rooms/${bathId}`, { method: "PATCH", cookie: staff,
+    body: { label: "Nope" } })).status === 403);
+ok("a resident cannot label anything",
+  (await req(`/api/admin/rooms/${bRoom.id}`, { method: "PATCH", cookie: tenant,
+    body: { label: "Nope" } })).status === 403);
+
+section("admin: staff and invites");
+const sList = await req("/api/admin/staff", { cookie: operator });
+ok("operator lists staff with assignments", sList.status === 200 && sList.json.staff.length >= 2);
+ok("a caretaker cannot list staff", (await req("/api/admin/staff", { cookie: staff })).status === 403);
+
+const newStaff = await req("/api/admin/staff", { method: "POST", cookie: operator,
+  body: { email: "neu@wohnheim.test", name: "P. Sommer", isOperator: false, buildingIds: [NB] } });
+ok("operator creates a caretaker", newStaff.status === 200, JSON.stringify(newStaff.json));
+ok("creation returns a one-time setup link", typeof newStaff.json.setupToken === "string");
+const NS = newStaff.json.id;
+ok("a duplicate email is refused",
+  (await req("/api/admin/staff", { method: "POST", cookie: operator,
+    body: { email: "neu@wohnheim.test", name: "Clash" } })).status === 409);
+
+ok("the new account cannot log in before setting a password",
+  (await req("/api/auth/staff", { method: "POST",
+    body: { email: "neu@wohnheim.test", password: "anything123" } })).status === 401);
+ok("a short password is refused at setup",
+  (await req("/api/auth/setup", { method: "POST",
+    body: { token: newStaff.json.setupToken, password: "short" } })).status === 400);
+
+const accepted = await req("/api/auth/setup", { method: "POST",
+  body: { token: newStaff.json.setupToken, password: "sommer-2026-ok" } });
+ok("the invitee sets their own password and is signed in", accepted.status === 200);
+const sommer = jarOf(accepted);
+ok("the setup link is single use",
+  (await req("/api/auth/setup", { method: "POST",
+    body: { token: newStaff.json.setupToken, password: "another-one-ok" } })).status === 401);
+ok("a made-up setup link is refused",
+  (await req("/api/auth/setup", { method: "POST",
+    body: { token: "not-a-real-token-at-all", password: "whatever123" } })).status === 401);
+ok("they can now log in normally",
+  (await req("/api/auth/staff", { method: "POST",
+    body: { email: "neu@wohnheim.test", password: "sommer-2026-ok" } })).status === 200);
+
+const sommerSession = await req("/api/session", { cookie: sommer });
+ok("the new caretaker is scoped to their building",
+  sommerSession.json.principal.buildingIds?.length === 1, JSON.stringify(sommerSession.json.principal));
+ok("they see no tickets from buildings they don't cover",
+  (await req("/api/tickets", { cookie: sommer })).json.tickets.every((x) => x.building_code === "N"));
+
+section("admin: assignment");
+ok("operator replaces a caretaker's buildings",
+  (await req(`/api/admin/staff/${NS}/buildings`, { method: "PUT", cookie: operator,
+    body: { buildingIds: [NB, bBath.id] } })).status === 200);
+ok("the change takes effect without a new login",
+  (await req("/api/session", { cookie: sommer })).json.principal.buildingIds.length === 2);
+ok("removing a building with no booked appointments is fine",
+  (await req(`/api/admin/staff/${NS}/buildings`, { method: "PUT", cookie: operator,
+    body: { buildingIds: [NB] } })).status === 200);
+
+// K. Neumann has booked appointments in Haus B from the seed.
+const hmId = sList.json.staff.find((x) => x.email === "hausmeister@wohnheim.test").id;
+const strip = await req(`/api/admin/staff/${hmId}/buildings`, { method: "PUT", cookie: operator,
+  body: { buildingIds: [] } });
+ok("un-assigning a caretaker with booked appointments is refused",
+  strip.status === 409, JSON.stringify(strip.json));
+
+section("admin: disabling");
+ok("operator disables the new caretaker",
+  (await req(`/api/admin/staff/${NS}/disable`, { method: "POST", cookie: operator })).status === 200);
+ok("their session stops working immediately",
+  (await req("/api/session", { cookie: sommer })).json.principal.kind === "anonymous");
+ok("they cannot log back in",
+  (await req("/api/auth/staff", { method: "POST",
+    body: { email: "neu@wohnheim.test", password: "sommer-2026-ok" } })).status === 401);
+ok("disabling twice is refused",
+  (await req(`/api/admin/staff/${NS}/disable`, { method: "POST", cookie: operator })).status === 409);
+ok("re-enabling works",
+  (await req(`/api/admin/staff/${NS}/enable`, { method: "POST", cookie: operator })).status === 200);
+
+const opId = sList.json.staff.find((x) => x.email === "verwaltung@wohnheim.test").id;
+ok("an operator cannot disable themselves",
+  (await req(`/api/admin/staff/${opId}/disable`, { method: "POST", cookie: operator })).status === 409);
+ok("the last operator cannot be demoted away",
+  (await req(`/api/admin/staff/${opId}`, { method: "PATCH", cookie: operator,
+    body: { isOperator: false } })).status === 409);
+
+section("admin: the seed protects real work");
+const reseed = await req("/api/dev/seed", { method: "POST" });
+ok("reseeding is refused once a real building exists", reseed.status === 409, JSON.stringify(reseed.json));
+
 section("static assets");
 const page = await fetch(BASE + "/");
 ok("SPA index is served", page.status === 200 && (await page.text()).includes("DormTag"));

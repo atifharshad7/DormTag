@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   QrCode, Calendar, Clock, Check, ChevronLeft, Package, AlertTriangle, Key,
   Wrench, LayoutDashboard, Languages, User, Users, ArrowRight, Plus,
-  LogOut, Camera, Building, Send,
+  LogOut, Camera, Building, Send, Settings,
 } from "lucide-react";
 import {
   api, T, SYMPTOMS_FOR, CAUSE, CAUSES_FOR,
@@ -15,6 +15,7 @@ import { ScannerModal } from "./Scanner";
 import { SlotPicker, type SlotRules } from "./SlotPicker";
 import { OperatorView } from "./Operator";
 import { Logo } from "./Logo";
+import { Manage, FirstRunSetup, AcceptInvite } from "./Admin";
 
 /* ---------------------------------------------------------------- */
 /* small shared pieces                                              */
@@ -567,11 +568,11 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
 
 /** Minimal path router: /r/:slug is a scanned sticker, /t/:token a report link. */
 function readRoute() {
-  const m = location.pathname.match(/^\/(r|t)\/([A-Za-z0-9_-]+)\/?$/);
+  const m = location.pathname.match(/^\/(r|t|setup)\/([A-Za-z0-9_-]+)\/?$/);
   if (!m) return { kind: "app" as const };
-  return m[1] === "r"
-    ? { kind: "scan" as const, slug: m[2] }
-    : { kind: "token" as const, token: m[2] };
+  if (m[1] === "r") return { kind: "scan" as const, slug: m[2] };
+  if (m[1] === "setup") return { kind: "invite" as const, token: m[2] };
+  return { kind: "token" as const, token: m[2] };
 }
 
 export default function App() {
@@ -579,7 +580,7 @@ export default function App() {
   const [session, setSession] = useState<any>(null);
   const [tickets, setTickets] = useState<any[]>([]);
   const [route, setRoute] = useState(readRoute);
-  const [screen, setScreen] = useState<"main" | "stickers" | "sent">("main");
+  const [screen, setScreen] = useState<"main" | "stickers" | "sent" | "manage">("main");
   const [sent, setSent] = useState<{ id: string; token?: string } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [homeKey, setHomeKey] = useState(0);
@@ -645,6 +646,10 @@ export default function App() {
             <button className="lang" onClick={() => setScreen(screen === "stickers" ? "main" : "stickers")}
               aria-label={t("stickers")}><QrCode size={14} aria-hidden /></button>
           )}
+          {kind === "operator" && (
+            <button className="lang" onClick={() => setScreen(screen === "manage" ? "main" : "manage")}
+              aria-label={t("manageWord")}><Settings size={14} aria-hidden /></button>
+          )}
           {kind !== "anonymous" && (
             <>
               <span className="who"><RoleIcon size={14} strokeWidth={1.75} aria-hidden /> {roleLabel}</span>
@@ -658,8 +663,14 @@ export default function App() {
         </div>
       </header>
 
-      <main className={kind === "operator" || screen === "stickers" ? "wide" : "narrow"}>
-        {screen === "sent" ? (
+      <main className={(kind === "operator" && screen !== "manage") || screen === "stickers" ? "wide" : "narrow"}>
+        {route.kind === "invite" ? (
+          <AcceptInvite t={t} token={route.token} onDone={async () => { goApp(); await loadSession(); }} />
+        ) : kind === "anonymous" && session.needsSetup ? (
+          <FirstRunSetup t={t} onDone={loadSession} />
+        ) : screen === "manage" && kind === "operator" ? (
+          <Manage l={l} t={t} me={session.principal.staffId} onBack={() => setScreen("main")} />
+        ) : screen === "sent" ? (
           <ReportDone t={t} token={sent?.token} onHome={goApp} />
         ) : route.kind === "scan" ? (
           <ScanLanding

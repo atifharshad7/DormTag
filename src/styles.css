@@ -616,3 +616,16 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 
 .brand svg { flex: none; }
 .brandbtn { display: flex; align-items: center; gap: 8px; }
+
+/* --- admin ---------------------------------------------------------- */
+
+.warnline { color: var(--amber); }
+.cardmuted { opacity: .6; }
+.roomrowedit { gap: 6px; align-items: stretch; }
+.roomcodein { flex: 0 0 74px; }
+.roomrowedit .in { min-height: 42px; }
+.unitroom {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-top: 0.5px solid var(--line); font-size: 13.5px;
+}
+.unitroom > .muted { margin-left: auto; }

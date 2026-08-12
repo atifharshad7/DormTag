@@ -8,6 +8,11 @@ Every repair is logged to the exact room and fixture, so after a year the operat
 
 **Status:** working demo, seeded with a year of example data. German and English. Built as a product engineering exercise.
 
+## Screenshots
+
+<!-- Drag your screenshots in here on GitHub. Suggested order:
+     resident report list, scan landing, caretaker queue, slot picker,
+     operator dashboard, sticker sheet, about page. -->
 
 ## What it does
 
@@ -61,11 +66,15 @@ Every repair is logged to the exact room and fixture, so after a year the operat
 
 ```
 worker/
-  index.ts           # API, auth, row scoping, state machine, seed, retention
+  index.ts           # routes, row scoping, state machine, seed, retention
+  core.ts            # env, crypto, sessions, principal, shared helpers
+  admin.ts           # buildings, units, rooms, staff, invites, assignment
 src/
   App.tsx            # app shell, resident and caretaker views
   Operator.tsx       # dashboard: metrics, charts, drill-downs
   Auth.tsx           # sign in, about page, scan landing, sticker sheet
+  Admin.tsx          # first-run setup, invite acceptance, manage buildings and staff
+  Logo.tsx           # the house-and-QR mark
   SlotPicker.tsx     # appointment time picker
   Scanner.tsx        # in-app QR scanner
   lib.ts             # i18n catalogue, label resolution, API client
@@ -145,16 +154,11 @@ The site auto-builds on every push to `main` once you've connected the repo unde
 
 `wrangler.jsonc` also sets `not_found_handling: "single-page-application"` so client-side routes like `/r/b312-ku` don't 404 on refresh, and a daily cron at 03:00 for retention.
 
+## What's deliberately missing
 
-
-## Screenshots
-<img width="590" height="1278" alt="IMG_7749" src="https://github.com/user-attachments/assets/d472aaa2-38c3-40f6-895e-3d7c2dbacff9" />
-<img width="590" height="1278" alt="IMG_7746" src="https://github.com/user-attachments/assets/81b378b0-f0c4-44d0-866b-d883d60d422e" />
-<img width="590" height="1278" alt="IMG_7752" src="https://github.com/user-attachments/assets/ac9175a5-1f6f-4d6e-a542-f869844b9195" />
-<img width="1179" height="2379" alt="IMG_7748" src="https://github.com/user-attachments/assets/7fdb860a-5126-44f9-bd62-c566ffdd311d" />
-
-<img width="590" height="1278" alt="IMG_7750" src="https://github.com/user-attachments/assets/3eec3556-3ec3-4f15-910c-fc2fde34a1ab" />
-
-<img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 26 00 PM" src="https://github.com/user-attachments/assets/615d00e3-6a49-4b90-8913-23c28875cd8d" />
-<img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 26 15 PM" src="https://github.com/user-attachments/assets/605543a8-10b8-49c1-9a4a-3b9533abfeeb" />
-
+* **Email and push notifications.** A slot offer nobody sees is worthless, so this is the first real gap. The structure is there (per-reporter locale and tokens); the sender is not.
+* **Photo upload.** Needs R2, and a `photo_key` column.
+* **Rate limiting** on the public report endpoint. An open endpoint is an open spam endpoint.
+* **Password reset.** Staff passwords are set at seed time, and there's no email sender to reset them with.
+* **A contractor portal.** Commissioning is recorded, but the firm has no login. The right first step is emailing them a capability link, the same mechanism residents already use.
+* **Scheduling with an external firm.** `slot_offers.staff_id` points at staff, so the caretaker still offers the times. In practice he often attends to let them in, so it half works, but it's a modelling gap rather than a decision.

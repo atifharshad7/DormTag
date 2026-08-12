@@ -10,129 +10,28 @@
  *   6  seed generator
  */
 
-export interface Env {
-  DB: D1Database;
-  DEMO_MODE: string;
-  ASSETS: Fetcher;
-}
+import * as admin from "./admin";
+import {
+  type Env, type Principal, type RouteCtx,
+  now, uid, DAY, json, bad, sha256, randomToken,
+  hashNewPassword, derivePassword, sameSecret, readCookie,
+  tooManyAttempts, recordAttempt,
+  isStaff, HttpError, issueStaffSession, issueTenantSession, sessionResponse, clearCookie,
+} from "./core";
+
+export type { Env };
 
 /* ================================================================ */
 /* 1. helpers                                                       */
 /* ================================================================ */
 
-const now = () => Date.now();
-const uid = () => crypto.randomUUID();
-const DAY = 864e5;
-
-const json = (data: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(data), {
-    ...init,
-    headers: { "content-type": "application/json", ...(init.headers || {}) },
-  });
-
-const bad = (msg: string, status = 400) => json({ error: msg }, { status });
-
 /* ================================================================ */
 /* 2. crypto                                                        */
 /* ================================================================ */
 
-const enc = new TextEncoder();
-
-async function sha256(s: string) {
-  const d = await crypto.subtle.digest("SHA-256", enc.encode(s));
-  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function randomToken() {
-  const b = new Uint8Array(32);
-  crypto.getRandomValues(b);
-  return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/**
- * Session cookies carry the raw token — no signature.
- *
- * The token is 32 bytes of crypto-random data and is only accepted if its
- * SHA-256 hash matches a live row in staff_sessions / tenant_sessions. An
- * HMAC on top would add no security (an unguessable token cannot be forged);
- * it would only save one database lookup on garbage input, in exchange for a
- * deployment-time secret that can silently be missing.
- */
-/* ---- password hashing (PBKDF2-SHA256) ---- */
-
-const PBKDF2_ITERATIONS = 100_000;
-
-function toHex(buf: ArrayBuffer) {
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function derivePassword(password: string, saltHex: string): Promise<string> {
-  const salt = Uint8Array.from(saltHex.match(/../g)!.map((h) => parseInt(h, 16)));
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" }, key, 256
-  );
-  return toHex(bits);
-}
-
-async function hashNewPassword(password: string) {
-  const saltBytes = new Uint8Array(16);
-  crypto.getRandomValues(saltBytes);
-  const salt = toHex(saltBytes.buffer);
-  return { salt, hash: await derivePassword(password, salt) };
-}
-
-/** Constant-time-ish comparison so a wrong password can't be timed. */
-function sameSecret(a: string, b: string) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-/* ---- login throttling ---- */
-
-const MAX_ATTEMPTS = 8;
-const ATTEMPT_WINDOW = 15 * 60 * 1000;
-
-async function tooManyAttempts(env: Env, identifier: string) {
-  const row = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM login_attempts
-      WHERE identifier = ?1 AND succeeded = 0 AND attempted_at > ?2`
-  ).bind(identifier.toLowerCase(), now() - ATTEMPT_WINDOW).first<any>();
-  return (row?.n ?? 0) >= MAX_ATTEMPTS;
-}
-
-async function recordAttempt(env: Env, identifier: string, ok: boolean) {
-  await env.DB.prepare(
-    `INSERT INTO login_attempts (identifier, succeeded, attempted_at) VALUES (?1,?2,?3)`
-  ).bind(identifier.toLowerCase(), ok ? 1 : 0, now()).run();
-}
-
-function readCookie(req: Request, name: string): string | null {
-  const raw = req.headers.get("cookie") || "";
-  const hit = raw.split(/;\s*/).find((c) => c.startsWith(name + "="));
-  if (!hit) return null;
-  const value = decodeURIComponent(hit.slice(name.length + 1)).trim();
-  // Reject anything that isn't a plausible token before touching the database.
-  return /^[A-Za-z0-9_-]{20,}$/.test(value) ? value : null;
-}
-
-function setCookie(name: string, value: string, maxAgeSec: number) {
-  return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSec}`;
-}
-const clearCookie = (name: string) => `${name}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
-
 /* ================================================================ */
 /* 3. principal + scoping                                           */
 /* ================================================================ */
-
-type Principal =
-  | { kind: "anonymous" }
-  | { kind: "token"; ticketId: string; reporterId: string; isPrimary: boolean; locale: string }
-  | { kind: "tenant"; tenantId: string; roomId: string; unitId: string; locale: string }
-  | { kind: "staff"; staffId: string; name: string; buildingIds: string[]; locale: string }
-  | { kind: "operator"; staffId: string; name: string; locale: string };
 
 async function resolvePrincipal(req: Request, env: Env): Promise<Principal> {
   const sid = readCookie(req, "sid");
@@ -140,7 +39,8 @@ async function resolvePrincipal(req: Request, env: Env): Promise<Principal> {
     const row = await env.DB.prepare(
       `SELECT s.id, s.display_name, s.is_operator, s.locale
          FROM staff_sessions ss JOIN staff s ON s.id = ss.staff_id
-        WHERE ss.token_hash = ?1 AND ss.revoked_at IS NULL AND ss.expires_at > ?2`
+        WHERE ss.token_hash = ?1 AND ss.revoked_at IS NULL AND ss.expires_at > ?2
+          AND s.disabled_at IS NULL`
     ).bind(await sha256(sid), now()).first<any>();
     if (row) {
       if (row.is_operator) return { kind: "operator", staffId: row.id, name: row.display_name, locale: row.locale };
@@ -206,7 +106,7 @@ function ticketScope(p: Principal): { where: string; binds: unknown[] } {
   }
 }
 
-const isStaff = (p: Principal) => p.kind === "staff" || p.kind === "operator";
+
 
 /** Only the room's own resident consents to entry or picks the time. */
 function mayBookOrConsent(p: Principal, loc: any): boolean {
@@ -242,9 +142,7 @@ function assertTransition(from: State, to: State) {
   }
 }
 
-class HttpError extends Error {
-  constructor(msg: string, public status = 400) { super(msg); }
-}
+
 
 function transitionStmts(env: Env, ticket: any, to: State, reason: string, p: Principal) {
   assertTransition(ticket.state as State, to);
@@ -390,7 +288,7 @@ const DEMO_HINTS = {
 /* 5. routes                                                        */
 /* ================================================================ */
 
-type Ctx = { req: Request; env: Env; p: Principal; url: URL; params: Record<string, string> };
+type Ctx = RouteCtx;
 
 const routes: [string, RegExp, (c: Ctx) => Promise<Response>][] = [];
 const route = (method: string, pattern: string, fn: (c: Ctx) => Promise<Response>) => {
@@ -399,79 +297,6 @@ const route = (method: string, pattern: string, fn: (c: Ctx) => Promise<Response
   routes.push([method, rx, async (c) => fn(c)]);
   (rx as any).names = names;
 };
-
-async function loadTicket(env: Env, id: string) {
-  const t = await env.DB.prepare(`SELECT * FROM tickets WHERE id = ?1`).bind(id).first<any>();
-  if (!t) throw new HttpError("not found", 404);
-  const loc = await env.DB.prepare(
-    `SELECT vtl.*, u.is_common
-       FROM v_ticket_location vtl JOIN units u ON u.id = vtl.unit_id
-      WHERE vtl.ticket_id = ?1`
-  ).bind(id).first<any>();
-  return { ...t, loc };
-}
-
-async function assertVisible(env: Env, p: Principal, id: string) {
-  const s = ticketScope(p);
-  const row = await env.DB.prepare(
-    `SELECT ticket_id FROM v_ticket_location vtl WHERE vtl.ticket_id = ? AND ${s.where}`
-  ).bind(id, ...s.binds).first();
-  if (!row) throw new HttpError("not found", 404);
-}
-
-/* --- session ---------------------------------------------------- */
-
-route("GET", "/api/session", async ({ p, env }) => {
-  const buildings = await env.DB.prepare(`SELECT id, code, name, room_count FROM buildings ORDER BY code`).all<any>();
-  let home = null;
-  if (p.kind === "tenant") {
-    home = await env.DB.prepare(
-      `SELECT u.id AS unit_id, u.code AS unit_code, b.code AS building_code, r.code AS room_code
-         FROM rooms r JOIN units u ON u.id = r.unit_id JOIN buildings b ON b.id = u.building_id
-        WHERE r.id = ?1`
-    ).bind(p.roomId).first<any>();
-  }
-  const demo = env.DEMO_MODE === "true";
-  return json({
-    principal: p,
-    buildings: buildings.results,
-    home,
-    demo,
-    demoHints: demo ? DEMO_HINTS : null,
-    // The client builds its time picker from these, so the two can't drift.
-    slotRules: {
-      hours: SLOT_HOURS,
-      minutes: SLOT_MINUTES,
-      timeZone: BUILDING_TZ,
-      maxOffers: MAX_OFFERS,
-      horizonDays: OFFER_HORIZON_DAYS,
-    },
-    retention: { residentRecentDays: RESIDENT_RECENT_DAYS },
-  });
-});
-
-async function issueStaffSession(env: Env, staffId: string) {
-  const token = randomToken();
-  await env.DB.prepare(
-    `INSERT INTO staff_sessions (id, staff_id, token_hash, issued_at, expires_at) VALUES (?1,?2,?3,?4,?5)`
-  ).bind(uid(), staffId, await sha256(token), now(), now() + 7 * DAY).run();
-  return token;
-}
-
-async function issueTenantSession(env: Env, tenantId: string) {
-  const token = randomToken();
-  await env.DB.prepare(
-    `INSERT INTO tenant_sessions (id, tenant_id, token_hash, issued_at, expires_at) VALUES (?1,?2,?3,?4,?5)`
-  ).bind(uid(), tenantId, await sha256(token), now(), now() + 7 * DAY).run();
-  return token;
-}
-
-function sessionResponse(cookieName: "sid" | "tid", token: string) {
-  const headers = new Headers({ "content-type": "application/json" });
-  headers.append("set-cookie", setCookie(cookieName, token, 7 * 86400));
-  headers.append("set-cookie", clearCookie(cookieName === "sid" ? "tid" : "sid"));
-  return new Response(JSON.stringify({ ok: true }), { headers });
-}
 
 /** Staff and operators: email + password. Role comes from the account, never the request. */
 route("POST", "/api/auth/staff", async ({ req, env }) => {
@@ -483,7 +308,8 @@ route("POST", "/api/auth/staff", async ({ req, env }) => {
   }
 
   const row = await env.DB.prepare(
-    `SELECT id, password_hash, password_salt FROM staff WHERE email = ?1`
+    `SELECT id, password_hash, password_salt FROM staff
+      WHERE email = ?1 AND disabled_at IS NULL`
   ).bind(email.trim().toLowerCase()).first<any>();
 
   // Always do the derivation, even for an unknown email, so response time
@@ -1379,12 +1205,95 @@ route("GET", "/api/dashboard/tickets", async ({ env, p, url }) => {
   return json({ filter: { which, months, building }, tickets: rows.results });
 });
 
+/* --- administration: buildings, rooms and staff ------------------ */
+
+route("GET",   "/api/setup-state",              (c) => admin.setupState(c));
+route("POST",  "/api/admin/bootstrap",          (c) => admin.bootstrap(c));
+route("POST",  "/api/auth/setup",               (c) => admin.consumeInvite(c));
+
+route("GET",   "/api/admin/vocabulary",         (c) => admin.adminVocabulary(c));
+
+route("GET",   "/api/admin/buildings",          (c) => admin.listBuildings(c));
+route("POST",  "/api/admin/buildings",          (c) => admin.createBuilding(c));
+route("PATCH", "/api/admin/buildings/:id",      (c) => admin.updateBuilding(c));
+route("GET",   "/api/admin/buildings/:id/units",(c) => admin.listUnits(c));
+route("POST",  "/api/admin/buildings/:id/units",(c) => admin.createUnit(c));
+
+route("PATCH", "/api/admin/rooms/:id",          (c) => admin.updateRoom(c));
+route("POST",  "/api/admin/rooms/:id/objects",  (c) => admin.addObjects(c));
+route("DELETE","/api/admin/objects/:id",        (c) => admin.deleteObject(c));
+
+route("GET",   "/api/admin/staff",              (c) => admin.listStaff(c));
+route("POST",  "/api/admin/staff",              (c) => admin.createStaff(c));
+route("PATCH", "/api/admin/staff/:id",          (c) => admin.updateStaff(c));
+route("PUT",   "/api/admin/staff/:id/buildings",(c) => admin.setStaffBuildings(c));
+route("POST",  "/api/admin/staff/:id/invite",   (c) => admin.inviteStaff(c));
+route("POST",  "/api/admin/staff/:id/disable",  (c) => admin.disableStaff(c));
+route("POST",  "/api/admin/staff/:id/enable",   (c) => admin.enableStaff(c));
+
 /* --- dev seed --------------------------------------------------- */
 
 route("POST", "/api/dev/seed", async ({ env }) => {
   if (env.DEMO_MODE !== "true") return bad("disabled", 403);
+  // Never wipe an estate somebody actually built.
+  const real = await env.DB.prepare(`SELECT COUNT(*) AS n FROM buildings WHERE seeded = 0`)
+    .first<any>();
+  if (((real?.n as number) ?? 0) > 0) {
+    return bad("this database has real buildings in it — refusing to reseed", 409);
+  }
   await seed(env);
   return json({ ok: true });
+});
+
+async function loadTicket(env: Env, id: string) {
+  const t = await env.DB.prepare(`SELECT * FROM tickets WHERE id = ?1`).bind(id).first<any>();
+  if (!t) throw new HttpError("not found", 404);
+  const loc = await env.DB.prepare(
+    `SELECT vtl.*, u.is_common
+       FROM v_ticket_location vtl JOIN units u ON u.id = vtl.unit_id
+      WHERE vtl.ticket_id = ?1`
+  ).bind(id).first<any>();
+  return { ...t, loc };
+}
+
+async function assertVisible(env: Env, p: Principal, id: string) {
+  const s = ticketScope(p);
+  const row = await env.DB.prepare(
+    `SELECT ticket_id FROM v_ticket_location vtl WHERE vtl.ticket_id = ? AND ${s.where}`
+  ).bind(id, ...s.binds).first();
+  if (!row) throw new HttpError("not found", 404);
+}
+
+/* --- session ---------------------------------------------------- */
+
+route("GET", "/api/session", async ({ p, env }) => {
+  const buildings = await env.DB.prepare(`SELECT id, code, name, room_count FROM buildings ORDER BY code`).all<any>();
+  let home = null;
+  if (p.kind === "tenant") {
+    home = await env.DB.prepare(
+      `SELECT u.id AS unit_id, u.code AS unit_code, b.code AS building_code, r.code AS room_code
+         FROM rooms r JOIN units u ON u.id = r.unit_id JOIN buildings b ON b.id = u.building_id
+        WHERE r.id = ?1`
+    ).bind(p.roomId).first<any>();
+  }
+  const demo = env.DEMO_MODE === "true";
+  return json({
+    principal: p,
+    buildings: buildings.results,
+    home,
+    demo,
+    demoHints: demo ? DEMO_HINTS : null,
+    // The client builds its time picker from these, so the two can't drift.
+    slotRules: {
+      hours: SLOT_HOURS,
+      minutes: SLOT_MINUTES,
+      timeZone: BUILDING_TZ,
+      maxOffers: MAX_OFFERS,
+      horizonDays: OFFER_HORIZON_DAYS,
+    },
+    retention: { residentRecentDays: RESIDENT_RECENT_DAYS },
+    needsSetup: ((await env.DB.prepare(`SELECT COUNT(*) AS n FROM staff`).first<any>())?.n ?? 0) === 0,
+  });
 });
 
 /* ================================================================ */
@@ -1479,7 +1388,7 @@ async function seed(env: Env) {
     { id: "b-c", code: "C", name: "Haus C", rooms: 150 },
   ];
   buildings.forEach((b) =>
-    stmts.push(env.DB.prepare(`INSERT INTO buildings (id, code, name, room_count) VALUES (?1,?2,?3,?4)`)
+    stmts.push(env.DB.prepare(`INSERT INTO buildings (id, code, name, room_count, seeded) VALUES (?1,?2,?3,?4,1)`)
       .bind(b.id, b.code, b.name, b.rooms))
   );
 
