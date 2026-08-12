@@ -337,6 +337,16 @@ export function OperatorView({ l, t }: { l: Locale; t: T }) {
             </button>
           </div>
 
+          <p className="eyebrow">{t("buildings")}</p>
+          <div className="bgrid">
+            {d.buildings.map((b: any) => (
+              <BuildingCard key={b.id} l={l} t={t} b={b}
+                active={building === b.code}
+                onFilter={() => setBuilding(building === b.code ? null : b.code)}
+                onChanged={load} />
+            ))}
+          </div>
+
           <div className="card">
             <p className="cardtitle">{t("reportedVsFixed")}</p>
             <TrendChart l={l} t={t} data={d.trend} selected={month} onSelect={setMonth} />
@@ -382,16 +392,6 @@ export function OperatorView({ l, t }: { l: Locale; t: T }) {
                 </div>
               );
             })}
-          </div>
-
-          <p className="eyebrow">{t("buildings")}</p>
-          <div className="bgrid">
-            {d.buildings.map((b: any) => (
-              <BuildingCard key={b.id} l={l} t={t} b={b}
-                active={building === b.code}
-                onFilter={() => setBuilding(building === b.code ? null : b.code)}
-                onChanged={load} />
-            ))}
           </div>
         </>
       )}
