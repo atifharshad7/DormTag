@@ -304,10 +304,12 @@ function Qr({ text, size = 132 }: { text: string; size?: number }) {
   return <canvas ref={ref} width={size} height={size} className="qr" />;
 }
 
-export function StickerSheet({ l, t, buildings, onBack }: {
+export function StickerSheet({ l, t, buildings, onBack, initialBuilding }: {
   l: Locale; t: T; buildings: any[]; onBack: () => void;
+  /** Set when arriving from a building card: skip the picker entirely. */
+  initialBuilding?: string | null;
 }) {
-  const [code, setCode] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(initialBuilding ?? null);
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
 

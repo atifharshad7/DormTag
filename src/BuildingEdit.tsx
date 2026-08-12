@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Check, X, Pencil, AlertTriangle, Users } from "lucide-react";
+import { Plus, Check, X, Pencil, AlertTriangle, Users, Printer } from "lucide-react";
 import { api, roomLabel, type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -179,9 +179,9 @@ export function AddUnitForm({ l, t, building, onDone, onCancel }: {
  * Tapping the card filters the dashboard, as before. Editing is behind a pencil
  * so a mis-tap while reading the numbers can't rename a building.
  */
-export function BuildingCard({ l, t, b, active, onFilter, onChanged }: {
+export function BuildingCard({ l, t, b, active, onFilter, onChanged, onStickers }: {
   l: Locale; t: T; b: any; active: boolean;
-  onFilter: () => void; onChanged: () => void;
+  onFilter: () => void; onChanged: () => void; onStickers?: () => void;
 }) {
   const [mode, setMode] = useState<"idle" | "edit" | "unit">("idle");
   const load = Math.min(100, Math.round(((b.open_count ?? 0) / 20) * 100));
@@ -227,10 +227,17 @@ export function BuildingCard({ l, t, b, active, onFilter, onChanged }: {
         ? <p className="muted"><Users size={13} aria-hidden /> {b.caretakers.map((c: any) => c.name).join(", ")}</p>
         : <p className="muted warnline"><AlertTriangle size={13} aria-hidden /> {t("noCaretaker")}</p>}
 
-      <div className="row">
+      <div className="row cardactions">
         <button className="linkmore" onClick={() => setMode("unit")}>
-          <Plus size={13} /> {t("addUnit")}
+          <Plus size={13} aria-hidden /> {t("addUnit")}
         </button>
+        {/* Printing stickers belongs next to creating units: you make the rooms,
+            then you print their codes. Arriving from here skips the picker. */}
+        {onStickers && (
+          <button className="linkmore" onClick={onStickers}>
+            <Printer size={13} aria-hidden /> {t("printStickers")}
+          </button>
+        )}
         <button className="linkmore" onClick={onFilter} style={{ marginLeft: "auto" }}>
           {active ? t("clearFilter") : t("filterToThis")} →
         </button>

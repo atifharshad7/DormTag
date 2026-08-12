@@ -593,6 +593,7 @@ export default function App() {
     useState<"main" | "stickers" | "sent" | "manage" | "account" | "about">("main");
   const [bellOpen, setBellOpen] = useState(false);
   const [openTicket, setOpenTicket] = useState<string | null>(null);
+  const [stickerBuilding, setStickerBuilding] = useState<string | null>(null);
   const [sent, setSent] = useState<{ id: string; token?: string } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [homeKey, setHomeKey] = useState(0);
@@ -664,7 +665,7 @@ export default function App() {
                 <Camera size={14} aria-hidden />
               </button>
               {isStaffKind && (
-                <button className="lang" onClick={() => setScreen(screen === "stickers" ? "main" : "stickers")}
+                <button className="lang" onClick={() => { setStickerBuilding(null); setScreen(screen === "stickers" ? "main" : "stickers"); }}
                   aria-label={t("stickers")}><QrCode size={14} aria-hidden /></button>
               )}
               <BellButton t={t} unread={unread} onClick={() => setBellOpen(true)} />
@@ -709,7 +710,8 @@ export default function App() {
             onDone={(id, token) => { setSent({ id, token }); setScreen("sent"); reload(); }}
           />
         ) : screen === "stickers" && isStaffKind ? (
-          <StickerSheet l={l} t={t} buildings={session.buildings} onBack={() => setScreen("main")} />
+          <StickerSheet l={l} t={t} buildings={session.buildings} initialBuilding={stickerBuilding}
+            onBack={() => { setStickerBuilding(null); setScreen("main"); }} />
         ) : kind === "anonymous" ? (
           <SignIn l={l} t={t} session={session} onDone={loadSession} />
         ) : kind === "tenant" ? (
@@ -720,7 +722,8 @@ export default function App() {
           <StaffView key={homeKey + ":" + (openTicket ?? "")} l={l} t={t} tickets={tickets} reload={reload}
             rules={session.slotRules} initialTicket={openTicket} />
         ) : (
-          <OperatorView l={l} t={t} />
+          <OperatorView l={l} t={t}
+            onStickers={(code) => { setStickerBuilding(code); setScreen("stickers"); }} />
         )}
       </main>
 

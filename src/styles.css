@@ -684,3 +684,5 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 }
 .cardnamebtn:hover { color: var(--blue); }
 .cardediting { border: 2px solid var(--slate); }
+
+.cardactions { flex-wrap: wrap; gap: 12px; }

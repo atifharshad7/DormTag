@@ -257,6 +257,7 @@ export const T = {
   copied:         { de: "Kopiert",                   en: "Copied" },
   stickers:       { de: "QR-Aufkleber",              en: "QR stickers" },
   printSheet:     { de: "Bogen drucken",             en: "Print sheet" },
+  printStickers:   { de: "Aufkleber drucken",        en: "Print stickers" },
   pickBuilding:   { de: "Gebäude wählen",            en: "Choose a building" },
   stickerCount:   { de: "Aufkleber",                 en: "stickers" },
   backToApp:      { de: "Zurück",                    en: "Back" },

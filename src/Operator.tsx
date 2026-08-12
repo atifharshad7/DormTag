@@ -255,7 +255,9 @@ function TicketList({ l, t, which, months, building, onBack }: {
 /* dashboard                                                          */
 /* ------------------------------------------------------------------ */
 
-export function OperatorView({ l, t }: { l: Locale; t: T }) {
+export function OperatorView({ l, t, onStickers }: {
+  l: Locale; t: T; onStickers?: (code: string) => void;
+}) {
   const [months, setMonths] = useState(12);
   const [building, setBuilding] = useState<string | null>(null);
   const [d, setD] = useState<any>(null);
@@ -343,7 +345,8 @@ export function OperatorView({ l, t }: { l: Locale; t: T }) {
               <BuildingCard key={b.id} l={l} t={t} b={b}
                 active={building === b.code}
                 onFilter={() => setBuilding(building === b.code ? null : b.code)}
-                onChanged={load} />
+                onChanged={load}
+                onStickers={onStickers ? () => onStickers(b.code) : undefined} />
             ))}
           </div>
 
