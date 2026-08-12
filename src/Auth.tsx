@@ -313,9 +313,17 @@ export function StickerSheet({ l, t, buildings, onBack, initialBuilding }: {
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
 
+  // Filters, because the common job is reprinting one damaged sticker in a
+  // building of 240 rooms, not printing the building.
+  const [floor, setFloor] = useState<string>("");
+  const [unitQ, setUnitQ] = useState("");
+  const [roomType, setRoomType] = useState<string>("");
+  const [picked, setPicked] = useState<string[]>([]);
+
   useEffect(() => {
     if (!code) return;
-    setData(null); setErr("");
+    setData(null); setErr(""); setPicked([]);
+    setFloor(""); setUnitQ(""); setRoomType("");
     api.stickerSheet(code).then(setData).catch((e) => setErr(e.message));
   }, [code]);
 
@@ -339,45 +347,121 @@ export function StickerSheet({ l, t, buildings, onBack, initialBuilding }: {
     );
   }
 
+  const all: any[] = data?.stickers ?? [];
+  const floors = [...new Set(all.map((x) => x.floor))].sort((a, b) => a - b);
+  const roomTypes = [...new Set(all.map((x) => x.room_type).filter(Boolean))];
+
+  const q = unitQ.trim().toLowerCase();
+  const shown = all.filter((x) =>
+    (floor === "" || String(x.floor) === floor) &&
+    (roomType === "" || x.room_type === roomType) &&
+    (q === "" ||
+      String(x.unit_code).toLowerCase().includes(q) ||
+      String(x.room_code).toLowerCase().includes(q) ||
+      String(x.qr_slug).toLowerCase().includes(q))
+  );
+
+  // Selection is optional: with nothing picked, printing gives you everything
+  // currently shown, so filtering alone is enough for the usual case.
+  const toPrint = picked.length
+    ? shown.filter((x) => picked.includes(x.qr_slug))
+    : shown;
+  const toggle = (slug: string) =>
+    setPicked((a) => a.includes(slug) ? a.filter((x) => x !== slug) : [...a, slug]);
+
+  const filtered = floor !== "" || roomType !== "" || q !== "";
+
   return (
     <div className="col">
       <div className="rowspread noprint">
-        <button className="linkback" onClick={() => setCode(null)}>
-          <ChevronLeft size={16} /> {t("backToApp")}
+        {/* Arriving from a building card means there is no picker behind this,
+            so Back must leave the sheet rather than drop into one. */}
+        <button className="linkback"
+          onClick={() => (initialBuilding ? onBack() : setCode(null))}>
+          <ChevronLeft size={16} /> {initialBuilding ? t("backToApp") : t("pickBuilding")}
         </button>
-        {data && (
-          <div className="row">
-            <span className="muted">{data.stickers.length} {t("stickerCount")}</span>
-            <button className="btn" onClick={() => window.print()}>
-              <Printer size={16} /> {t("printSheet")}
-            </button>
-          </div>
-        )}
+        <div className="row">
+          <span className="muted">
+            {toPrint.length}{toPrint.length !== all.length ? ` / ${all.length}` : ""} {t("stickerCount")}
+          </span>
+          <button className="btn" disabled={toPrint.length === 0} onClick={() => window.print()}>
+            <Printer size={16} aria-hidden /> {t("printSheet")}
+          </button>
+        </div>
       </div>
+
+      <div className="controls noprint">
+        <label className="ctl">
+          <span>{t("floorLabel")}</span>
+          <select className="in" value={floor} onChange={(e) => setFloor(e.target.value)}>
+            <option value="">{t("allFloors")}</option>
+            {floors.map((f) => <option key={f} value={String(f)}>{t("floorShort")}{f}</option>)}
+          </select>
+        </label>
+        <label className="ctl">
+          <span>{t("roomsInUnit")}</span>
+          <select className="in" value={roomType} onChange={(e) => setRoomType(e.target.value)}>
+            <option value="">{t("allRooms")}</option>
+            {roomTypes.map((rt) => <option key={rt} value={rt}>{roomLabel(rt, l)}</option>)}
+          </select>
+        </label>
+        <label className="ctl">
+          <span>{t("findUnit")}</span>
+          <input className="in mono" value={unitQ} placeholder="204"
+            onChange={(e) => setUnitQ(e.target.value)} />
+        </label>
+      </div>
+
+      {(picked.length > 0 || filtered) && (
+        <div className="row noprint">
+          <span className="muted">
+            {picked.length > 0 ? `${picked.length} ${t("selectedWord")}` : t("filteredWord")}
+          </span>
+          {picked.length > 0 && (
+            <button className="linkmore" onClick={() => setPicked([])}>{t("clearSelection")}</button>
+          )}
+          {filtered && (
+            <button className="linkmore" onClick={() => { setFloor(""); setRoomType(""); setUnitQ(""); }}>
+              {t("clearFilter")}
+            </button>
+          )}
+        </div>
+      )}
 
       {err && <div className="err">{err}</div>}
       {!data && !err && <p className="muted">…</p>}
+      {data && shown.length === 0 && (
+        <div className="empty"><p className="muted">{t("nothingHere")}</p></div>
+      )}
 
       {data && (
         <div className="sheet">
-          {data.stickers.map((s: any) => (
-            <div className="stickercard" key={s.qr_slug}>
-              <Qr text={`${origin}/r/${s.qr_slug}`} />
-              <div className="stickermeta">
-                <span className="stickerplate">
-                  {data.building.code}-{s.unit_code}
-                  {s.is_common ? ` · ${t("floorShort")}${s.floor}` : ""}
-                </span>
-                <span className="stickerobj">
-                  {s.kind === "room"
-                    ? roomLabel(s.room_type, l)
-                    : `${objLabel(s.object_type, l)} ${s.ordinal}`}
-                </span>
-                <span className="stickerhint">{t("reportProblem")} · Schaden melden</span>
-                <span className="stickerslug mono">{s.qr_slug}</span>
-              </div>
-            </div>
-          ))}
+          {shown.map((s2: any) => {
+            const on = picked.includes(s2.qr_slug);
+            // When something is selected, everything else is dropped from the
+            // printed page but stays on screen so you can keep choosing.
+            const printable = picked.length === 0 || on;
+            return (
+              <button key={s2.qr_slug} type="button"
+                className={"stickercard" + (on ? " stickerpicked" : "") + (printable ? "" : " noprint")}
+                onClick={() => toggle(s2.qr_slug)}>
+                <Qr text={`${origin}/r/${s2.qr_slug}`} />
+                <div className="stickermeta">
+                  <span className="stickerplate">
+                    {data.building.code}-{s2.unit_code}
+                    {s2.is_common ? ` · ${t("floorShort")}${s2.floor}` : ""}
+                  </span>
+                  <span className="stickerobj">
+                    {s2.kind === "room"
+                      ? (s2.room_label || roomLabel(s2.room_type, l))
+                      : `${objLabel(s2.object_type, l)} ${s2.ordinal}`}
+                  </span>
+                  <span className="stickerhint">{t("reportProblem")} · Schaden melden</span>
+                  <span className="stickerslug mono">{s2.qr_slug}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
