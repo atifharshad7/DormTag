@@ -629,3 +629,49 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   padding: 8px 0; border-top: 0.5px solid var(--line); font-size: 13.5px;
 }
 .unitroom > .muted { margin-left: auto; }
+
+/* --- bell and notifications ----------------------------------------- */
+
+.bellbtn { position: relative; }
+.bellcount {
+  position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px;
+  display: grid; place-items: center; padding: 0 3px;
+  background: var(--yellow); color: #2a1f02; border-radius: 99px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 500;
+}
+
+.notifrow {
+  display: flex; align-items: flex-start; gap: 9px; width: 100%;
+  padding: 11px 12px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 8px; cursor: pointer; font: inherit; text-align: left; color: var(--ink);
+}
+.notifrow:hover { border-color: var(--slate); }
+.notifread { opacity: .62; }
+.notifdot {
+  flex: none; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--yellow); margin-top: 6px;
+}
+.notifread .notifdot { display: none; }
+.notifbody { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.notiftext { margin: 0; font-size: 14px; }
+.notifwhen { font-size: 11px; }
+
+/* --- account page --------------------------------------------------- */
+
+.whobtn {
+  border: 1px solid rgba(255,255,255,.22); border-radius: 6px;
+  padding: 7px 10px; min-height: 34px; background: none; cursor: pointer;
+  font: inherit; font-size: 13px; color: rgba(242,242,238,.85);
+}
+.whobtn:hover { background: rgba(255,255,255,.08); color: #f2f2ee; }
+
+.accountrow {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 13px 14px; min-height: 50px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  cursor: pointer; font: inherit; font-size: 14.5px; color: var(--ink); text-align: left;
+}
+.accountrow:hover { border-color: var(--slate); }
+.accountrow > span:first-of-type { flex: 1; }
+.accountrow .mono { color: var(--muted); }
+.accountout { color: var(--red); }

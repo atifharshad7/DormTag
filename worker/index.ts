@@ -17,6 +17,7 @@ import {
   hashNewPassword, derivePassword, sameSecret, readCookie,
   tooManyAttempts, recordAttempt,
   isStaff, HttpError, issueStaffSession, issueTenantSession, sessionResponse, clearCookie,
+  queueNotification, readerKey, notificationScope,
 } from "./core";
 
 export type { Env };
@@ -525,7 +526,8 @@ route("POST", "/api/tickets", async ({ env, req, p }) => {
   if (!body.objectId || !body.symptom) return bad("objectId and symptom required");
 
   const o = await env.DB.prepare(
-    `SELECT o.id, r.kind AS room_kind, r.unit_id, r.id AS room_id, u.is_common
+    `SELECT o.id, r.kind AS room_kind, r.unit_id, r.id AS room_id,
+            u.is_common, u.building_id
        FROM objects o
        JOIN rooms r ON r.id = o.room_id
        JOIN units u ON u.id = r.unit_id
@@ -583,6 +585,7 @@ route("POST", "/api/tickets", async ({ env, req, p }) => {
       `INSERT INTO ticket_events (ticket_id, to_state, actor_kind, actor_id, reason, created_at)
        VALUES (?1,'reported',?2,?3,'reported',?4)`
     ).bind(id, p.kind === "tenant" ? "tenant" : "system", p.kind === "tenant" ? p.tenantId : null, now()),
+    ...tellStaff(env, o.building_id, id, "reported", { symptom: body.symptom }),
   ]);
   return json({ id, merged: false, token });
 });
@@ -641,6 +644,7 @@ route("POST", "/api/tickets/:id/offer", async ({ env, req, p, params }) => {
   if (t.state !== "slots_offered") {
     stmts.push(...transitionStmts(env, t, "slots_offered", "slots_offered", p));
   }
+  stmts.push(...(await tellTenant(env, t.id, "slots_offered", { count: free.length })));
   await env.DB.batch(stmts);
   return json({ ok: true, offered: free.length, skipped: chosen.length - free.length });
 });
@@ -700,14 +704,23 @@ route("POST", "/api/tickets/:id/book", async ({ env, req, p, params }) => {
   }
 
   if (!claimed.meta.changes) {
+    // Three different reasons, and telling them apart matters: "already taken"
+    // sends the resident looking for another time, which is useless advice if
+    // the real problem is that this ticket already has an appointment.
+    const already = await env.DB.prepare(
+      `SELECT starts_at FROM appointments WHERE ticket_id = ?1 AND status = 'booked'`
+    ).bind(t.id).first<any>();
+    if (already) return bad("this report already has an appointment", 409);
     return bad("that time was just taken — pick another", 409);
   }
 
   // Other offered times stay open: if the resident later changes their mind,
   // they pick from what the caretaker already agreed to.
-  await env.DB.batch(
-    transitionStmts(env, t, "scheduled", t.reschedule_count > 0 ? "rebooked" : "booked", p)
-  );
+  await env.DB.batch([
+    ...transitionStmts(env, t, "scheduled", t.reschedule_count > 0 ? "rebooked" : "booked", p),
+    ...tellStaff(env, t.loc.building_id, t.id,
+      t.reschedule_count > 0 ? "rebooked" : "booked", { startsAt: slot.starts_at }),
+  ]);
   return json({ ok: true });
 });
 
@@ -751,6 +764,9 @@ route("POST", "/api/tickets/:id/reschedule", async ({ env, p, params }) => {
       `UPDATE slot_offers SET expires_at = ?1 WHERE id = ?2`
     ).bind(now(), appt.slot_offer_id),
     ...transitionStmts(env, t, back, left > 0 ? "reschedule" : "needs_times", p),
+    ...(isStaff(p)
+      ? await tellTenant(env, t.id, "staff_cancelled", { remaining: left })
+      : tellStaff(env, t.loc.building_id, t.id, "tenant_rescheduled", {})),
   ]);
   return json({ ok: true, remaining: left });
 });
@@ -788,6 +804,7 @@ route("POST", "/api/tickets/:id/part", async ({ env, req, p, params }) => {
     env.DB.prepare(`UPDATE appointments SET status='completed', resolved_at=?1 WHERE ticket_id=?2 AND status='booked'`)
       .bind(now(), t.id),
     ...transitionStmts(env, t, "waiting_for_parts", "part_ordered", p),
+    ...(await tellTenant(env, t.id, "part_ordered", { part: what, eta: eta || null })),
   ]);
   return json({ ok: true });
 });
@@ -804,6 +821,7 @@ route("POST", "/api/tickets/:id/part-arrived", async ({ env, p, params }) => {
       `UPDATE parts_orders SET arrived_at = ?1 WHERE ticket_id = ?2 AND arrived_at IS NULL`
     ).bind(now(), t.id),
     ...transitionStmts(env, t, back, "part_arrived", p),
+    ...(await tellTenant(env, t.id, "part_arrived", {})),
   ]);
   return json({ ok: true, remaining: left });
 });
@@ -851,6 +869,8 @@ route("POST", "/api/tickets/:id/escalate", async ({ env, req, p, params }) => {
       env.DB.prepare(`UPDATE slot_offers SET expires_at = ?1 WHERE id = ?2`).bind(now(), appt.slot_offer_id)
     );
   }
+  stmts.push(queueNotification(env, { audience: "operator" }, "escalated", t.id, { trade, reason }));
+  stmts.push(...(await tellTenant(env, t.id, "escalated", { trade })));
   await env.DB.batch(stmts);
   return json({ ok: true, trade, reason });
 });
@@ -920,6 +940,7 @@ route("POST", "/api/tickets/:id/done", async ({ env, req, p, params }) => {
       .bind(now(), t.id),
     env.DB.prepare(`UPDATE slot_offers SET expires_at = ?1 WHERE ticket_id = ?2 AND expires_at > ?1`).bind(now(), t.id),
     ...transitionStmts(env, t, "done", "fixed", p),
+    ...(await tellTenant(env, t.id, "fixed", { cause })),
   ]);
   return json({ ok: true });
 });
@@ -1205,6 +1226,70 @@ route("GET", "/api/dashboard/tickets", async ({ env, p, url }) => {
   return json({ filter: { which, months, building }, tickets: rows.results });
 });
 
+/* --- notifications ----------------------------------------------- */
+
+/**
+ * The bell. Unread count plus the most recent notices, each carrying enough
+ * location to render a row without a second request.
+ */
+route("GET", "/api/notifications", async ({ env, p }) => {
+  const reader = readerKey(p);
+  if (!reader) return json({ notifications: [], unread: 0 });
+
+  const scope = notificationScope(p);
+  const rows = await env.DB.prepare(
+    `SELECT n.id, n.kind, n.payload, n.created_at, n.ticket_id,
+            vtl.building_code, vtl.unit_code, vtl.room_type, vtl.room_label,
+            vtl.object_type, vtl.state,
+            (r.read_at IS NOT NULL) AS is_read
+       FROM notifications n
+       LEFT JOIN v_ticket_location vtl ON vtl.ticket_id = n.ticket_id
+       LEFT JOIN notification_reads r ON r.notification_id = n.id AND r.reader = ?1
+      WHERE ${scope.where}
+      ORDER BY n.created_at DESC
+      LIMIT 40`
+  ).bind(reader, ...scope.binds).all<any>();
+
+  const unread = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM notifications n
+      WHERE ${scope.where}
+        AND NOT EXISTS (SELECT 1 FROM notification_reads r
+                         WHERE r.notification_id = n.id AND r.reader = ?${scope.binds.length + 1})`
+  ).bind(...scope.binds, reader).first<any>();
+
+  return json({ notifications: rows.results, unread: unread?.n ?? 0 });
+});
+
+/** Read on tap, not on opening the panel: a glance shouldn't clear your list. */
+route("POST", "/api/notifications/:id/read", async ({ env, p, params }) => {
+  const reader = readerKey(p);
+  if (!reader) return bad("sign in first", 403);
+
+  const scope = notificationScope(p);
+  const visible = await env.DB.prepare(
+    `SELECT n.id FROM notifications n WHERE n.id = ? AND ${scope.where}`
+  ).bind(params.id, ...scope.binds).first();
+  if (!visible) return bad("not found", 404);
+
+  await env.DB.prepare(
+    `INSERT INTO notification_reads (notification_id, reader, read_at) VALUES (?1,?2,?3)
+     ON CONFLICT (notification_id, reader) DO NOTHING`
+  ).bind(params.id, reader, now()).run();
+  return json({ ok: true });
+});
+
+route("POST", "/api/notifications/read-all", async ({ env, p }) => {
+  const reader = readerKey(p);
+  if (!reader) return bad("sign in first", 403);
+  const scope = notificationScope(p);
+  await env.DB.prepare(
+    `INSERT INTO notification_reads (notification_id, reader, read_at)
+     SELECT n.id, ?1, ?2 FROM notifications n WHERE ${scope.where}
+     ON CONFLICT (notification_id, reader) DO NOTHING`
+  ).bind(reader, now(), ...scope.binds).run();
+  return json({ ok: true });
+});
+
 /* --- administration: buildings, rooms and staff ------------------ */
 
 route("GET",   "/api/setup-state",              (c) => admin.setupState(c));
@@ -1244,6 +1329,32 @@ route("POST", "/api/dev/seed", async ({ env }) => {
   await seed(env);
   return json({ ok: true });
 });
+
+/**
+ * The resident to notify about a ticket: the primary reporter if they have an
+ * account. Anonymous reporters have no bell, which is what the capability link
+ * (and later, email) is for.
+ */
+async function ticketTenant(env: Env, ticketId: string): Promise<string | null> {
+  const r = await env.DB.prepare(
+    `SELECT tenant_id FROM ticket_reporters
+      WHERE ticket_id = ?1 AND tenant_id IS NOT NULL
+      ORDER BY is_primary DESC, created_at LIMIT 1`
+  ).bind(ticketId).first<any>();
+  return (r?.tenant_id as string) ?? null;
+}
+
+/** Notify the resident, if there is one to notify. */
+async function tellTenant(env: Env, ticketId: string, kind: string, payload: Record<string, unknown> = {}) {
+  const tenantId = await ticketTenant(env, ticketId);
+  if (!tenantId) return [];
+  return [queueNotification(env, { audience: "tenant", tenantId }, kind, ticketId, payload)];
+}
+
+/** Notify whoever covers the building this ticket is in. */
+function tellStaff(env: Env, buildingId: string, ticketId: string, kind: string, payload: Record<string, unknown> = {}) {
+  return [queueNotification(env, { audience: "staff", buildingId }, kind, ticketId, payload)];
+}
 
 async function loadTicket(env: Env, id: string) {
   const t = await env.DB.prepare(`SELECT * FROM tickets WHERE id = ?1`).bind(id).first<any>();
@@ -1300,6 +1411,44 @@ route("GET", "/api/session", async ({ p, env }) => {
 /* housekeeping — runs daily on a cron, never deletes a ticket       */
 /* ================================================================ */
 
+/**
+ * Remind residents about tomorrow's appointment.
+ *
+ * This is the notification that pays for itself: failed visits are the biggest
+ * measured cost in the system, and the only thing standing between a booked slot
+ * and an empty room is whether the resident remembered.
+ *
+ * The appointment id is the idempotency key, so running twice in a day cannot
+ * remind twice.
+ */
+async function sendReminders(env: Env) {
+  const from = now();
+  const to = now() + 2 * DAY;
+
+  const due = await env.DB.prepare(
+    `SELECT a.id, a.ticket_id, a.starts_at, vtl.building_id
+       FROM appointments a
+       JOIN v_ticket_location vtl ON vtl.ticket_id = a.ticket_id
+      WHERE a.status = 'booked' AND a.starts_at > ?1 AND a.starts_at < ?2`
+  ).bind(from, to).all<any>();
+
+  let queued = 0;
+  for (const a of due.results) {
+    const tenantId = await ticketTenant(env, a.ticket_id);
+    if (!tenantId) continue;
+    try {
+      await queueNotification(
+        env, { audience: "tenant", tenantId }, "reminder", a.ticket_id,
+        { startsAt: a.starts_at }, a.id,
+      ).run();
+      queued++;
+    } catch {
+      // one_notification_per_ref: already reminded for this appointment
+    }
+  }
+  return queued;
+}
+
 async function runRetention(env: Env) {
   const reporterCutoff = now() - RETAIN_REPORTER_DAYS * DAY;
   const attemptCutoff = now() - RETAIN_ATTEMPTS_DAYS * DAY;
@@ -1340,6 +1489,12 @@ async function runRetention(env: Env) {
         WHERE expires_at < ?1
           AND id NOT IN (SELECT slot_offer_id FROM appointments WHERE slot_offer_id IS NOT NULL)`
     ).bind(now() - 90 * DAY),
+
+    // Read notifications older than 90 days: the ticket keeps the history.
+    env.DB.prepare(
+      `DELETE FROM notifications WHERE created_at < ?1
+        AND id IN (SELECT notification_id FROM notification_reads)`
+    ).bind(now() - 90 * DAY),
   ]);
 
   return {
@@ -1354,6 +1509,11 @@ async function runRetention(env: Env) {
 route("POST", "/api/dev/retention", async ({ env, p }) => {
   if (p.kind !== "operator") return bad("operator only", 403);
   return json(await runRetention(env));
+});
+
+route("POST", "/api/dev/reminders", async ({ env, p }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+  return json({ queued: await sendReminders(env) });
 });
 
 /* ================================================================ */
@@ -1608,7 +1768,10 @@ async function seed(env: Env) {
 export default {
   /** Daily housekeeping. Anonymises old reporter links; never drops a ticket. */
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(runRetention(env).then((r) => console.log("retention", r)));
+    ctx.waitUntil(Promise.all([
+      sendReminders(env).then((n) => console.log("reminders", n)),
+      runRetention(env).then((r) => console.log("retention", r)),
+    ]));
   },
 
   async fetch(req: Request, env: Env): Promise<Response> {

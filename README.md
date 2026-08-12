@@ -74,6 +74,8 @@ src/
   Operator.tsx       # dashboard: metrics, charts, drill-downs
   Auth.tsx           # sign in, about page, scan landing, sticker sheet
   Admin.tsx          # first-run setup, invite acceptance, manage buildings and staff
+  Account.tsx        # language, sign out, Manage, About
+  Notifications.tsx  # the bell and its panel
   Logo.tsx           # the house-and-QR mark
   SlotPicker.tsx     # appointment time picker
   Scanner.tsx        # in-app QR scanner

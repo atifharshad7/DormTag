@@ -16,6 +16,9 @@ import { SlotPicker, type SlotRules } from "./SlotPicker";
 import { OperatorView } from "./Operator";
 import { Logo } from "./Logo";
 import { Manage, FirstRunSetup, AcceptInvite } from "./Admin";
+import { Account } from "./Account";
+import { About } from "./Auth";
+import { BellButton, NotificationPanel, useNotifications } from "./Notifications";
 
 /* ---------------------------------------------------------------- */
 /* small shared pieces                                              */
@@ -48,14 +51,17 @@ function Err({ msg, onClose }: any) {
 /* resident                                                         */
 /* ---------------------------------------------------------------- */
 
-function TenantView({ l, t, tickets, reload, home, onScan, recentDays }: { l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>; home: any; onScan: () => void; recentDays: number }) {
+function TenantView({ l, t, tickets, reload, home, onScan, recentDays, initialTicket }: {
+  l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>;
+  home: any; onScan: () => void; recentDays: number; initialTicket?: string | null;
+}) {
   const [screen, setScreen] = useState<"list" | "scan" | "object" | "symptom">("list");
   const [rows, setRows] = useState<any[]>([]);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [objectId, setObjectId] = useState<string | null>(null);
   const [symptom, setSymptom] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(initialTicket ?? null);
   const [flash, setFlash] = useState("");
   const [showOlder, setShowOlder] = useState(false);
   const [err, setErr] = useState("");
@@ -331,8 +337,11 @@ function TenantTicket({ l, t, id, onBack }: any) {
 /* caretaker                                                        */
 /* ---------------------------------------------------------------- */
 
-function StaffView({ l, t, tickets, reload, rules }: { l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>; rules: SlotRules }) {
-  const [openId, setOpenId] = useState<string | null>(null);
+function StaffView({ l, t, tickets, reload, rules, initialTicket }: {
+  l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>;
+  rules: SlotRules; initialTicket?: string | null;
+}) {
+  const [openId, setOpenId] = useState<string | null>(initialTicket ?? null);
   if (openId) return <StaffTicket l={l} t={t} id={openId} rules={rules} onBack={() => { setOpenId(null); reload(); }} />;
 
   const all = tickets.filter((x: any) => x.state !== "done" && x.state !== "cancelled");
@@ -580,7 +589,10 @@ export default function App() {
   const [session, setSession] = useState<any>(null);
   const [tickets, setTickets] = useState<any[]>([]);
   const [route, setRoute] = useState(readRoute);
-  const [screen, setScreen] = useState<"main" | "stickers" | "sent" | "manage">("main");
+  const [screen, setScreen] =
+    useState<"main" | "stickers" | "sent" | "manage" | "account" | "about">("main");
+  const [bellOpen, setBellOpen] = useState(false);
+  const [openTicket, setOpenTicket] = useState<string | null>(null);
   const [sent, setSent] = useState<{ id: string; token?: string } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [homeKey, setHomeKey] = useState(0);
@@ -596,6 +608,9 @@ export default function App() {
    * homeKey remounts it — that's what takes a resident back to My reports and
    * a caretaker back to the queue, from wherever they were.
    */
+  const signedIn = !!session && session.principal.kind !== "anonymous";
+  const { items: notifItems, unread, reload: reloadNotifs } = useNotifications(signedIn);
+
   const goHome = useCallback(() => {
     history.pushState({}, "", "/");
     setRoute({ kind: "app" });
@@ -631,6 +646,10 @@ export default function App() {
   const roleLabel = kind === "operator" ? t("operator") : kind === "staff" ? t("staff") : t("tenant");
   const RoleIcon = kind === "operator" ? LayoutDashboard : kind === "staff" ? Wrench : User;
   const isStaffKind = kind === "staff" || kind === "operator";
+  const whoLabel =
+    kind === "tenant" && session.home
+      ? `${session.home.building_code}-${session.home.unit_code}`
+      : (session.principal as any).name ?? roleLabel;
 
   return (
     <div className="app">
@@ -639,27 +658,29 @@ export default function App() {
           <Logo size={22} /><span>{t("appName")}</span>
         </button>
         <div className="row">
-          <button className="lang" onClick={() => setScanning(true)} aria-label={t("scanOpen")}>
-            <Camera size={14} aria-hidden />
-          </button>
-          {isStaffKind && (
-            <button className="lang" onClick={() => setScreen(screen === "stickers" ? "main" : "stickers")}
-              aria-label={t("stickers")}><QrCode size={14} aria-hidden /></button>
-          )}
-          {kind === "operator" && (
-            <button className="lang" onClick={() => setScreen(screen === "manage" ? "main" : "manage")}
-              aria-label={t("manageWord")}><Settings size={14} aria-hidden /></button>
-          )}
           {kind !== "anonymous" && (
             <>
-              <span className="who"><RoleIcon size={14} strokeWidth={1.75} aria-hidden /> {roleLabel}</span>
-              <button className="lang" onClick={async () => { await api.logout(); await loadSession(); }}
-                aria-label={t("logout")}><LogOut size={14} /></button>
+              <button className="lang" onClick={() => setScanning(true)} aria-label={t("scanOpen")}>
+                <Camera size={14} aria-hidden />
+              </button>
+              {isStaffKind && (
+                <button className="lang" onClick={() => setScreen(screen === "stickers" ? "main" : "stickers")}
+                  aria-label={t("stickers")}><QrCode size={14} aria-hidden /></button>
+              )}
+              <BellButton t={t} unread={unread} onClick={() => setBellOpen(true)} />
+              <button className="who whobtn" onClick={() => setScreen("account")}
+                aria-label={t("account")}>
+                <RoleIcon size={14} strokeWidth={1.75} aria-hidden /> {whoLabel}
+              </button>
             </>
           )}
-          <button className="lang" onClick={() => setL(l === "de" ? "en" : "de")}>
-            <Languages size={14} aria-hidden /> {l.toUpperCase()}
-          </button>
+          {/* Language stays in the header while signed out: someone who can't
+              read German needs it before they can read anything else. */}
+          {kind === "anonymous" && (
+            <button className="lang" onClick={() => setL(l === "de" ? "en" : "de")}>
+              <Languages size={14} aria-hidden /> {l.toUpperCase()}
+            </button>
+          )}
         </div>
       </header>
 
@@ -668,6 +689,15 @@ export default function App() {
           <AcceptInvite t={t} token={route.token} onDone={async () => { goApp(); await loadSession(); }} />
         ) : kind === "anonymous" && session.needsSetup ? (
           <FirstRunSetup t={t} onDone={loadSession} />
+        ) : screen === "account" ? (
+          <Account l={l} t={t} session={session}
+            onBack={() => setScreen("main")}
+            onLanguage={() => setL(l === "de" ? "en" : "de")}
+            onManage={() => setScreen("manage")}
+            onAbout={() => setScreen("about")}
+            onSignOut={async () => { await api.logout(); setScreen("main"); await loadSession(); }} />
+        ) : screen === "about" ? (
+          <About t={t} onBack={() => setScreen("account")} />
         ) : screen === "manage" && kind === "operator" ? (
           <Manage l={l} t={t} me={session.principal.staffId} onBack={() => setScreen("main")} />
         ) : screen === "sent" ? (
@@ -683,14 +713,29 @@ export default function App() {
         ) : kind === "anonymous" ? (
           <SignIn l={l} t={t} session={session} onDone={loadSession} />
         ) : kind === "tenant" ? (
-          <TenantView key={homeKey} l={l} t={t} tickets={tickets} reload={reload} home={session.home}
-            onScan={() => setScanning(true)} recentDays={session.retention?.residentRecentDays ?? 90} />
+          <TenantView key={homeKey + ":" + (openTicket ?? "")} l={l} t={t} tickets={tickets} reload={reload}
+            home={session.home} onScan={() => setScanning(true)}
+            recentDays={session.retention?.residentRecentDays ?? 90} initialTicket={openTicket} />
         ) : kind === "staff" ? (
-          <StaffView key={homeKey} l={l} t={t} tickets={tickets} reload={reload} rules={session.slotRules} />
+          <StaffView key={homeKey + ":" + (openTicket ?? "")} l={l} t={t} tickets={tickets} reload={reload}
+            rules={session.slotRules} initialTicket={openTicket} />
         ) : (
           <OperatorView l={l} t={t} />
         )}
       </main>
+
+      {bellOpen && (
+        <NotificationPanel l={l} t={t} items={notifItems}
+          onClose={() => setBellOpen(false)}
+          onReadAll={async () => { await api.markAllRead(); await reloadNotifs(); }}
+          onOpenTicket={async (notifId) => {
+            const n = notifItems.find((x: any) => x.id === notifId);
+            try { await api.markRead(notifId); } catch { /* ignore */ }
+            await reloadNotifs();
+            setBellOpen(false);
+            if (n?.ticket_id) { setScreen("main"); setOpenTicket(n.ticket_id); }
+          }} />
+      )}
 
       {scanning && (
         <ScannerModal t={t} onClose={() => setScanning(false)}

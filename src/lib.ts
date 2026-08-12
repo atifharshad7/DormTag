@@ -180,6 +180,22 @@ export const T = {
   enableWord:      { de: "Reaktivieren",             en: "Re-enable" },
   editCoverage:    { de: "Gebäude ändern",           en: "Change buildings" },
   noBuildingsAssigned: { de: "Keine Gebäude zugewiesen", en: "No buildings assigned" },
+  notifications:   { de: "Benachrichtigungen",       en: "Notifications" },
+  noNotifications: { de: "Nichts Neues.",            en: "Nothing new." },
+  markAllRead:     { de: "Alle als gelesen",         en: "Mark all read" },
+  language:        { de: "Sprache",                  en: "Language" },
+  account:         { de: "Konto",                    en: "Account" },
+  nReported:       { de: "Neue Meldung",             en: "New report" },
+  nSlotsOffered:   { de: "Termine angeboten",        en: "Times offered" },
+  nBooked:         { de: "Termin gebucht",           en: "Appointment booked" },
+  nRebooked:       { de: "Termin geändert",          en: "Appointment changed" },
+  nTenantRescheduled: { de: "Bewohner hat verschoben", en: "Resident moved the appointment" },
+  nStaffCancelled: { de: "Termin abgesagt",          en: "Appointment cancelled" },
+  nPartOrdered:    { de: "Teil bestellt",            en: "Part ordered" },
+  nPartArrived:    { de: "Teil ist da",              en: "Part arrived" },
+  nFixed:          { de: "Erledigt",                 en: "Fixed" },
+  nEscalated:      { de: "An Fachbetrieb gegeben",   en: "Handed to a trade" },
+  nReminder:       { de: "Termin morgen:",           en: "Appointment tomorrow:" },
 
   st_reported:   { de: "Gemeldet",                        en: "Reported" },
   st_accepted:   { de: "Angenommen",                      en: "Accepted" },
@@ -537,6 +553,10 @@ export const api = {
   bootstrap:        (email: string, name: string, password: string) =>
                       post("/admin/bootstrap", { email, name, password }),
   acceptInvite:     (token: string, password: string) => post("/auth/setup", { token, password }),
+
+  notifications:    () => call("/notifications"),
+  markRead:         (id: string) => post(`/notifications/${id}/read`),
+  markAllRead:      () => post("/notifications/read-all"),
 
   adminVocabulary:  () => call("/admin/vocabulary"),
   adminBuildings:   () => call("/admin/buildings"),

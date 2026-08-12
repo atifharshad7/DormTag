@@ -586,6 +586,108 @@ ok("a corridor needs no appointment", await (async () => {
   return !(await req(`/api/tickets/${r.json.id}`, { cookie: staff })).json.ticket.needs_access;
 })());
 
+section("notifications: who gets told what")
+const bell = async (cookie) => (await req("/api/notifications", { cookie })).json;
+
+// A fresh report tells the caretakers of that building, not the resident.
+const nT = await mkTicket("u-B-312-FL-LIGHT", tenant);
+let staffBell = await bell(staff);
+ok("a new report reaches the caretaker",
+  staffBell.notifications.some((n) => n.kind === "reported" && n.ticket_id === nT),
+  JSON.stringify(staffBell.notifications.slice(0, 2).map((n) => n.kind)));
+ok("the unread count is non-zero", staffBell.unread > 0, `${staffBell.unread}`);
+ok("the resident is not told about their own report",
+  !(await bell(tenant)).notifications.some((n) => n.kind === "reported" && n.ticket_id === nT));
+
+// Offering times tells the resident.
+await req(`/api/tickets/${nT}/accept`, { method: "POST", cookie: staff });
+await req(`/api/tickets/${nT}/offer`, { method: "POST", cookie: staff,
+  body: { slots: [nextAt(9, 4)] } });
+let tenantBell = await bell(tenant);
+ok("offered times reach the resident",
+  tenantBell.notifications.some((n) => n.kind === "slots_offered" && n.ticket_id === nT));
+ok("notifications carry the location for the row",
+  tenantBell.notifications[0].building_code === "B");
+
+// Booking tells the caretaker back.
+const nSlot = (await req(`/api/tickets/${nT}`, { cookie: tenant })).json.slots[0];
+await req(`/api/tickets/${nT}/book`, { method: "POST", cookie: tenant, body: { slotId: nSlot.id } });
+ok("a booking reaches the caretaker",
+  (await bell(staff)).notifications.some((n) => n.kind === "booked" && n.ticket_id === nT));
+
+// Closing tells the resident.
+await req(`/api/tickets/${nT}/done`, { method: "POST", cookie: staff, body: { cause: "CONSUMABLE" } });
+ok("closing reaches the resident",
+  (await bell(tenant)).notifications.some((n) => n.kind === "fixed" && n.ticket_id === nT));
+
+section("notifications: scoping");
+ok("anonymous gets an empty bell, not an error",
+  (await req("/api/notifications")).json.unread === 0);
+ok("a resident never sees another building's notices",
+  (await bell(tenant)).notifications.every((n) => !n.building_code || n.building_code === "B"));
+const opBell = await bell(operator);
+ok("an operator sees escalations",
+  opBell.notifications.every((n) => ["escalated"].includes(n.kind)) || opBell.notifications.length === 0,
+  JSON.stringify(opBell.notifications.map((n) => n.kind)));
+ok("an operator is not buried in caretaker traffic",
+  !opBell.notifications.some((n) => n.kind === "reported"));
+
+section("notifications: read state");
+const unreadBefore = (await bell(staff)).unread;
+ok("there is something unread to mark", unreadBefore > 0);
+const first = (await bell(staff)).notifications.find((n) => !n.is_read);
+ok("marking one read works",
+  (await req(`/api/notifications/${first.id}/read`, { method: "POST", cookie: staff })).status === 200);
+ok("the count drops by exactly one", (await bell(staff)).unread === unreadBefore - 1);
+ok("marking the same one twice is harmless",
+  (await req(`/api/notifications/${first.id}/read`, { method: "POST", cookie: staff })).status === 200);
+ok("the count doesn't drop twice", (await bell(staff)).unread === unreadBefore - 1);
+
+ok("a resident cannot mark a caretaker's notice read",
+  (await req(`/api/notifications/${first.id}/read`, { method: "POST", cookie: tenant })).status === 404);
+
+ok("read state is per person, not shared",
+  (await bell(operator)).notifications.every((n) => n.id !== first.id) ||
+  (await bell(operator)).notifications.find((n) => n.id === first.id)?.is_read === 0);
+
+ok("mark-all works", (await req("/api/notifications/read-all", { method: "POST", cookie: staff })).status === 200);
+ok("nothing is unread afterwards", (await bell(staff)).unread === 0);
+
+section("notifications: the appointment reminder");
+// Book something tomorrow so the reminder has a target.
+// A fixture no other section uses, so it has no appointment already.
+const remT = await mkTicket("u-B-312-Z2-RADIATOR", tenant);
+await req(`/api/tickets/${remT}/accept`, { method: "POST", cookie: staff });
+
+// Earlier sections have booked this caretaker at several hours tomorrow, so find
+// one he is actually free for rather than assuming.
+let freeHour = null;
+for (const h of [8, 9, 10, 13, 14, 15, 16]) {
+  const r = await req(`/api/tickets/${remT}/offer`, { method: "POST", cookie: staff,
+    body: { slots: [nextAt(h, 1)] } });
+  if (r.status === 200 && r.json.offered === 1) { freeHour = h; break; }
+}
+ok("found a free hour tomorrow to offer", freeHour !== null);
+const remDetail = (await req(`/api/tickets/${remT}`, { cookie: tenant })).json;
+const remSlot = remDetail.slots[0];
+const remBook = await req(`/api/tickets/${remT}/book`, { method: "POST", cookie: tenant,
+  body: { slotId: remSlot?.id } });
+ok("the resident books it", remBook.status === 200,
+  `state=${remDetail.ticket?.state} slots=${remDetail.slots.length} err=${JSON.stringify(remBook.json)}`);
+
+const firstRun = await req("/api/dev/reminders", { method: "POST", cookie: operator });
+ok("the reminder cron queues something", firstRun.status === 200 && firstRun.json.queued >= 1,
+  JSON.stringify(firstRun.json));
+ok("the resident gets the reminder",
+  (await bell(tenant)).notifications.some((n) => n.kind === "reminder" && n.ticket_id === remT));
+
+const secondRun = await req("/api/dev/reminders", { method: "POST", cookie: operator });
+ok("running it again reminds nobody twice", secondRun.json.queued === 0, JSON.stringify(secondRun.json));
+ok("only one reminder exists for that appointment",
+  (await bell(tenant)).notifications.filter((n) => n.kind === "reminder" && n.ticket_id === remT).length === 1);
+ok("a caretaker cannot trigger the reminder run",
+  (await req("/api/dev/reminders", { method: "POST", cookie: staff })).status === 403);
+
 section("retention");
 const ticketsBefore = (await req("/api/tickets", { cookie: staff })).json.tickets.length;
 const ret = await req("/api/dev/retention", { method: "POST", cookie: operator });

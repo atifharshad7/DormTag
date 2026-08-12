@@ -164,3 +164,62 @@ export function sessionResponse(cookieName: "sid" | "tid", token: string) {
 export type RouteCtx = {
   req: Request; env: Env; p: Principal; url: URL; params: Record<string, string>;
 };
+
+/* --- notifications ------------------------------------------------ */
+
+export type NotifyTarget =
+  | { audience: "tenant"; tenantId: string }
+  | { audience: "staff"; buildingId: string }
+  | { audience: "operator" };
+
+/**
+ * Build the INSERT for a notification so it can join the same batch as the
+ * state change that caused it. Queueing separately would mean a ticket could
+ * move without anyone being told.
+ */
+export function queueNotification(
+  env: Env,
+  target: NotifyTarget,
+  kind: string,
+  ticketId: string | null,
+  payload: Record<string, unknown> = {},
+  ref: string | null = null,
+) {
+  return env.DB.prepare(
+    `INSERT INTO notifications
+       (id, ticket_id, audience, tenant_id, building_id, kind, payload, ref, created_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`
+  ).bind(
+    uid(), ticketId, target.audience,
+    target.audience === "tenant" ? target.tenantId : null,
+    target.audience === "staff" ? target.buildingId : null,
+    kind, JSON.stringify(payload), ref, now(),
+  );
+}
+
+/** Who a signed-in principal is, for read-state purposes. */
+export function readerKey(p: Principal): string | null {
+  if (p.kind === "tenant") return `tenant:${p.tenantId}`;
+  if (p.kind === "staff" || p.kind === "operator") return `staff:${p.staffId}`;
+  return null;
+}
+
+/**
+ * What this principal may see. Residents get their own; caretakers get the
+ * buildings they cover; operators get operator-level notices only, because
+ * every caretaker notification across the estate would be noise.
+ */
+export function notificationScope(p: Principal): { where: string; binds: unknown[] } {
+  if (p.kind === "tenant") {
+    return { where: "n.audience = 'tenant' AND n.tenant_id = ?", binds: [p.tenantId] };
+  }
+  if (p.kind === "operator") {
+    return { where: "n.audience = 'operator'", binds: [] };
+  }
+  if (p.kind === "staff") {
+    if (p.buildingIds.length === 0) return { where: "1=0", binds: [] };
+    const q = p.buildingIds.map(() => "?").join(",");
+    return { where: `n.audience = 'staff' AND n.building_id IN (${q})`, binds: [...p.buildingIds] };
+  }
+  return { where: "1=0", binds: [] };
+}
