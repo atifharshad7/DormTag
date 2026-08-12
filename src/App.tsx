@@ -342,14 +342,45 @@ function StaffView({ l, t, tickets, reload, rules, initialTicket }: {
   rules: SlotRules; initialTicket?: string | null;
 }) {
   const [openId, setOpenId] = useState<string | null>(initialTicket ?? null);
+  const [q, setQ] = useState("");
+  const [buildingF, setBuildingF] = useState("");
+  const [stateF, setStateF] = useState("");
+  const [oldestFirst, setOldestFirst] = useState(false);
+
   if (openId) return <StaffTicket l={l} t={t} id={openId} rules={rules} onBack={() => { setOpenId(null); reload(); }} />;
 
   const all = tickets.filter((x: any) => x.state !== "done" && x.state !== "cancelled");
-  const external = all.filter((x: any) => x.handling === "external");
-  const live = all.filter((x: any) => x.handling !== "external");
-  const booked = live.filter((x: any) => x.appt_at).sort((a: any, b: any) => a.appt_at - b.appt_at);
-  const noSlot = live.filter((x: any) => !x.appt_at && x.state !== "waiting_for_parts");
-  const waiting = live.filter((x: any) => !x.appt_at && x.state === "waiting_for_parts");
+
+  // Only worth offering a building filter to someone who covers more than one.
+  const buildingCodes = [...new Set(all.map((x: any) => x.building_code))].sort();
+
+  /** Search the words a caretaker would actually type, in the language he reads. */
+  const matches = (x: any) => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return true;
+    return [
+      x.building_code, x.unit_code, x.room_code,
+      x.room_label, roomLabel(x.room_type, l),
+      objLabel(x.object_type, l), symptomLabel(x.symptom, l),
+      x.note, x.trade ? tradeLabel(x.trade, l) : "",
+    ].some((f) => String(f ?? "").toLowerCase().includes(needle));
+  };
+
+  const inState = (x: any) => {
+    if (!stateF) return true;
+    if (stateF === "external") return x.handling === "external";
+    if (stateF === "needs_time") return x.handling !== "external" && !x.appt_at
+      && x.state !== "waiting_for_parts";
+    if (stateF === "booked") return !!x.appt_at;
+    if (stateF === "parts") return x.state === "waiting_for_parts";
+    return true;
+  };
+
+  const shown = all.filter((x: any) =>
+    matches(x) && inState(x) && (!buildingF || x.building_code === buildingF));
+
+  const filtering = !!q.trim() || !!buildingF || !!stateF;
+  const days = (x: any) => Math.max(0, Math.round((Date.now() - x.reported_at) / 864e5));
 
   const Row = ({ x }: any) => (
     <button className="job" onClick={() => setOpenId(x.ticket_id)}>
@@ -365,20 +396,71 @@ function StaffView({ l, t, tickets, reload, rules, initialTicket }: {
           {x.reporter_count > 1 && ` · ${x.reporter_count} ${t("reports")}`}
           {!!x.access_consent && <> · <Key size={12} aria-hidden /></>}
         </p>
+        {(oldestFirst || days(x) >= 14) && (
+          <p className="muted mono">{days(x)} {t("daysOpen")}</p>
+        )}
       </div>
     </button>
   );
 
+  // Grouping is the default because it maps to how the day is organised. Sorting
+  // by age deliberately breaks the groups: the point is to surface the job from
+  // March that everyone stopped seeing.
+  const external = shown.filter((x: any) => x.handling === "external");
+  const live = shown.filter((x: any) => x.handling !== "external");
+  const booked = live.filter((x: any) => x.appt_at).sort((a: any, b: any) => a.appt_at - b.appt_at);
+  const noSlot = live.filter((x: any) => !x.appt_at && x.state !== "waiting_for_parts");
+  const waiting = live.filter((x: any) => !x.appt_at && x.state === "waiting_for_parts");
+  const byAge = [...shown].sort((a: any, b: any) => a.reported_at - b.reported_at);
+
   return (
     <div className="col">
-      <div className="rowspread"><h2>{t("queueToday")}</h2><span className="muted">{live.length} {t("jobs")}</span></div>
-      {booked.map((x: any) => <Row key={x.ticket_id} x={x} />)}
-      {noSlot.length > 0 && <p className="eyebrow">{t("queueNew")}</p>}
-      {noSlot.map((x: any) => <Row key={x.ticket_id} x={x} />)}
-      {waiting.length > 0 && <p className="eyebrow">{t("queueWaiting")}</p>}
-      {waiting.map((x: any) => <Row key={x.ticket_id} x={x} />)}
-      {external.length > 0 && <p className="eyebrow">{t("withExternal")}</p>}
-      {external.map((x: any) => <Row key={x.ticket_id} x={x} />)}
+      <div className="rowspread">
+        <h2>{t("queueToday")}</h2>
+        <span className="muted">
+          {filtering ? `${shown.length} / ${all.length}` : all.length} {t("jobs")}
+        </span>
+      </div>
+
+      <input className="in" value={q} onChange={(e) => setQ(e.target.value)}
+        placeholder={t("searchQueue")} aria-label={t("searchQueue")} />
+
+      <div className="chiprow">
+        {buildingCodes.length > 1 && buildingCodes.map((c: any) => (
+          <button key={c} className={"filterchip" + (buildingF === c ? " filterchip-on" : "")}
+            onClick={() => setBuildingF(buildingF === c ? "" : c)}>{c}</button>
+        ))}
+        {[["needs_time", "queueNew"], ["booked", "grpBooked"],
+          ["parts", "queueWaiting"], ["external", "withExternal"]].map(([k, label]) => (
+          <button key={k} className={"filterchip" + (stateF === k ? " filterchip-on" : "")}
+            onClick={() => setStateF(stateF === k ? "" : k)}>{t(label as StrKey)}</button>
+        ))}
+        <button className={"filterchip" + (oldestFirst ? " filterchip-on" : "")}
+          onClick={() => setOldestFirst((v) => !v)}>{t("oldestFirst")}</button>
+        {(filtering || oldestFirst) && (
+          <button className="linkmore" onClick={() => {
+            setQ(""); setBuildingF(""); setStateF(""); setOldestFirst(false);
+          }}>{t("clearFilter")}</button>
+        )}
+      </div>
+
+      {shown.length === 0 && (
+        <div className="empty"><p className="muted">{t("nothingHere")}</p></div>
+      )}
+
+      {oldestFirst ? (
+        byAge.map((x: any) => <Row key={x.ticket_id} x={x} />)
+      ) : (
+        <>
+          {booked.map((x: any) => <Row key={x.ticket_id} x={x} />)}
+          {noSlot.length > 0 && <p className="eyebrow">{t("queueNew")}</p>}
+          {noSlot.map((x: any) => <Row key={x.ticket_id} x={x} />)}
+          {waiting.length > 0 && <p className="eyebrow">{t("queueWaiting")}</p>}
+          {waiting.map((x: any) => <Row key={x.ticket_id} x={x} />)}
+          {external.length > 0 && <p className="eyebrow">{t("withExternal")}</p>}
+          {external.map((x: any) => <Row key={x.ticket_id} x={x} />)}
+        </>
+      )}
     </div>
   );
 }
