@@ -431,6 +431,7 @@ route("GET", "/api/stickers/:buildingCode", async ({ env, p, params }) => {
   // One sticker per room.
   const rooms = await env.DB.prepare(
     `SELECT r.qr_slug, r.room_type, r.code AS room_code, r.kind AS room_kind,
+            r.label AS room_label,
             u.code AS unit_code, u.floor, u.is_common
        FROM rooms r JOIN units u ON u.id = r.unit_id
       WHERE u.building_id = ?1 AND r.qr_slug IS NOT NULL
@@ -440,7 +441,8 @@ route("GET", "/api/stickers/:buildingCode", async ({ env, p, params }) => {
   // Plus one per object, but only where a room holds several of the same type.
   const extras = await env.DB.prepare(
     `SELECT o.qr_slug, o.object_type, o.ordinal, r.room_type, r.code AS room_code,
-            u.code AS unit_code, u.floor
+            r.label AS room_label,
+            u.code AS unit_code, u.floor, u.is_common
        FROM objects o
        JOIN rooms r ON r.id = o.room_id
        JOIN units u ON u.id = r.unit_id
