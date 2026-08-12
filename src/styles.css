@@ -165,6 +165,7 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   display: flex; align-items: center; gap: 10px; padding: 11px 12px;
   background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   cursor: pointer; font: inherit; font-size: 14px; text-align: left; min-height: 46px;
+  color: var(--ink);
 }
 .slot:hover { border-color: var(--slate); }
 .slot .mono { margin-left: auto; }
@@ -191,6 +192,7 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   display: flex; align-items: center; gap: 9px; padding: 12px;
   background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   cursor: pointer; font: inherit; font-size: 14px; text-align: left; min-height: 48px;
+  color: var(--ink);
 }
 .consent span { flex: 1; }
 .consent:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -211,6 +213,9 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   display: flex; background: var(--card); border: 1px solid var(--line);
   border-radius: 8px; overflow: hidden; cursor: pointer; font: inherit;
   text-align: left; padding: 0;
+  /* `font: inherit` does not carry colour: without this the row falls back to
+     the browser's default button text, which is invisible in dark mode. */
+  color: var(--ink);
 }
 .job:hover { border-color: rgba(22, 25, 27, 0.3); }
 .jobbar { width: 4px; flex: none; background: rgba(22, 25, 27, 0.22); }
@@ -487,7 +492,7 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 .chartcol {
   display: flex; flex-direction: column; align-items: center; height: 100%;
   border: 0; background: none; padding: 0 0 2px; cursor: pointer; font: inherit;
-  border-radius: 6px;
+  border-radius: 6px; color: var(--ink);
 }
 .chartcol:hover { background: rgba(22,25,27,.05); }
 .chartcol:hover .barreported { background: rgba(22,25,27,.22); }
@@ -686,3 +691,20 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 .cardediting { border: 2px solid var(--slate); }
 
 .cardactions { flex-wrap: wrap; gap: 12px; }
+
+
+/* --- safety net -----------------------------------------------------
+   Every button in the app inherits the page font. `font: inherit` does not
+   carry colour, so any button that forgets an explicit one falls back to the
+   browser default and disappears on a dark background. This catches the next
+   one before it ships. */
+.app button:not([class*="btn-"]):not(.lang):not(.whobtn) { color: inherit; }
+
+/* --- selecting stickers to print ------------------------------------ */
+
+.stickercard { cursor: pointer; font: inherit; color: inherit; text-align: left; }
+.stickerpicked { border: 2px solid var(--blue); border-style: solid; }
+
+@media print {
+  .stickerpicked { border: 1px dashed rgba(22,25,27,.35); }
+}
