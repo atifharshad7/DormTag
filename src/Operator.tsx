@@ -4,6 +4,7 @@ import {
   api, objLabel, roomLabel, causeLabel, fmtDay, fmtDT, STATE_TONE, tradeLabel, escReason,
   type Locale, type StrKey,
 } from "./lib";
+import { BuildingCard } from "./BuildingEdit";
 
 type T = (k: StrKey) => string;
 
@@ -385,28 +386,12 @@ export function OperatorView({ l, t }: { l: Locale; t: T }) {
 
           <p className="eyebrow">{t("buildings")}</p>
           <div className="bgrid">
-            {d.buildings.map((b: any) => {
-              const load2 = Math.min(100, Math.round((b.open_count / 20) * 100));
-              const active = building === b.code;
-              return (
-                <button className={"card cardlink" + (active ? " cardactive" : "")} key={b.id}
-                  onClick={() => setBuilding(active ? null : b.code)}>
-                  <div className="rowspread">
-                    <p className="cardtitle">{b.name}</p>
-                    <span className="plate plate-sm">{b.code}</span>
-                  </div>
-                  <p className="muted mono">
-                    {b.room_count} {t("roomsWord")} · {b.open_count} {t("openWord")}
-                  </p>
-                  <div className="bar">
-                    <div className={"barfill" + (load2 > 50 ? " barfill-warn" : "")} style={{ width: load2 + "%" }} />
-                  </div>
-                  <p className="metrichint">
-                    {active ? <><X size={11} aria-hidden /> {t("clearFilter")}</> : <>{t("filterToThis")} →</>}
-                  </p>
-                </button>
-              );
-            })}
+            {d.buildings.map((b: any) => (
+              <BuildingCard key={b.id} l={l} t={t} b={b}
+                active={building === b.code}
+                onFilter={() => setBuilding(building === b.code ? null : b.code)}
+                onChanged={load} />
+            ))}
           </div>
         </>
       )}

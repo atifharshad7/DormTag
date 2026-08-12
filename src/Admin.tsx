@@ -3,7 +3,8 @@ import {
   ChevronLeft, Plus, Building, Users, Copy, Check, Ban, RotateCcw,
   Pencil, AlertTriangle,
 } from "lucide-react";
-import { api, roomLabel, objLabel, type Locale, type StrKey } from "./lib";
+import { api, roomLabel, type Locale, type StrKey } from "./lib";
+import { BuildingEditForm, AddUnitForm } from "./BuildingEdit";
 
 type T = (k: StrKey) => string;
 
@@ -174,27 +175,15 @@ function Buildings({ l, t }: { l: Locale; t: T }) {
 
 function BuildingDetail({ l, t, building, onBack }: any) {
   const [data, setData] = useState<any>(null);
-  const [vocab, setVocab] = useState<any>(null);
   const [err, setErr] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [unitCode, setUnitCode] = useState("");
-  const [floor, setFloor] = useState("1");
-  const [kind, setKind] = useState<"studio" | "wg">("studio");
-  const [isCommon, setIsCommon] = useState(false);
-  const [rooms, setRooms] = useState<{ code: string; roomType: string; kind: string }[]>([
-    { code: "Z1", roomType: "BEDROOM", kind: "private" },
-    { code: "BA", roomType: "BATHROOM", kind: "private" },
-  ]);
+  const [mode, setMode] = useState<"idle" | "edit" | "unit">("idle");
   const [editRoom, setEditRoom] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
 
   const load = useCallback(() => {
-    api.adminUnits(building.id).then((d) => setData(d)).catch((e) => setErr(e.message));
+    api.adminUnits(building.id).then(setData).catch((e) => setErr(e.message));
   }, [building.id]);
-  useEffect(() => { load(); api.adminVocabulary().then(setVocab).catch(() => {}); }, [load]);
-
-  const addRoomRow = () =>
-    setRooms((r) => [...r, { code: "", roomType: "BEDROOM", kind: "private" }]);
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="col">
@@ -205,70 +194,27 @@ function BuildingDetail({ l, t, building, onBack }: any) {
       </div>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
 
-      <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
-        <Plus size={16} /> {t("addUnit")}
-      </button>
-
-      {adding && (
-        <div className="card">
-          <div className="row">
-            <label className="field" style={{ flex: 1 }}><span>{t("unitCode")}</span>
-              <input className="in mono" value={unitCode} maxLength={8}
-                onChange={(e) => setUnitCode(e.target.value.toUpperCase())} placeholder="112" /></label>
-            <label className="field" style={{ flex: 1 }}><span>{t("floorLabel")}</span>
-              <input className="in" type="number" value={floor}
-                onChange={(e) => setFloor(e.target.value)} /></label>
-          </div>
-          <div className="tabs">
-            <button className={"tab" + (kind === "studio" ? " tab-on" : "")}
-              onClick={() => setKind("studio")}>{t("studio")}</button>
-            <button className={"tab" + (kind === "wg" ? " tab-on" : "")}
-              onClick={() => setKind("wg")}>{t("wg")}</button>
-          </div>
-          <button className="consent" onClick={() => setIsCommon((v) => !v)}>
-            <span>{t("isCommonArea")}</span>
-            <span className={"pill pill-" + (isCommon ? "info" : "neutral")}>
-              {isCommon ? t("yes") : t("no")}
-            </span>
+      {mode === "idle" && (
+        <div className="row">
+          <button className="btn" onClick={() => setMode("edit")}>
+            <Pencil size={15} /> {t("editBuilding")}
           </button>
+          <button className="btn btn-primary" onClick={() => setMode("unit")}>
+            <Plus size={16} /> {t("addUnit")}
+          </button>
+        </div>
+      )}
 
-          <p className="steplabel">{t("roomsInUnit")}</p>
-          {rooms.map((r, i) => (
-            <div className="row roomrowedit" key={i}>
-              <input className="in mono roomcodein" value={r.code} maxLength={6}
-                placeholder="Z1"
-                onChange={(e) => setRooms((rs) => rs.map((x, j) =>
-                  j === i ? { ...x, code: e.target.value.toUpperCase() } : x))} />
-              <select className="in" value={r.roomType}
-                onChange={(e) => setRooms((rs) => rs.map((x, j) =>
-                  j === i ? { ...x, roomType: e.target.value } : x))}>
-                {(vocab?.roomTypes ?? []).map((rt: string) =>
-                  <option key={rt} value={rt}>{roomLabel(rt, l)}</option>)}
-              </select>
-              <select className="in" value={r.kind}
-                onChange={(e) => setRooms((rs) => rs.map((x, j) =>
-                  j === i ? { ...x, kind: e.target.value } : x))}>
-                <option value="private">{t("privateRoom")}</option>
-                <option value="shared">{t("sharedTag")}</option>
-              </select>
-              <button className="offerx" onClick={() => setRooms((rs) => rs.filter((_, j) => j !== i))}>×</button>
-            </div>
-          ))}
-          <button className="linkmore" onClick={addRoomRow}>+ {t("addRoom")}</button>
-
-          <div className="row">
-            <button className="btn" onClick={() => setAdding(false)}>{t("cancel")}</button>
-            <button className="btn btn-primary" disabled={!unitCode || rooms.length === 0}
-              onClick={async () => {
-                setErr("");
-                try {
-                  await api.createUnit(building.id, {
-                    code: unitCode, floor: Number(floor) || 0, kind, isCommon, rooms,
-                  });
-                  setUnitCode(""); setAdding(false); load();
-                } catch (e: any) { setErr(e.message); }
-              }}>{t("create")}</button>
-          </div>
+      {mode === "edit" && (
+        <div className="card">
+          <BuildingEditForm l={l} t={t} building={building}
+            onDone={() => { setMode("idle"); load(); }} onCancel={() => setMode("idle")} />
+        </div>
+      )}
+      {mode === "unit" && (
+        <div className="card">
+          <AddUnitForm l={l} t={t} building={building}
+            onDone={() => { setMode("idle"); load(); }} onCancel={() => setMode("idle")} />
         </div>
       )}
 

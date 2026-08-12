@@ -1025,7 +1025,13 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
               (SELECT COUNT(*) FROM v_ticket_location v
                 WHERE v.building_id = b.id AND v.state NOT IN ('done','cancelled')) AS open_count,
               (SELECT COUNT(*) FROM v_ticket_location v
-                WHERE v.building_id = b.id AND v.reported_at >= ?1) AS reported_count
+                WHERE v.building_id = b.id AND v.reported_at >= ?1) AS reported_count,
+              -- Shown on the card so a building with nobody covering it is
+              -- visible where the operator already looks, not in a settings page.
+              (SELECT GROUP_CONCAT(s.display_name, ', ')
+                 FROM staff_buildings sb JOIN staff s ON s.id = sb.staff_id
+                WHERE sb.building_id = b.id AND s.disabled_at IS NULL AND s.is_operator = 0
+              ) AS caretaker_names
          FROM buildings b ORDER BY b.code`
     ).bind(since).all<any>(),
 
@@ -1078,7 +1084,12 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
     trend: trend.results,
     byType: byType.results,
     repeats: repeats.results,
-    buildings: buildings.results,
+    buildings: buildings.results.map((b: any) => ({
+      ...b,
+      caretakers: b.caretaker_names
+        ? String(b.caretaker_names).split(", ").map((name: string) => ({ name }))
+        : [],
+    })),
   });
 });
 

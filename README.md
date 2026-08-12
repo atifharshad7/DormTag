@@ -40,6 +40,9 @@ Every repair is logged to the exact room and fixture, so after a year the operat
 * Repeat-fault ranking by riser, which is what turns eleven separate complaints into one plumbing problem.
 * Filter everything by period (1, 3, 6 or 12 months) and by building.
 * Commission external firms and record the order reference.
+* Manage each building from its own card on the dashboard: rename it, add a unit,
+  assign caretakers. A building nobody covers shows an amber warning there, where
+  you're already looking, rather than in a settings page you visit rarely.
 
 ## Design notes
 
@@ -76,6 +79,7 @@ src/
   Admin.tsx          # first-run setup, invite acceptance, manage buildings and staff
   Account.tsx        # language, sign out, Manage, About
   Notifications.tsx  # the bell and its panel
+  BuildingEdit.tsx   # building card and forms, shared by dashboard and settings
   Logo.tsx           # the house-and-QR mark
   SlotPicker.tsx     # appointment time picker
   Scanner.tsx        # in-app QR scanner

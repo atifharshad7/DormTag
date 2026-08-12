@@ -758,6 +758,24 @@ ok("the new name is stored", renamed.name === "Nordpark");
 ok("the code is untouched by a rename", renamed.code === "N");
 ok("a new building has no caretaker and says so", renamed.caretakers.length === 0);
 
+section("dashboard cards carry what the operator edits");
+const cardDash = (await req("/api/dashboard?months=12", { cookie: operator })).json;
+ok("building cards report their caretakers",
+  cardDash.buildings.some((b) => (b.caretakers || []).length > 0),
+  JSON.stringify(cardDash.buildings.map((b) => (b.caretakers || []).length)));
+ok("caretaker names come through, not ids",
+  cardDash.buildings.flatMap((b) => b.caretakers || []).every((c) => typeof c.name === "string"));
+ok("a building with nobody covering it reports an empty list",
+  cardDash.buildings.every((b) => Array.isArray(b.caretakers)));
+ok("cards carry what the edit form needs",
+  cardDash.buildings.every((b) => b.id && b.code && b.name && typeof b.room_count === "number"));
+ok("disabled staff are not listed as caretakers", await (async () => {
+  const list = (await req("/api/admin/staff", { cookie: operator })).json.staff;
+  const off = list.filter((s) => s.disabled_at).map((s) => s.display_name);
+  const shown = cardDash.buildings.flatMap((b) => (b.caretakers || []).map((c) => c.name));
+  return off.every((n) => !shown.includes(n));
+})());
+
 section("admin: units, rooms and slugs");
 const unit = await req(`/api/admin/buildings/${NB}/units`, { method: "POST", cookie: operator,
   body: { code: "112", floor: 1, kind: "wg", rooms: [
