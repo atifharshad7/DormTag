@@ -105,41 +105,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Tests:** 289 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
-## Project structure
 
-```
-worker/
-  index.ts           # routes, row scoping, state machine, seed, retention
-  core.ts            # env, crypto, sessions, principal, shared helpers
-  admin.ts           # buildings, units, rooms, staff, invites, assignment
-src/
-  App.tsx            # app shell, resident and caretaker views
-  Operator.tsx       # dashboard: metrics, charts, drill-downs
-  Auth.tsx           # sign in, about page, scan landing, sticker sheet
-  Admin.tsx          # first-run setup, invite acceptance, manage staff
-  BuildingEdit.tsx   # building card and forms, shared by dashboard and Manage
-  Account.tsx        # language, sign out, Manage, About
-  Notifications.tsx  # the bell and its panel
-  SlotPicker.tsx     # appointment time picker
-  Scanner.tsx        # in-app QR scanner
-  Logo.tsx           # the house-and-QR mark
-  lib.ts             # i18n catalogue, label resolution, API client
-  styles.css         # design tokens and layout
-  main.tsx           # Vite entry
-migrations/
-  000*.sql           # schema, applied in order
-  000*.console.sql   # same statements without comments, for the D1 dashboard
-scripts/
-  smoke.mjs          # end-to-end tests against a running worker
-reference/
-  schema.sql         # the Postgres design this started from
-  schema-access.sql  # sessions and row-level security policies
-  access.ts          # principal resolution for a Node/Postgres runtime
-public/
-  favicon.svg
-index.html
-wrangler.jsonc
-```
 
 The `reference/` folder is the Postgres version of the schema, kept because D1 forced two compromises worth documenting: no `EXCLUDE USING gist` for overlapping appointments, and no row-level security, so scoping lives only in `ticketScope()` in the worker.
 
