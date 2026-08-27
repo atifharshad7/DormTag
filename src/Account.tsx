@@ -1,6 +1,6 @@
 import React from "react";
-import { ChevronLeft, Languages, LogOut, Settings, HelpCircle, User, Wrench, LayoutDashboard } from "lucide-react";
-import { type Locale, type StrKey } from "./lib";
+import { ChevronLeft, Languages, LogOut, Settings, HelpCircle, User, Wrench, LayoutDashboard, Mail, Check } from "lucide-react";
+import { api, type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
 
@@ -50,6 +50,8 @@ export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, 
         {kind === "operator" && <p className="cardtitle">{session.principal.name}</p>}
       </div>
 
+      {kind === "tenant" && <EmailRow l={l} t={t} session={session} />}
+
       <button className="accountrow" onClick={onLanguage}>
         <Languages size={16} strokeWidth={1.75} aria-hidden />
         <span>{t("language")}</span>
@@ -74,6 +76,61 @@ export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, 
         <LogOut size={16} strokeWidth={1.75} aria-hidden />
         <span>{t("logout")}</span>
       </button>
+    </div>
+  );
+}
+
+
+/**
+ * The resident's email, asked for and never imported.
+ *
+ * Off is a first-class choice: the bell already works without an address, so
+ * nothing breaks for someone who declines.
+ */
+function EmailRow({ l, t, session }: { l: Locale; t: T; session: any }) {
+  const [open, setOpen] = React.useState(false);
+  const [email, setEmail] = React.useState(session.email ?? "");
+  const [wants, setWants] = React.useState(session.wantsEmail !== false);
+  const [saved, setSaved] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  const save = async () => {
+    setErr(""); setSaved(false);
+    try {
+      await api.setEmail(email.trim() || null, wants);
+      setSaved(true); setOpen(false);
+    } catch (e: any) { setErr(e.message); }
+  };
+
+  if (!open) {
+    return (
+      <button className="accountrow" onClick={() => setOpen(true)}>
+        <Mail size={16} strokeWidth={1.75} aria-hidden />
+        <span>{t("emailUpdates")}</span>
+        <span className="mono">
+          {saved ? t("emailSaved") : !email ? t("emailNone") : wants ? t("emailOn") : t("emailOff")}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="card">
+      <p className="cardtitle"><Mail size={15} aria-hidden /> {t("emailUpdates")}</p>
+      <p className="muted">{t("emailHint")}</p>
+      {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+      <input className="in" type="email" value={email} placeholder={t("emailPlaceholder")}
+        autoComplete="email" onChange={(e) => setEmail(e.target.value)} />
+      <button className="consent" onClick={() => setWants((v) => !v)}>
+        <span>{t("emailUpdates")}</span>
+        <span className={"pill pill-" + (wants ? "ok" : "neutral")}>
+          {wants ? t("emailOn") : t("emailOff")}
+        </span>
+      </button>
+      <div className="row">
+        <button className="btn" onClick={() => setOpen(false)}>{t("cancel")}</button>
+        <button className="btn btn-primary" onClick={save}><Check size={16} /> {t("save")}</button>
+      </div>
     </div>
   );
 }

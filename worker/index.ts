@@ -11,13 +11,14 @@
  */
 
 import * as admin from "./admin";
+import { flushMail, renderMail } from "./mail";
 import {
   type Env, type Principal, type RouteCtx,
   now, uid, DAY, json, bad, sha256, randomToken,
   hashNewPassword, derivePassword, sameSecret, readCookie,
   tooManyAttempts, recordAttempt,
   isStaff, HttpError, issueStaffSession, issueTenantSession, sessionResponse, clearCookie,
-  queueNotification, readerKey, notificationScope,
+  queueNotification, readerKey, notificationScope, tenantEmail,
 } from "./core";
 
 export type { Env };
@@ -1361,7 +1362,10 @@ async function ticketTenant(env: Env, ticketId: string): Promise<string | null> 
 async function tellTenant(env: Env, ticketId: string, kind: string, payload: Record<string, unknown> = {}) {
   const tenantId = await ticketTenant(env, ticketId);
   if (!tenantId) return [];
-  return [queueNotification(env, { audience: "tenant", tenantId }, kind, ticketId, payload)];
+  // The address is resolved now rather than at send time: if the resident later
+  // changes it, mail already queued goes where it was addressed.
+  const to = await tenantEmail(env, tenantId);
+  return [queueNotification(env, { audience: "tenant", tenantId }, kind, ticketId, payload, null, to)];
 }
 
 /** Notify whoever covers the building this ticket is in. */
@@ -1393,6 +1397,14 @@ async function assertVisible(env: Env, p: Principal, id: string) {
 route("GET", "/api/session", async ({ p, env }) => {
   const buildings = await env.DB.prepare(`SELECT id, code, name, room_count FROM buildings ORDER BY code`).all<any>();
   let home = null;
+  let email: string | null = null;
+  let wantsEmail = true;
+  if (p.kind === "tenant") {
+    const me = await env.DB.prepare(`SELECT email, wants_email FROM tenants WHERE id = ?1`)
+      .bind(p.tenantId).first<any>();
+    email = me?.email ?? null;
+    wantsEmail = me?.wants_email !== 0;
+  }
   if (p.kind === "tenant") {
     home = await env.DB.prepare(
       `SELECT u.id AS unit_id, u.code AS unit_code, b.code AS building_code, r.code AS room_code
@@ -1416,6 +1428,8 @@ route("GET", "/api/session", async ({ p, env }) => {
       horizonDays: OFFER_HORIZON_DAYS,
     },
     retention: { residentRecentDays: RESIDENT_RECENT_DAYS },
+    email, wantsEmail,
+    emailConfigured: !!env.RESEND_API_KEY,
     needsSetup: ((await env.DB.prepare(`SELECT COUNT(*) AS n FROM staff`).first<any>())?.n ?? 0) === 0,
   });
 });
@@ -1452,7 +1466,7 @@ async function sendReminders(env: Env) {
     try {
       await queueNotification(
         env, { audience: "tenant", tenantId }, "reminder", a.ticket_id,
-        { startsAt: a.starts_at }, a.id,
+        { startsAt: a.starts_at }, a.id, await tenantEmail(env, tenantId),
       ).run();
       queued++;
     } catch {
@@ -1518,6 +1532,70 @@ async function runRetention(env: Env) {
     staleOffersPurged: results[5].meta.changes,
   };
 }
+
+/**
+ * Render every template without sending anything.
+ *
+ * Worth having beyond the tests: email copy is the one part of the app you
+ * can't see by clicking around, and reading it side by side in both languages
+ * is how you catch a sentence that only makes sense in one.
+ */
+route("GET", "/api/dev/mail/preview", async ({ p, url }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+
+  const kinds = [
+    ["slots_offered", { count: 3 }],
+    ["booked", {}],
+    ["staff_cancelled", {}],
+    ["part_ordered", { part: "Siphon-Dichtung", eta: "KW 34" }],
+    ["part_arrived", {}],
+    ["fixed", { cause: "SEAL" }],
+    ["escalated", { trade: "ELECTRICAL" }],
+    ["reminder", { startsAt: now() + DAY }],
+    // Not an email: proves caretaker traffic is bell-only.
+    ["reported", {}],
+  ] as [string, Record<string, unknown>][];
+
+  const out: any[] = [];
+  for (const [kind, payload] of kinds) {
+    for (const locale of ["de", "en"]) {
+      const row = {
+        kind, locale, payload: JSON.stringify(payload),
+        building_code: "B", unit_code: "312", room_type: "BATHROOM", room_label: null,
+        token: "preview-token-not-real",
+      };
+      out.push({ kind, locale, mail: renderMail(row, url.origin) });
+    }
+  }
+  return json({ previews: out });
+});
+
+route("POST", "/api/dev/mail", async ({ env, p, url }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+  return json(await flushMail(env, url.origin));
+});
+
+/** A resident turning email off keeps the bell. */
+route("POST", "/api/me/email", async ({ env, req, p }) => {
+  if (p.kind !== "tenant") return bad("residents only", 403);
+  const { email, wantsEmail } = (await req.json()) as
+    { email?: string | null; wantsEmail?: boolean };
+
+  if (email !== undefined && email !== null && email !== "" && !email.includes("@")) {
+    return bad("that doesn't look like an email address");
+  }
+  await env.DB.prepare(
+    `UPDATE tenants
+        SET email = COALESCE(?1, email),
+            wants_email = ?2
+      WHERE id = ?3`
+  ).bind(
+    email === undefined || email === null || email === "" ? null : email.trim().toLowerCase(),
+    wantsEmail === false ? 0 : 1,
+    p.tenantId,
+  ).run();
+  return json({ ok: true });
+});
 
 route("POST", "/api/dev/retention", async ({ env, p }) => {
   if (p.kind !== "operator") return bad("operator only", 403);
@@ -1781,13 +1859,15 @@ async function seed(env: Env) {
 export default {
   /** Daily housekeeping. Anonymises old reporter links; never drops a ticket. */
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(Promise.all([
-      sendReminders(env).then((n) => console.log("reminders", n)),
-      runRetention(env).then((r) => console.log("retention", r)),
-    ]));
+    ctx.waitUntil((async () => {
+      console.log("reminders", await sendReminders(env));
+      console.log("retention", await runRetention(env));
+      // After the reminders, so tomorrow's appointments go out in the same run.
+      console.log("mail", await flushMail(env, env.PUBLIC_ORIGIN ?? "https://dormtag.com"));
+    })());
   },
 
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     if (!url.pathname.startsWith("/api/")) {
@@ -1810,7 +1890,14 @@ export default {
         if (!m) continue;
         const names: string[] = (rx as any).names || [];
         const params = Object.fromEntries(names.map((n, i) => [n, decodeURIComponent(m[i + 1])]));
-        return await handler({ req, env, p, url, params });
+        const res = await handler({ req, env, p, url, params });
+        // Anything that changed state may have queued mail. Flush it after the
+        // response so nobody waits on a third party, and so an outage can never
+        // fail the request that caused it.
+        if (req.method !== "GET" && res.ok) {
+          ctx.waitUntil(flushMail(env, url.origin).catch(() => {}));
+        }
+        return res;
       }
       return bad("no such endpoint", 404);
     } catch (e: any) {

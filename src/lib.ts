@@ -194,6 +194,13 @@ export const T = {
   noNotifications: { de: "Nichts Neues.",            en: "Nothing new." },
   markAllRead:     { de: "Alle als gelesen",         en: "Mark all read" },
   language:        { de: "Sprache",                  en: "Language" },
+  emailUpdates:    { de: "E-Mail-Updates",           en: "Email updates" },
+  emailHint:       { de: "Wir schreiben nur zu deinen Meldungen. Sonst nichts.", en: "We only write about your own reports. Nothing else." },
+  emailNone:       { de: "Keine E-Mail hinterlegt",  en: "No address saved" },
+  emailOn:         { de: "An",                       en: "On" },
+  emailOff:        { de: "Aus",                      en: "Off" },
+  emailSaved:      { de: "Gespeichert",              en: "Saved" },
+  emailPlaceholder:{ de: "du@beispiel.de",           en: "you@example.com" },
   account:         { de: "Konto",                    en: "Account" },
   nReported:       { de: "Neue Meldung",             en: "New report" },
   nSlotsOffered:   { de: "Termine angeboten",        en: "Times offered" },
@@ -571,6 +578,8 @@ export const api = {
                       post("/admin/bootstrap", { email, name, password }),
   acceptInvite:     (token: string, password: string) => post("/auth/setup", { token, password }),
 
+  setEmail:         (email: string | null, wantsEmail: boolean) =>
+                      post("/me/email", { email, wantsEmail }),
   notifications:    () => call("/notifications"),
   markRead:         (id: string) => post(`/notifications/${id}/read`),
   markAllRead:      () => post("/notifications/read-all"),

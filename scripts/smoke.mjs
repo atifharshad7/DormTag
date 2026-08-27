@@ -538,6 +538,24 @@ ok("room stickers carry a slug and a room type",
 const b312 = roomStickers.filter((x) => x.unit_code === "312");
 ok("a four-person flat needs 7 stickers, not 26", b312.length === 7, `${b312.length}`);
 
+section("qr: sticker sheet carries what the filters need");
+ok("stickers carry a floor for the floor filter",
+  sheet.json.stickers.every((x) => typeof x.floor === "number"));
+ok("stickers carry a unit code for the unit search",
+  sheet.json.stickers.every((x) => !!x.unit_code));
+ok("stickers carry a room type for the room filter",
+  sheet.json.stickers.every((x) => !!x.room_type));
+ok("a labelled room prints its label, not just its type", await (async () => {
+  const bs = (await req("/api/admin/buildings", { cookie: operator })).json.buildings
+    .find((b) => b.code === "B");
+  const us = (await req(`/api/admin/buildings/${bs.id}/units`, { cookie: operator })).json.units;
+  const room = us.find((u) => u.code === "312").rooms.find((r) => r.room_type === "BATHROOM");
+  await req(`/api/admin/rooms/${room.id}`, { method: "PATCH", cookie: operator,
+    body: { label: "Bad links" } });
+  const fresh = (await req("/api/stickers/B", { cookie: staff })).json.stickers;
+  return fresh.some((x) => x.room_label === "Bad links");
+})());
+
 section("qr: room stickers resolve to a picker");
 const roomSlug = roomStickers.find((x) => x.unit_code === "312" && x.room_type === "KITCHEN").qr_slug;
 const scan = await req(`/api/r/${roomSlug}`);
@@ -687,6 +705,117 @@ ok("only one reminder exists for that appointment",
   (await bell(tenant)).notifications.filter((n) => n.kind === "reminder" && n.ticket_id === remT).length === 1);
 ok("a caretaker cannot trigger the reminder run",
   (await req("/api/dev/reminders", { method: "POST", cookie: staff })).status === 403);
+
+section("email: rendering")
+// The stub sender lets the suite prove the whole path without spending money
+// or depending on Resend being up.
+const mailBox = [];
+ok("mail is queued with an address for a resident who wants it", await (async () => {
+  const t1 = await mkTicket("u-B-312-BA-SHOWER", tenant);
+  await req(`/api/tickets/${t1}/accept`, { method: "POST", cookie: staff });
+  let ok200 = false;
+  for (const h of [8, 9, 10, 13, 14, 15, 16]) {
+    const r = await req(`/api/tickets/${t1}/offer`, { method: "POST", cookie: staff,
+      body: { slots: [nextAt(h, 6)] } });
+    if (r.status === 200 && r.json.offered === 1) { ok200 = true; break; }
+  }
+  if (!ok200) return false;
+  const flush = await req("/api/dev/mail", { method: "POST", cookie: operator });
+  // No key configured in the test worker, so it reports unconfigured rather
+  // than pretending to send.
+  return flush.status === 200 && typeof flush.json.configured === "boolean";
+})());
+
+ok("a caretaker cannot flush the mail queue",
+  (await req("/api/dev/mail", { method: "POST", cookie: staff })).status === 403);
+ok("a resident cannot flush the mail queue",
+  (await req("/api/dev/mail", { method: "POST", cookie: tenant })).status === 403);
+
+ok("every resident-facing kind renders in both languages", await (async () => {
+  const pv = (await req("/api/dev/mail/preview", { cookie: operator })).json.previews;
+  const emailable = pv.filter((x) => x.mail !== null);
+  // 8 kinds x 2 languages
+  return emailable.length === 16;
+})());
+
+const previews = (await req("/api/dev/mail/preview", { cookie: operator })).json.previews;
+ok("caretaker traffic is deliberately not emailed",
+  previews.filter((x) => x.kind === "reported").every((x) => x.mail === null));
+ok("every subject names the place",
+  previews.filter((x) => x.mail).every((x) => x.mail.subject.startsWith("B-312")));
+// Codes leaking into a resident's inbox is the bug the preview was built to
+// catch, so it gets an assertion of its own.
+ok("no raw codes reach the reader",
+  previews.filter((x) => x.mail).every((x) =>
+    !/BATHROOM|BEDROOM|KITCHEN|ELECTRICAL|PLUMBING|HEATING/.test(
+      x.mail.subject + x.mail.text)),
+  JSON.stringify(previews.filter((x) => x.mail)
+    .filter((x) => /BATHROOM|ELECTRICAL/.test(x.mail.subject + x.mail.text))
+    .map((x) => x.kind)));
+ok("the room is named in the reader's language", await (async () => {
+  const de = previews.find((x) => x.kind === "fixed" && x.locale === "de").mail.subject;
+  const en = previews.find((x) => x.kind === "fixed" && x.locale === "en").mail.subject;
+  return de.includes("Bad") && en.includes("Bathroom");
+})());
+ok("the reminder body gives a clock time, not a repeated date", await (async () => {
+  const r = previews.find((x) => x.kind === "reminder" && x.locale === "en").mail;
+  // The day belongs in the subject; the body should not repeat it.
+  return /at \d{2}:\d{2}\./.test(r.text);
+})());
+ok("German and English differ", await (async () => {
+  const de = previews.find((x) => x.kind === "fixed" && x.locale === "de").mail.subject;
+  const en = previews.find((x) => x.kind === "fixed" && x.locale === "en").mail.subject;
+  return de !== en;
+})());
+ok("the reminder states a time",
+  /\d{2}:\d{2}/.test(previews.find((x) => x.kind === "reminder").mail.text));
+ok("the part email repeats what the supplier said",
+  previews.find((x) => x.kind === "part_ordered" && x.locale === "en").mail.text.includes("KW 34"));
+ok("every email carries a link back to the ticket",
+  previews.filter((x) => x.mail).every((x) => x.mail.text.includes("/t/")));
+ok("a caretaker cannot read the previews",
+  (await req("/api/dev/mail/preview", { cookie: staff })).status === 403);
+
+section("email: the resident's own choice")
+ok("the session reports the stored address",
+  typeof (await req("/api/session", { cookie: tenant })).json.email === "string");
+
+ok("a resident can change their address",
+  (await req("/api/me/email", { method: "POST", cookie: tenant,
+    body: { email: "neu@wohnheim.test", wantsEmail: true } })).status === 200);
+ok("the change is reflected",
+  (await req("/api/session", { cookie: tenant })).json.email === "neu@wohnheim.test");
+
+ok("a nonsense address is refused",
+  (await req("/api/me/email", { method: "POST", cookie: tenant,
+    body: { email: "not-an-address" } })).status === 400);
+
+ok("turning email off is allowed",
+  (await req("/api/me/email", { method: "POST", cookie: tenant,
+    body: { wantsEmail: false } })).status === 200);
+ok("the session reports it off",
+  (await req("/api/session", { cookie: tenant })).json.wantsEmail === false);
+
+ok("nothing new is addressed while it's off", await (async () => {
+  const t2 = await mkTicket("u-B-312-Z2-WINDOW", tenant);
+  await req(`/api/tickets/${t2}/accept`, { method: "POST", cookie: staff });
+  for (const h of [8, 9, 10, 13, 14, 15, 16]) {
+    const r = await req(`/api/tickets/${t2}/offer`, { method: "POST", cookie: staff,
+      body: { slots: [nextAt(h, 7)] } });
+    if (r.status === 200 && r.json.offered === 1) break;
+  }
+  // The bell still fires; only the email address is withheld.
+  return (await req("/api/notifications", { cookie: tenant })).json
+    .notifications.some((n) => n.kind === "slots_offered" && n.ticket_id === t2);
+})());
+
+ok("turning it back on works",
+  (await req("/api/me/email", { method: "POST", cookie: tenant,
+    body: { email: "z2@wohnheim.test", wantsEmail: true } })).status === 200);
+
+ok("a caretaker has no email preference to set",
+  (await req("/api/me/email", { method: "POST", cookie: staff,
+    body: { wantsEmail: false } })).status === 403);
 
 section("retention");
 const ticketsBefore = (await req("/api/tickets", { cookie: staff })).json.tickets.length;

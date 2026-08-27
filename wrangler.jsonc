@@ -16,7 +16,9 @@
     }
   ],
   "vars": {
-    "DEMO_MODE": "true"
+    "DEMO_MODE": "true",
+    // Used for links in mail sent from the cron, where there is no request.
+    "PUBLIC_ORIGIN": "https://dormtag.com"
   },
   // Daily at 03:00 UTC: anonymise old reporter links, purge expired sessions.
   "triggers": { "crons": ["0 3 * * *"] },

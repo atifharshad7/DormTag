@@ -7,6 +7,10 @@
  */
 
 export interface Env {
+  /** Absent is a normal state: the bell works, mail simply waits. */
+  RESEND_API_KEY?: string;
+  /** Used for links in email sent from the cron, where there is no request. */
+  PUBLIC_ORIGIN?: string;
   DB: D1Database;
   DEMO_MODE: string;
   ASSETS: Fetcher;
@@ -184,17 +188,32 @@ export function queueNotification(
   ticketId: string | null,
   payload: Record<string, unknown> = {},
   ref: string | null = null,
+  emailTo: string | null = null,
 ) {
   return env.DB.prepare(
     `INSERT INTO notifications
-       (id, ticket_id, audience, tenant_id, building_id, kind, payload, ref, created_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`
+       (id, ticket_id, audience, tenant_id, building_id, kind, payload, ref, created_at, email_to)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`
   ).bind(
     uid(), ticketId, target.audience,
     target.audience === "tenant" ? target.tenantId : null,
     target.audience === "staff" ? target.buildingId : null,
-    kind, JSON.stringify(payload), ref, now(),
+    kind, JSON.stringify(payload), ref, now(), emailTo,
   );
+}
+
+/**
+ * The address to email about a ticket, or null.
+ *
+ * Null is the normal case for anyone who didn't give one, and for every staff
+ * notification: a caretaker with thirty jobs does not want thirty emails.
+ */
+export async function tenantEmail(env: Env, tenantId: string): Promise<string | null> {
+  const r = await env.DB.prepare(
+    `SELECT email, wants_email FROM tenants WHERE id = ?1`
+  ).bind(tenantId).first<any>();
+  if (!r || !r.wants_email) return null;
+  return r.email && String(r.email).includes("@") ? r.email : null;
 }
 
 /** Who a signed-in principal is, for read-state purposes. */
