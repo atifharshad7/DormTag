@@ -159,7 +159,7 @@ export const T = {
   sendLink:        { de: "Link senden",              en: "Send the link" },
   backToSignIn:    { de: "Zurück zur Anmeldung",     en: "Back to sign in" },
   landingTry:      { de: "Demo ausprobieren",        en: "Try the demo" },
-  landingRegister: { de: "Wohnheim registrieren",     en: "Register your halls" },
+  landingRegister: { de: "Wohnheim registrieren",  en: "Register your dorms" },
   landingSignIn:   { de: "Anmelden",                  en: "Sign in" },
   landingAsk:      { de: "Fragen? Schreib uns",       en: "Questions? Get in touch" },
   demoPick:        { de: "Als wen möchtest du schauen?", en: "Who would you like to look as?" },
