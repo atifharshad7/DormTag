@@ -12,7 +12,7 @@ import type { Env, Principal, RouteCtx } from "./core";
 import {
   bad, json, now, uid, DAY, sha256, randomToken, hashNewPassword,
   derivePassword, sameSecret, tooManyAttempts, recordAttempt,
-  isStaff, issueStaffSession, sessionResponse, HttpError,
+  isStaff, issueStaffSession, sessionResponse, HttpError, orgOf,
 } from "./core";
 
 /* ---------------------------------------------------------------- */
@@ -40,9 +40,41 @@ const INVITE_DAYS = 7;
 /** Slugs are lowercase and hyphen-safe, because they end up in a printed URL. */
 const slugPart = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 
+/**
+ * A short token that makes one organisation's QR slugs distinct from another's.
+ *
+ * Slugs are URLs, so they have to be unique platform-wide however many customers
+ * there are. Building codes are not: everybody has a Haus A. So the prefix goes
+ * into the stored code and therefore into the slug, while display_code stays
+ * whatever the operator typed.
+ */
+async function makeSlugPrefix(env: Env, orgName: string): Promise<string> {
+  const base = slugPart(orgName).slice(0, 6) || "org";
+  for (let i = 0; i < 40; i++) {
+    const candidate = i === 0 ? base : `${base}${i}`;
+    const clash = await env.DB.prepare(`SELECT id FROM orgs WHERE slug_prefix = ?1`)
+      .bind(candidate).first();
+    if (!clash) return candidate;
+  }
+  return slugPart(uid()).slice(0, 10);
+}
+
 function requireOperator(p: Principal) {
   if (p.kind !== "operator") throw new HttpError("operator only", 403);
   return p;
+}
+
+/**
+ * The organisation this request may touch.
+ *
+ * Every admin query goes through this rather than hand-writing the condition,
+ * because isolation here is a shared database plus an org_id and a single
+ * forgotten WHERE is another customer's data.
+ */
+function myOrg(p: Principal): string {
+  const org = orgOf(p);
+  if (!org) throw new HttpError("no organisation", 403);
+  return org;
 }
 
 async function countStaff(env: Env) {
@@ -54,7 +86,8 @@ async function countStaff(env: Env) {
 async function assertNotLastOperator(env: Env, staffId: string) {
   const r = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM staff
-      WHERE is_operator = 1 AND disabled_at IS NULL AND id != ?1`
+      WHERE is_operator = 1 AND disabled_at IS NULL AND id != ?1
+        AND org_id = (SELECT org_id FROM staff WHERE id = ?1)`
   ).bind(staffId).first<any>();
   if (((r?.n as number) ?? 0) === 0) {
     throw new HttpError("that's the last operator — promote someone else first", 409);
@@ -100,19 +133,19 @@ export async function setupState({ env }: RouteCtx) {
 export async function listBuildings({ env, p }: RouteCtx) {
   requireOperator(p);
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.code, b.name, b.room_count, b.seeded,
+    `SELECT b.id, COALESCE(b.display_code, b.code) AS code, b.name, b.room_count, b.seeded,
             (SELECT COUNT(*) FROM units u WHERE u.building_id = b.id) AS units,
             (SELECT COUNT(*) FROM rooms r JOIN units u ON u.id = r.unit_id
               WHERE u.building_id = b.id) AS rooms
-       FROM buildings b ORDER BY b.code`
-  ).all<any>();
+       FROM buildings b WHERE b.org_id = ?1 ORDER BY b.code`
+  ).bind(myOrg(p)).all<any>();
 
   const staff = await env.DB.prepare(
     `SELECT sb.building_id, s.id, s.display_name
        FROM staff_buildings sb JOIN staff s ON s.id = sb.staff_id
-      WHERE s.disabled_at IS NULL AND s.is_operator = 0
+      WHERE s.disabled_at IS NULL AND s.is_operator = 0 AND s.org_id = ?1
       ORDER BY s.display_name`
-  ).all<any>();
+  ).bind(myOrg(p)).all<any>();
 
   return json({
     buildings: rows.results.map((b: any) => ({
@@ -132,14 +165,30 @@ export async function createBuilding({ env, req, p }: RouteCtx) {
   if (!c || c.length > 6) return bad("code: 1 to 6 letters or digits");
   if (!name?.trim()) return bad("name required");
 
-  const clash = await env.DB.prepare(`SELECT id FROM buildings WHERE code = ?1`)
-    .bind(c).first();
+  const org = myOrg(p);
+  // Unique within the organisation: two Studierendenwerke may both have a Haus A.
+  const clash = await env.DB.prepare(
+    `SELECT id FROM buildings WHERE display_code = ?1 AND org_id = ?2`
+  ).bind(c, org).first();
   if (clash) return bad(`a building with code ${c} already exists`, 409);
+
+  // The stored code carries the organisation's prefix, which is what keeps QR
+  // slugs unique platform-wide. The demo organisation has an empty prefix so its
+  // already-printed stickers keep resolving.
+  const row = await env.DB.prepare(`SELECT slug_prefix FROM orgs WHERE id = ?1`)
+    .bind(org).first<any>();
+  const prefix = row?.slug_prefix ?? "";
+  const stored = prefix ? `${prefix}-${c}` : c;
+
+  const globalClash = await env.DB.prepare(`SELECT id FROM buildings WHERE code = ?1`)
+    .bind(stored).first();
+  if (globalClash) return bad(`a building with code ${c} already exists`, 409);
 
   const id = uid();
   await env.DB.prepare(
-    `INSERT INTO buildings (id, code, name, room_count, seeded) VALUES (?1,?2,?3,?4,0)`
-  ).bind(id, c, name.trim(), Math.max(0, Number(roomCount) || 0)).run();
+    `INSERT INTO buildings (id, code, display_code, name, room_count, seeded, org_id)
+     VALUES (?1,?2,?3,?4,?5,0,?6)`
+  ).bind(id, stored, c, name.trim(), Math.max(0, Number(roomCount) || 0), org).run();
   return json({ id, code: c });
 }
 
@@ -154,8 +203,8 @@ export async function updateBuilding({ env, req, p, params }: RouteCtx) {
   if (!name?.trim()) return bad("name required");
 
   const r = await env.DB.prepare(
-    `UPDATE buildings SET name = ?1, room_count = ?2 WHERE id = ?3`
-  ).bind(name.trim(), Math.max(0, Number(roomCount) || 0), params.id).run();
+    `UPDATE buildings SET name = ?1, room_count = ?2 WHERE id = ?3 AND org_id = ?4`
+  ).bind(name.trim(), Math.max(0, Number(roomCount) || 0), params.id, myOrg(p)).run();
   if (!r.meta.changes) return bad("unknown building", 404);
   return json({ ok: true });
 }
@@ -166,6 +215,13 @@ export async function updateBuilding({ env, req, p, params }: RouteCtx) {
 
 export async function listUnits({ env, p, params }: RouteCtx) {
   requireOperator(p);
+  // Checked here rather than relying on the caller: an id from another
+  // organisation must return nothing, not that organisation's units.
+  const owned = await env.DB.prepare(
+    `SELECT id FROM buildings WHERE id = ?1 AND org_id = ?2`
+  ).bind(params.id, myOrg(p)).first();
+  if (!owned) return bad("unknown building", 404);
+
   const units = await env.DB.prepare(
     `SELECT id, code, floor, kind, is_common FROM units
       WHERE building_id = ?1 ORDER BY floor, code`
@@ -195,8 +251,9 @@ export async function listUnits({ env, p, params }: RouteCtx) {
  */
 export async function createUnit({ env, req, p, params }: RouteCtx) {
   requireOperator(p);
-  const b = await env.DB.prepare(`SELECT id, code FROM buildings WHERE id = ?1`)
-    .bind(params.id).first<any>();
+  const b = await env.DB.prepare(
+    `SELECT id, code FROM buildings WHERE id = ?1 AND org_id = ?2`
+  ).bind(params.id, myOrg(p)).first<any>();
   if (!b) return bad("unknown building", 404);
 
   const body = (await req.json()) as {
@@ -269,14 +326,15 @@ export async function updateRoom({ env, req, p, params }: RouteCtx) {
   const { label } = (await req.json()) as { label?: string };
   const clean = label?.trim() ? label.trim().slice(0, 40) : null;
 
-  if (p.kind === "staff") {
-    const own = await env.DB.prepare(
-      `SELECT u.building_id FROM rooms r JOIN units u ON u.id = r.unit_id WHERE r.id = ?1`
-    ).bind(params.id).first<any>();
-    if (!own) return bad("unknown room", 404);
-    if (!p.buildingIds.includes(own.building_id)) {
-      return bad("not one of your buildings", 403);
-    }
+  const own = await env.DB.prepare(
+    `SELECT u.building_id, b.org_id
+       FROM rooms r JOIN units u ON u.id = r.unit_id
+       JOIN buildings b ON b.id = u.building_id
+      WHERE r.id = ?1`
+  ).bind(params.id).first<any>();
+  if (!own || own.org_id !== myOrg(p)) return bad("unknown room", 404);
+  if (p.kind === "staff" && !p.buildingIds.includes(own.building_id)) {
+    return bad("not one of your buildings", 403);
   }
 
   const r = await env.DB.prepare(`UPDATE rooms SET label = ?1 WHERE id = ?2`)
@@ -295,8 +353,12 @@ export async function addObjects({ env, req, p, params }: RouteCtx) {
   if (!OBJECT_TYPES.includes(ot)) return bad(`unknown fixture ${ot}`);
   const n = Math.min(Math.max(Number(count) || 1, 1), 12);
 
-  const room = await env.DB.prepare(`SELECT id, qr_slug FROM rooms WHERE id = ?1`)
-    .bind(params.id).first<any>();
+  const room = await env.DB.prepare(
+    `SELECT r.id, r.qr_slug FROM rooms r
+       JOIN units u ON u.id = r.unit_id
+       JOIN buildings b ON b.id = u.building_id
+      WHERE r.id = ?1 AND b.org_id = ?2`
+  ).bind(params.id, myOrg(p)).first<any>();
   if (!room) return bad("unknown room", 404);
 
   const existing = await env.DB.prepare(
@@ -321,6 +383,15 @@ export async function addObjects({ env, req, p, params }: RouteCtx) {
 /** Refused if any ticket ever referenced it: the history must stay readable. */
 export async function deleteObject({ env, p, params }: RouteCtx) {
   requireOperator(p);
+  const owned = await env.DB.prepare(
+    `SELECT o.id FROM objects o
+       JOIN rooms r ON r.id = o.room_id
+       JOIN units u ON u.id = r.unit_id
+       JOIN buildings b ON b.id = u.building_id
+      WHERE o.id = ?1 AND b.org_id = ?2`
+  ).bind(params.id, myOrg(p)).first();
+  if (!owned) return bad("unknown fixture", 404);
+
   const used = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM tickets WHERE object_id = ?1`
   ).bind(params.id).first<any>();
@@ -341,14 +412,15 @@ export async function listStaff({ env, p }: RouteCtx) {
   const rows = await env.DB.prepare(
     `SELECT s.id, s.email, s.display_name, s.is_operator, s.disabled_at,
             (s.password_hash IS NOT NULL) AS has_password
-       FROM staff s ORDER BY s.is_operator DESC, s.display_name`
-  ).all<any>();
+       FROM staff s WHERE s.org_id = ?1
+      ORDER BY s.is_operator DESC, s.display_name`
+  ).bind(myOrg(p)).all<any>();
 
   const assigned = await env.DB.prepare(
-    `SELECT sb.staff_id, b.id, b.code, b.name
+    `SELECT sb.staff_id, b.id, COALESCE(b.display_code, b.code) AS code, b.name
        FROM staff_buildings sb JOIN buildings b ON b.id = sb.building_id
-      ORDER BY b.code`
-  ).all<any>();
+      WHERE b.org_id = ?1 ORDER BY b.code`
+  ).bind(myOrg(p)).all<any>();
 
   return json({
     staff: rows.results.map((s: any) => ({
@@ -368,18 +440,26 @@ export async function createStaff({ env, req, p }: RouteCtx) {
   if (!name?.trim()) return bad("name required");
 
   const addr = email.trim().toLowerCase();
+  // Global, because staff.email is UNIQUE platform-wide (see migration 0010).
   const clash = await env.DB.prepare(`SELECT id FROM staff WHERE email = ?1`)
     .bind(addr).first();
-  if (clash) return bad("someone already has that email", 409);
+  if (clash) return bad("that email address is already in use", 409);
 
+  const org = myOrg(p);
   const id = uid();
   const stmts = [
     env.DB.prepare(
-      `INSERT INTO staff (id, email, display_name, locale, is_operator)
-       VALUES (?1,?2,?3,'de',?4)`
-    ).bind(id, addr, name.trim(), isOperator ? 1 : 0),
+      `INSERT INTO staff (id, email, display_name, locale, is_operator, org_id)
+       VALUES (?1,?2,?3,'de',?4,?5)`
+    ).bind(id, addr, name.trim(), isOperator ? 1 : 0, org),
   ];
+  // Only buildings this organisation owns: otherwise an operator could assign a
+  // caretaker to someone else's house and see its tickets through him.
   for (const b of (buildingIds || []).slice(0, 200)) {
+    const owned = await env.DB.prepare(
+      `SELECT id FROM buildings WHERE id = ?1 AND org_id = ?2`
+    ).bind(b, org).first();
+    if (!owned) return bad("unknown building", 404);
     stmts.push(env.DB.prepare(
       `INSERT INTO staff_buildings (staff_id, building_id) VALUES (?1,?2)`
     ).bind(id, b));
@@ -396,8 +476,9 @@ export async function updateStaff({ env, req, p, params }: RouteCtx) {
   const { name, isOperator } = (await req.json()) as
     { name?: string; isOperator?: boolean };
 
-  const target = await env.DB.prepare(`SELECT id, is_operator FROM staff WHERE id = ?1`)
-    .bind(params.id).first<any>();
+  const target = await env.DB.prepare(
+    `SELECT id, is_operator FROM staff WHERE id = ?1 AND org_id = ?2`
+  ).bind(params.id, myOrg(p)).first<any>();
   if (!target) return bad("unknown staff", 404);
 
   if (target.is_operator && isOperator === false) {
@@ -419,8 +500,20 @@ export async function updateStaff({ env, req, p, params }: RouteCtx) {
  */
 export async function setStaffBuildings({ env, req, p, params }: RouteCtx) {
   requireOperator(p);
+  const org = myOrg(p);
+  const mine = await env.DB.prepare(
+    `SELECT id FROM staff WHERE id = ?1 AND org_id = ?2`
+  ).bind(params.id, org).first();
+  if (!mine) return bad("unknown staff", 404);
+
   const { buildingIds } = (await req.json()) as { buildingIds?: string[] };
   const wanted = new Set((buildingIds || []).slice(0, 200));
+  for (const b of wanted) {
+    const owned = await env.DB.prepare(
+      `SELECT id FROM buildings WHERE id = ?1 AND org_id = ?2`
+    ).bind(b, org).first();
+    if (!owned) return bad("unknown building", 404);
+  }
 
   const current = await env.DB.prepare(
     `SELECT building_id FROM staff_buildings WHERE staff_id = ?1`
@@ -456,8 +549,8 @@ export async function disableStaff({ env, p, params }: RouteCtx) {
   if (params.id === me.staffId) return bad("you can't disable yourself", 409);
 
   const target = await env.DB.prepare(
-    `SELECT id, is_operator, disabled_at FROM staff WHERE id = ?1`
-  ).bind(params.id).first<any>();
+    `SELECT id, is_operator, disabled_at FROM staff WHERE id = ?1 AND org_id = ?2`
+  ).bind(params.id, myOrg(p)).first<any>();
   if (!target) return bad("unknown staff", 404);
   if (target.disabled_at) return bad("already disabled", 409);
   if (target.is_operator) await assertNotLastOperator(env, target.id);
@@ -477,8 +570,9 @@ export async function disableStaff({ env, p, params }: RouteCtx) {
 export async function enableStaff({ env, p, params }: RouteCtx) {
   requireOperator(p);
   const r = await env.DB.prepare(
-    `UPDATE staff SET disabled_at = NULL WHERE id = ?1 AND disabled_at IS NOT NULL`
-  ).bind(params.id).run();
+    `UPDATE staff SET disabled_at = NULL
+      WHERE id = ?1 AND org_id = ?2 AND disabled_at IS NOT NULL`
+  ).bind(params.id, myOrg(p)).run();
   if (!r.meta.changes) return bad("not disabled", 409);
   return json({ ok: true });
 }
@@ -504,8 +598,8 @@ async function issueInvite(env: Env, staffId: string) {
 export async function inviteStaff({ env, p, params }: RouteCtx) {
   requireOperator(p);
   const target = await env.DB.prepare(
-    `SELECT id FROM staff WHERE id = ?1 AND disabled_at IS NULL`
-  ).bind(params.id).first<any>();
+    `SELECT id FROM staff WHERE id = ?1 AND org_id = ?2 AND disabled_at IS NULL`
+  ).bind(params.id, myOrg(p)).first<any>();
   if (!target) return bad("unknown or disabled staff", 404);
   return json({ setupToken: await issueInvite(env, params.id), expiresInDays: INVITE_DAYS });
 }
@@ -671,4 +765,141 @@ export async function consumeReset({ env, req }: RouteCtx) {
   ]);
 
   return sessionResponse("sid", await issueStaffSession(env, row.staff_id));
+}
+
+/* ---------------------------------------------------------------- */
+/* signing up an organisation                                       */
+/* ---------------------------------------------------------------- */
+
+/**
+ * Anyone may sign up; nothing works until a platform admin approves it.
+ *
+ * No password is chosen here. The signup issues a setup link to the address
+ * given, which does two jobs at once: it proves the person controls that inbox,
+ * and it lets them choose their own password. The domain of that address is
+ * recorded as evidence — not proof of authority, but you can't get an address on
+ * someone else's domain.
+ */
+export async function signupOrg({ env, req, url }: RouteCtx) {
+  const { orgName, name, email } = (await req.json()) as
+    { orgName?: string; name?: string; email?: string };
+
+  if (!orgName?.trim()) return bad("name your organisation");
+  if (!name?.trim()) return bad("your name, please");
+  const addr = (email ?? "").trim().toLowerCase();
+  if (!addr.includes("@") || addr.length < 6) return bad("a real email address, please");
+
+  // Same throttle as sign-in: an open signup is otherwise a way to send mail.
+  if (await tooManyAttempts(env, `signup:${addr}`)) {
+    return bad("too many attempts — try again later", 429);
+  }
+  await recordAttempt(env, `signup:${addr}`, false);
+
+  // Platform-wide, because staff.email is UNIQUE across the database.
+  const clash = await env.DB.prepare(`SELECT id FROM staff WHERE email = ?1`)
+    .bind(addr).first();
+  if (clash) return bad("that email address is already in use", 409);
+
+  const orgId = uid();
+  const staffId = uid();
+  const domain = addr.split("@")[1] ?? null;
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO orgs (id, name, status, signup_email, signup_domain, created_at, slug_prefix)
+       VALUES (?1,?2,'pending',?3,?4,?5,?6)`
+    ).bind(orgId, orgName.trim().slice(0, 120), addr, domain, now(),
+           await makeSlugPrefix(env, orgName)),
+    env.DB.prepare(
+      `INSERT INTO staff (id, email, display_name, locale, is_operator, org_id)
+       VALUES (?1,?2,?3,'de',1,?4)`
+    ).bind(staffId, addr, name.trim().slice(0, 80), orgId),
+  ]);
+
+  const token = await issueInvite(env, staffId);
+  const link = `${url.origin}/setup/${token}`;
+
+  // Queued to no bell audience: a personal setup link must not surface in
+  // anyone's notifications. flushMail selects on email_to, so it still sends.
+  await env.DB.prepare(
+    `INSERT INTO notifications
+       (id, ticket_id, audience, tenant_id, building_id, kind, payload, ref,
+        created_at, email_to, org_id)
+     VALUES (?1,NULL,'tenant',NULL,NULL,'org_setup',?2,NULL,?3,?4,?5)`
+  ).bind(uid(), JSON.stringify({ url: link, orgName: orgName.trim() }),
+         now(), addr, orgId).run();
+
+  return json({
+    ok: true,
+    orgId,
+    // Returned only in demo mode, so the flow can be walked through without a
+    // working mail sender. Never in production.
+    setupToken: env.DEMO_MODE === "true" ? token : undefined,
+    message: "check your email for the link, then wait for approval",
+  });
+}
+
+/* ---------------------------------------------------------------- */
+/* the platform console                                             */
+/* ---------------------------------------------------------------- */
+
+function requirePlatformAdmin(p: Principal) {
+  if (p.kind !== "operator" || !p.isPlatformAdmin) {
+    throw new HttpError("platform admin only", 403);
+  }
+  return p;
+}
+
+/**
+ * Every organisation, with counts only.
+ *
+ * Deliberately no ticket data. Approving an organisation and reading a few
+ * hundred students' repair histories are different powers, and a console that
+ * bundled them would be a bad answer to "who can see our tenants' reports?".
+ */
+export async function listOrgs({ env, p }: RouteCtx) {
+  requirePlatformAdmin(p);
+  const rows = await env.DB.prepare(
+    `SELECT o.id, o.name, o.status, o.signup_email, o.signup_domain,
+            o.created_at, o.approved_at, o.note,
+            (SELECT COUNT(*) FROM buildings b WHERE b.org_id = o.id) AS buildings,
+            (SELECT COUNT(*) FROM staff s WHERE s.org_id = o.id AND s.disabled_at IS NULL) AS staff,
+            (SELECT COUNT(*) FROM staff s
+              WHERE s.org_id = o.id AND s.password_hash IS NOT NULL) AS signed_in_ever
+       FROM orgs o
+      ORDER BY CASE o.status WHEN 'pending' THEN 0 ELSE 1 END, o.created_at DESC`
+  ).all<any>();
+  return json({ orgs: rows.results });
+}
+
+export async function setOrgStatus({ env, req, p, params }: RouteCtx) {
+  const me = requirePlatformAdmin(p);
+  const { status, note } = (await req.json()) as { status?: string; note?: string };
+
+  if (!["active", "suspended", "rejected"].includes(String(status))) {
+    return bad("status must be active, suspended or rejected");
+  }
+  // The demo organisation is permanent: it's what the landing page offers, and
+  // suspending it would break the front door.
+  if (params.id === "org-demo") return bad("the demo organisation can't be changed", 409);
+  if (params.id === me.orgId) return bad("you can't change your own organisation", 409);
+
+  const r = await env.DB.prepare(
+    `UPDATE orgs
+        SET status = ?1,
+            note = COALESCE(?2, note),
+            approved_at = CASE WHEN ?1 = 'active' AND approved_at IS NULL THEN ?3 ELSE approved_at END
+      WHERE id = ?4 AND status != 'demo'`
+  ).bind(status, note?.trim() || null, now(), params.id).run();
+  if (!r.meta.changes) return bad("unknown organisation", 404);
+
+  // Suspending has to end sessions, or someone stays inside until theirs expires.
+  if (status !== "active") {
+    await env.DB.prepare(
+      `UPDATE staff_sessions SET revoked_at = ?1
+        WHERE revoked_at IS NULL
+          AND staff_id IN (SELECT id FROM staff WHERE org_id = ?2)`
+    ).bind(now(), params.id).run();
+  }
+  return json({ ok: true, status });
 }

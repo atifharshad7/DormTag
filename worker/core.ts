@@ -127,9 +127,20 @@ export const clearCookie = (name: string) => `${name}=; Path=/; HttpOnly; Secure
 export type Principal =
   | { kind: "anonymous" }
   | { kind: "token"; ticketId: string; reporterId: string; isPrimary: boolean; locale: string }
-  | { kind: "tenant"; tenantId: string; roomId: string; unitId: string; locale: string }
-  | { kind: "staff"; staffId: string; name: string; buildingIds: string[]; locale: string }
-  | { kind: "operator"; staffId: string; name: string; locale: string };
+  | {
+      kind: "tenant"; tenantId: string; roomId: string; unitId: string;
+      locale: string; orgId: string; orgStatus: string;
+    }
+  | {
+      kind: "staff"; staffId: string; name: string; buildingIds: string[];
+      locale: string; orgId: string; orgStatus: string;
+    }
+  | {
+      kind: "operator"; staffId: string; name: string; locale: string;
+      orgId: string; orgStatus: string;
+      /** Approves organisations. Deliberately grants no access to their tickets. */
+      isPlatformAdmin: boolean;
+    };
 
 export const isStaff = (p: Principal) => p.kind === "staff" || p.kind === "operator";
 
@@ -189,16 +200,18 @@ export function queueNotification(
   payload: Record<string, unknown> = {},
   ref: string | null = null,
   emailTo: string | null = null,
+  orgId: string | null = null,
 ) {
   return env.DB.prepare(
     `INSERT INTO notifications
-       (id, ticket_id, audience, tenant_id, building_id, kind, payload, ref, created_at, email_to)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`
+       (id, ticket_id, audience, tenant_id, building_id, kind, payload, ref,
+        created_at, email_to, org_id)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`
   ).bind(
     uid(), ticketId, target.audience,
     target.audience === "tenant" ? target.tenantId : null,
     target.audience === "staff" ? target.buildingId : null,
-    kind, JSON.stringify(payload), ref, now(), emailTo,
+    kind, JSON.stringify(payload), ref, now(), emailTo, orgId,
   );
 }
 
@@ -230,15 +243,61 @@ export function readerKey(p: Principal): string | null {
  */
 export function notificationScope(p: Principal): { where: string; binds: unknown[] } {
   if (p.kind === "tenant") {
-    return { where: "n.audience = 'tenant' AND n.tenant_id = ?", binds: [p.tenantId] };
+    return {
+      where: "n.org_id = ? AND n.audience = 'tenant' AND n.tenant_id = ?",
+      binds: [p.orgId, p.tenantId],
+    };
   }
   if (p.kind === "operator") {
-    return { where: "n.audience = 'operator'", binds: [] };
+    // The org condition is the whole protection here: audience alone would show
+    // every organisation's escalations in every operator's bell.
+    return { where: "n.org_id = ? AND n.audience = 'operator'", binds: [p.orgId] };
   }
   if (p.kind === "staff") {
     if (p.buildingIds.length === 0) return { where: "1=0", binds: [] };
     const q = p.buildingIds.map(() => "?").join(",");
-    return { where: `n.audience = 'staff' AND n.building_id IN (${q})`, binds: [...p.buildingIds] };
+    return {
+      where: `n.org_id = ? AND n.audience = 'staff' AND n.building_id IN (${q})`,
+      binds: [p.orgId, ...p.buildingIds],
+    };
   }
   return { where: "1=0", binds: [] };
+}
+
+
+/* --- organisations ------------------------------------------------ */
+
+/**
+ * The organisation a request belongs to, or null when there isn't one.
+ *
+ * Isolation in this app rests on a shared database and an org_id, so every
+ * query that can reach another organisation's rows goes through here rather
+ * than hand-writing the condition. One place to get right, one place to review.
+ */
+export function orgOf(p: Principal): string | null {
+  return p.kind === "tenant" || p.kind === "staff" || p.kind === "operator"
+    ? p.orgId
+    : null;
+}
+
+/** A suspended or pending organisation can't be used, only administered. */
+export const statusUsable = (status: string | undefined | null) =>
+  status === "active" || status === "demo";
+
+export async function orgUsable(env: Env, orgId: string) {
+  const r = await env.DB.prepare(`SELECT status FROM orgs WHERE id = ?1`).bind(orgId).first<any>();
+  return statusUsable(r?.status);
+}
+
+/**
+ * Whether this principal's organisation is usable.
+ *
+ * A pending or suspended organisation resolves to a real principal rather than
+ * being signed out: they need to reach /api/session to be told why, and a
+ * platform admin needs in to approve or fix it. Data routes refuse separately.
+ */
+export function orgBlocked(p: Principal): boolean {
+  if (p.kind === "anonymous" || p.kind === "token") return false;
+  if (p.kind === "operator" && p.isPlatformAdmin) return false;
+  return !statusUsable(p.orgStatus);
 }

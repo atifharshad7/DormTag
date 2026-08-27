@@ -17,6 +17,8 @@ import { OperatorView } from "./Operator";
 import { Logo } from "./Logo";
 import { Manage, FirstRunSetup, AcceptInvite, ForgotPassword, ResetPassword, ChangePassword } from "./Admin";
 import { Account } from "./Account";
+import { Landing, DemoPicker, SignUpOrg, OrgWaiting } from "./Landing";
+import { Platform } from "./Platform";
 import { About } from "./Auth";
 import { BellButton, NotificationPanel, useNotifications } from "./Notifications";
 
@@ -716,7 +718,10 @@ export default function App() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [route, setRoute] = useState(readRoute);
   const [screen, setScreen] =
-    useState<"main" | "stickers" | "sent" | "manage" | "account" | "about" | "password" | "forgot">("main");
+    useState<
+    "main" | "stickers" | "sent" | "manage" | "account" | "about" |
+    "password" | "forgot" | "landing" | "demo" | "signup" | "platform"
+  >("landing");
   const [bellOpen, setBellOpen] = useState(false);
   const [openTicket, setOpenTicket] = useState<string | null>(null);
   const [stickerBuilding, setStickerBuilding] = useState<string | null>(null);
@@ -736,6 +741,10 @@ export default function App() {
    * a caretaker back to the queue, from wherever they were.
    */
   const signedIn = !!session && session.principal.kind !== "anonymous";
+  useEffect(() => {
+    // Landing screens only make sense signed out; drop back to the app.
+    if (signedIn && ["landing", "demo", "signup", "forgot"].includes(screen)) setScreen("main");
+  }, [signedIn, screen]);
   const { items: notifItems, unread, reload: reloadNotifs } = useNotifications(signedIn);
 
   const goHome = useCallback(() => {
@@ -821,14 +830,33 @@ export default function App() {
           <FirstRunSetup t={t} onDone={loadSession} />
         ) : kind === "anonymous" && screen === "forgot" ? (
           <ForgotPassword t={t} onBack={() => setScreen("main")} />
+        ) : kind === "anonymous" && screen === "landing" ? (
+          <Landing l={l} t={t}
+            onDemo={() => setScreen("demo")}
+            onSignUp={() => setScreen("signup")}
+            onSignIn={() => setScreen("main")}
+            onAbout={() => setScreen("about")} />
+        ) : kind === "anonymous" && screen === "demo" ? (
+          <DemoPicker t={t} onBack={() => setScreen("landing")} onDone={loadSession} />
+        ) : kind === "anonymous" && screen === "signup" ? (
+          <SignUpOrg t={t} onBack={() => setScreen("landing")} />
+        ) : kind === "anonymous" && screen === "about" ? (
+          <About t={t} onBack={() => setScreen("landing")} />
+        ) : session.orgBlocked ? (
+          // Signed in, but the organisation isn't switched on yet.
+          <OrgWaiting t={t} status={session.org?.status ?? "pending"}
+            onSignOut={async () => { await api.logout(); setScreen("landing"); await loadSession(); }} />
+        ) : screen === "platform" ? (
+          <Platform l={l} t={t} onBack={() => setScreen("account")} />
         ) : screen === "account" ? (
           <Account l={l} t={t} session={session}
             onBack={() => setScreen("main")}
             onLanguage={() => setL(l === "de" ? "en" : "de")}
             onManage={() => setScreen("manage")}
             onPassword={() => setScreen("password")}
+            onPlatform={session.principal.isPlatformAdmin ? () => setScreen("platform") : undefined}
             onAbout={() => setScreen("about")}
-            onSignOut={async () => { await api.logout(); setScreen("main"); await loadSession(); }} />
+            onSignOut={async () => { await api.logout(); setScreen("landing"); await loadSession(); }} />
         ) : screen === "password" ? (
           <ChangePassword t={t} onBack={() => setScreen("account")} />
         ) : screen === "about" ? (
@@ -848,7 +876,7 @@ export default function App() {
             onBack={() => { setStickerBuilding(null); setScreen("main"); }} />
         ) : kind === "anonymous" ? (
           <SignIn l={l} t={t} session={session} onDone={loadSession}
-            onForgot={() => setScreen("forgot")} />
+            onForgot={() => setScreen("forgot")} onBack={() => setScreen("landing")} />
         ) : kind === "tenant" ? (
           <TenantView key={homeKey + ":" + (openTicket ?? "")} l={l} t={t} tickets={tickets} reload={reload}
             home={session.home} onScan={() => setScanning(true)}

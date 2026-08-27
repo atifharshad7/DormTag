@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronLeft, Languages, LogOut, Settings, HelpCircle, User, Wrench, LayoutDashboard, Mail, Check, KeyRound } from "lucide-react";
+import { ChevronLeft, Languages, LogOut, Settings, HelpCircle, User, Wrench, LayoutDashboard, Mail, Check, KeyRound, ShieldCheck } from "lucide-react";
 import { api, type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -12,7 +12,7 @@ type T = (k: StrKey) => string;
  * can't read German needs it before they can read anything else. Once they're in,
  * the choice is made and it belongs here.
  */
-export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, onSignOut, onPassword }: {
+export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, onSignOut, onPassword, onPlatform }: {
   l: Locale; t: T; session: any;
   onBack: () => void;
   onLanguage: () => void;
@@ -20,6 +20,7 @@ export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, 
   onAbout: () => void;
   onSignOut: () => void;
   onPassword?: () => void;
+  onPlatform?: () => void;
 }) {
   const kind = session.principal.kind;
   const home = session.home;
@@ -49,6 +50,7 @@ export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, 
           </>
         )}
         {kind === "operator" && <p className="cardtitle">{session.principal.name}</p>}
+        {session.org && <p className="muted mono">{session.org.name}</p>}
       </div>
 
       {kind === "tenant" && <EmailRow l={l} t={t} session={session} />}
@@ -81,6 +83,15 @@ export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, 
         <span>{t("aboutLink")}</span>
         <span className="mono">→</span>
       </button>
+
+      {/* Only ever one person. Deliberately no access to any org's tickets. */}
+      {onPlatform && (
+        <button className="accountrow" onClick={onPlatform}>
+          <ShieldCheck size={16} strokeWidth={1.75} aria-hidden />
+          <span>{t("orgsWord")}</span>
+          <span className="mono">→</span>
+        </button>
+      )}
 
       <button className="accountrow accountout" onClick={onSignOut}>
         <LogOut size={16} strokeWidth={1.75} aria-hidden />

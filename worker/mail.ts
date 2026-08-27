@@ -95,6 +95,11 @@ const T = {
       subject: "Ein Fachbetrieb übernimmt",
       body: `Der Hausmeister hat die Reparatur an einen Fachbetrieb weitergegeben${trade ? ` (${trade})` : ""}.`,
     }),
+    org_setup: (url: string, orgName: string) => ({
+      subject: "DormTag einrichten",
+      body: `Willkommen. Das Konto für ${orgName} ist angelegt.\n\nHier Passwort setzen:\n${url}`
+        + "\n\nDanach prüfen wir die Anmeldung und schalten den Zugang frei.",
+    }),
     password_reset: (url: string) => ({
       subject: "Passwort zurücksetzen",
       body: "Du hast ein neues Passwort angefordert. Der Link gilt eine Stunde und"
@@ -145,6 +150,11 @@ const T = {
     escalated: (trade: string | null) => ({
       subject: "An external firm is taking this on",
       body: `The caretaker handed the repair to a qualified firm${trade ? ` (${trade})` : ""}.`,
+    }),
+    org_setup: (url: string, orgName: string) => ({
+      subject: "Set up DormTag",
+      body: `Welcome. The account for ${orgName} exists.\n\nSet your password here:\n${url}`
+        + "\n\nWe'll then review the signup and switch the access on.",
     }),
     password_reset: (url: string) => ({
       subject: "Reset your password",
@@ -198,6 +208,10 @@ export function renderMail(row: any, origin: string): { subject: string; text: s
     case "fixed":           m = s.fixed(); break;
     case "escalated":
       m = s.escalated(label(TRADE, payload.trade ?? null, locale) || null); break;
+    case "org_setup": {
+      const m3 = s.org_setup(String(payload.url ?? origin), String(payload.orgName ?? "DormTag"));
+      return { subject: m3.subject, text: `${m3.body}\n\n${s.footer(origin)}` };
+    }
     case "password_reset": {
       // Stands alone: no place line, no ticket link, nothing but the link.
       const m2 = s.password_reset(String(payload.url ?? origin));

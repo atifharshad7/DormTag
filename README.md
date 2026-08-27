@@ -78,6 +78,56 @@ Four rules the code enforces, each because the alternative is unrecoverable:
 * Staff are **disabled, never deleted**, because their name is on closed tickets. Disabling revokes their sessions immediately.
 * The demo seed refuses to run once a building exists that it didn't create, so nobody wipes a real estate by clicking **Load demo data** out of curiosity.
 
+## Several organisations, one app
+
+Each organisation has its own sealed estate. Buildings, staff and residents all
+carry an `org_id`, and every query that could reach another organisation's rows
+goes through one of three places: `ticketScope`, `notificationScope`, or
+`scopeClause` for the dashboard aggregates. One place to get right per query
+type, rather than a condition hand-written a dozen times.
+
+A shared database with an `org_id` rather than a database each. The schema is
+identical either way, so moving to per-organisation databases later means
+exporting rows and dropping a column — the work would be the routing layer and a
+migration runner, not the data model. What the shared approach costs is that
+isolation depends on the condition being present, which is why there are 23
+tests that deliberately try to cross the boundary: sign in as another
+organisation and attempt to read tickets, rename a building, print stickers,
+disable a caretaker, reassign coverage. All must fail, and guessing an id from
+elsewhere returns 404 rather than the row.
+
+**Signing up.** Anyone can register an organisation: name it, give your name and
+an email address. No password is chosen there — a setup link goes to the address,
+which proves the person controls that inbox and lets them pick their own password.
+The domain is recorded as evidence: not proof of authority, but you can't get an
+address on someone else's domain.
+
+**Building codes repeat, slugs don't.** Every Studierendenwerk has a Haus A, but
+`/r/a112-ba` is a URL and can't be ambiguous between two customers. So each
+organisation gets a short `slug_prefix` which goes into the stored building code
+and therefore into the slug, while `display_code` stays whatever the operator
+typed and is what every screen shows. The demo organisation has an empty prefix,
+so stickers printed before this change still resolve.
+
+New organisations start `pending` and can't be used until approved. A pending or suspended organisation still resolves to a real
+principal, so they can reach `/api/session` and be told why rather than being
+silently signed out; every other route is refused by a single gate with a short
+allowlist, so a route added later is closed by default. Suspending revokes their
+sessions immediately and keeps their data. A platform admin (`staff.is_platform_admin`, set in the D1
+console) approves them and deliberately gets **no** access to their tickets:
+approving an organisation and reading a few hundred students' repair histories
+are different powers.
+
+Email addresses stay unique platform-wide rather than per organisation, because
+`staff.email` is an inline `UNIQUE` constraint and SQLite can't drop the implicit
+index without rebuilding the table. That means one person can't hold accounts at
+two Studierendenwerke — a real limitation, and also the simpler design, since
+sign-in resolves an account from the address alone and never has to ask which
+organisation you meant.
+
+The demo lives in its own organisation with status `demo`, and the seed only ever
+touches that one, so nobody can wipe a real estate by finding the endpoint.
+
 ## Retention
 
 Closed tickets are **never deleted**. The room-and-cause history is the entire reason the operator dashboard is worth anything, and once the reporter link is gone, "the drain in C-204 blocked twice" isn't personal data.
@@ -102,7 +152,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 289 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 392 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure
@@ -120,6 +170,8 @@ src/
   BuildingEdit.tsx   # building card and forms, shared by dashboard and Manage
   Account.tsx        # language, sign out, Manage, About
   Notifications.tsx  # the bell and its panel
+  Landing.tsx        # front door, demo picker, signup, waiting-for-approval
+  Platform.tsx       # the platform console: which organisations exist
   SlotPicker.tsx     # appointment time picker
   Scanner.tsx        # in-app QR scanner
   Logo.tsx           # the house-and-QR mark
@@ -127,8 +179,8 @@ src/
   styles.css         # design tokens and layout
   main.tsx           # Vite entry
 migrations/
-  000*.sql           # schema, applied in order
-  000*.console.sql   # same statements without comments, for the D1 dashboard
+  0*.sql             # schema, applied in order
+  0*.console.sql     # same statements without comments, for the D1 dashboard
 scripts/
   smoke.mjs          # end-to-end tests against a running worker
 reference/
@@ -180,7 +232,7 @@ npm run db:remote
 npm run deploy
 ```
 
-If you'd rather not use the terminal, create the database in the Cloudflare dashboard and paste each `migrations/000*.console.sql` file into the D1 console in order. Those versions have the comments stripped, because a clipboard that drops line breaks turns a leading `--` into a comment that swallows the whole script.
+If you'd rather not use the terminal, create the database in the Cloudflare dashboard and paste each `migrations/0*.console.sql` file into the D1 console in order. Those versions have the comments stripped, because a clipboard that drops line breaks turns a leading `--` into a comment that swallows the whole script.
 
 Finally, open the site and click **Load demo data** once. That writes three buildings, the sticker slugs, the demo accounts, and a year of history with a deliberately planted drain problem on one riser so the repeat-fault view has something to show.
 
@@ -213,6 +265,8 @@ The site auto-builds on every push to `main` once you've connected the repo unde
 * **Password reset and access-code recovery.** Both need an email sender.
 * **Bulk unit creation.** Adding 240 rooms one unit at a time is the obvious gap in the admin screen.
 * **Archiving a building.** There is currently no way to remove one.
+* **Resident accounts at scale.** Codes still come only from the seed; generating
+  and rotating them per tenancy is the last gap before a pilot.
 * **A contractor portal.** Commissioning is recorded, but the firm has no login.
 * **Scheduling with an external firm.** `slot_offers.staff_id` points at staff, so the caretaker still offers the times. In practice he often attends to let them in, so it half works, but it's a modelling gap rather than a decision.
 

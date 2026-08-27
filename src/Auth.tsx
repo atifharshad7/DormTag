@@ -58,8 +58,9 @@ export function About({ t, onBack }: { t: T; onBack: () => void }) {
 /* Sign in — two real credential paths, no role switching             */
 /* ================================================================== */
 
-export function SignIn({ l, t, session, onDone, onForgot }: {
-  l: Locale; t: T; session: any; onDone: () => Promise<void>; onForgot?: () => void;
+export function SignIn({ l, t, session, onDone, onForgot, onBack }: {
+  l: Locale; t: T; session: any; onDone: () => Promise<void>;
+  onForgot?: () => void; onBack?: () => void;
 }) {
   const [showAbout, setShowAbout] = useState(false);
   const [tab, setTab] = useState<"resident" | "staff">("resident");
@@ -88,6 +89,9 @@ export function SignIn({ l, t, session, onDone, onForgot }: {
 
   return (
     <div className="col signin">
+      {onBack && (
+        <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("back")}</button>
+      )}
       <h2>{t("signInTitle")}</h2>
 
       <div className="tabs" role="tablist">

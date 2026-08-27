@@ -1153,6 +1153,248 @@ section("admin: the seed protects real work");
 const reseed = await req("/api/dev/seed", { method: "POST" });
 ok("reseeding is refused once a real building exists", reseed.status === 409, JSON.stringify(reseed.json));
 
+section("organisations: nothing crosses the boundary")
+// Build a second organisation by hand, then try every read path from inside it.
+// This is the section that matters most: isolation here is a shared database
+// plus an org_id, so a single forgotten condition is another customer's data.
+const OTHER_ORG = "org-other-test";
+const mkOther = async () => {
+  // Direct inserts, because signup isn't built yet. The point is the scoping.
+  const r = await req("/api/dev/testorg", { method: "POST", cookie: operator,
+    body: { orgId: OTHER_ORG } });
+  return r;
+};
+const other = await mkOther();
+ok("a second organisation can be created for the test", other.status === 200,
+  JSON.stringify(other.json));
+
+const otherOp = jarOf(await req("/api/auth/staff", { method: "POST",
+  body: { email: "op@other.test", password: "other-operator-2026" } }));
+ok("its operator can sign in", otherOp.startsWith("sid="));
+
+const otherSession = (await req("/api/session", { cookie: otherOp })).json;
+ok("they are an operator", otherSession.principal.kind === "operator");
+ok("they see none of the demo organisation's buildings",
+  (otherSession.buildings || []).every((b) => b.code === "Z"),
+  JSON.stringify((otherSession.buildings || []).map((b) => b.code)));
+
+ok("they see no tickets from the demo organisation",
+  (await req("/api/tickets", { cookie: otherOp })).json.tickets.length === 0,
+  JSON.stringify((await req("/api/tickets", { cookie: otherOp })).json.tickets.length));
+
+const otherDash = (await req("/api/dashboard?months=12", { cookie: otherOp })).json;
+ok("their dashboard counts nothing of ours", otherDash.metrics.open === 0,
+  `${otherDash.metrics.open}`);
+ok("their building grid holds only their own",
+  otherDash.buildings.every((b) => b.code === "Z"),
+  JSON.stringify(otherDash.buildings.map((b) => b.code)));
+ok("their repeat-fault ranking is empty", otherDash.repeats.length === 0);
+
+ok("they cannot list our staff",
+  (await req("/api/admin/staff", { cookie: otherOp })).json.staff
+    .every((x) => x.email.endsWith("@other.test")),
+  JSON.stringify((await req("/api/admin/staff", { cookie: otherOp })).json.staff.map((x) => x.email)));
+
+ok("they cannot list our buildings",
+  (await req("/api/admin/buildings", { cookie: otherOp })).json.buildings
+    .every((b) => b.code === "Z"));
+
+// Guessing an id from the other organisation must 404, not return the row.
+const ourBuilding = (await req("/api/admin/buildings", { cookie: operator })).json
+  .buildings.find((b) => b.code === "B");
+ok("guessing our building id gives nothing",
+  (await req(`/api/admin/buildings/${ourBuilding.id}/units`, { cookie: otherOp })).status === 404);
+ok("they cannot rename our building",
+  (await req(`/api/admin/buildings/${ourBuilding.id}`, { method: "PATCH", cookie: otherOp,
+    body: { name: "Hijacked", roomCount: 1 } })).status === 404);
+ok("they cannot add a unit to our building",
+  (await req(`/api/admin/buildings/${ourBuilding.id}/units`, { method: "POST", cookie: otherOp,
+    body: { code: "999", floor: 1, kind: "studio",
+            rooms: [{ code: "Z1", roomType: "BEDROOM", kind: "private" }] } })).status === 404);
+ok("they cannot print our stickers",
+  (await req("/api/stickers/B", { cookie: otherOp })).status === 404);
+
+const ourStaff = (await req("/api/admin/staff", { cookie: operator })).json.staff
+  .find((x) => x.email === "hausmeister@wohnheim.test");
+ok("they cannot disable our caretaker",
+  (await req(`/api/admin/staff/${ourStaff.id}/disable`, { method: "POST", cookie: otherOp })).status === 404);
+ok("they cannot reassign our caretaker's buildings",
+  (await req(`/api/admin/staff/${ourStaff.id}/buildings`, { method: "PUT", cookie: otherOp,
+    body: { buildingIds: [] } })).status === 404);
+ok("they cannot issue a setup link for our caretaker",
+  (await req(`/api/admin/staff/${ourStaff.id}/invite`, { method: "POST", cookie: otherOp })).status === 404);
+
+const ourRoom = (await req(`/api/admin/buildings/${ourBuilding.id}/units`, { cookie: operator }))
+  .json.units.find((u) => u.code === "312").rooms[0];
+ok("they cannot rename our room",
+  (await req(`/api/admin/rooms/${ourRoom.id}`, { method: "PATCH", cookie: otherOp,
+    body: { label: "Hijacked" } })).status === 404);
+
+ok("their bell is empty of our notifications",
+  (await req("/api/notifications", { cookie: otherOp })).json.notifications.length === 0);
+
+// And the reverse: our operator must not see theirs appear.
+ok("our own view is unchanged by their existence",
+  (await req("/api/admin/buildings", { cookie: operator })).json.buildings
+    .every((b) => b.code !== "Z"));
+ok("our dashboard still counts our own tickets",
+  (await req("/api/dashboard?months=12", { cookie: operator })).json.metrics.open > 0);
+
+ok("a caretaker in another organisation sees nothing of ours", await (async () => {
+  const oc = jarOf(await req("/api/auth/staff", { method: "POST",
+    body: { email: "hm@other.test", password: "other-caretaker-2026" } }));
+  const list = (await req("/api/tickets", { cookie: oc })).json.tickets;
+  return list.length === 0;
+})());
+
+ok("the seed refuses to touch a real organisation's buildings", await (async () => {
+  // The demo org may be reseeded; a non-demo building must not be a reason to
+  // refuse, and must not be wiped either.
+  const before = (await req("/api/admin/buildings", { cookie: otherOp })).json.buildings.length;
+  await req("/api/dev/seed", { method: "POST" });
+  const after = (await req("/api/admin/buildings", { cookie: otherOp })).json.buildings.length;
+  return before === after;
+})());
+
+section("signup and approval")
+const su = await req("/api/orgs/signup", { method: "POST",
+  body: { orgName: "Studierendenwerk Testheim", name: "A. Beispiel",
+          email: "anna@studentenwerk-testheim.de" } });
+ok("anyone can sign up an organisation", su.status === 200, JSON.stringify(su.json));
+ok("demo mode returns the setup link so the flow is walkable",
+  typeof su.json.setupToken === "string");
+
+ok("the same email can't sign up twice",
+  (await req("/api/orgs/signup", { method: "POST",
+    body: { orgName: "Another", name: "B", email: "anna@studentenwerk-testheim.de" } })).status === 409);
+ok("a nonsense address is refused",
+  (await req("/api/orgs/signup", { method: "POST",
+    body: { orgName: "X", name: "Y", email: "nope" } })).status === 400);
+ok("an unnamed organisation is refused",
+  (await req("/api/orgs/signup", { method: "POST",
+    body: { orgName: "  ", name: "Y", email: "z@z.test" } })).status === 400);
+
+// Set the password via the setup link, exactly as the emailed flow would.
+const claimed = await req("/api/auth/setup", { method: "POST",
+  body: { token: su.json.setupToken, password: "testheim-2026-ok" } });
+ok("the new operator sets their own password", claimed.status === 200);
+const newOp = jarOf(claimed);
+
+const pending = (await req("/api/session", { cookie: newOp })).json;
+ok("they are signed in", pending.principal.kind === "operator");
+ok("but the organisation is pending", pending.org.status === "pending");
+ok("and the session says so", pending.orgBlocked === true);
+
+// The gate: signed in, nothing readable.
+ok("a pending organisation cannot read tickets",
+  (await req("/api/tickets", { cookie: newOp })).status === 403);
+ok("a pending organisation cannot read the dashboard",
+  (await req("/api/dashboard", { cookie: newOp })).status === 403);
+ok("a pending organisation cannot create buildings",
+  (await req("/api/admin/buildings", { method: "POST", cookie: newOp,
+    body: { code: "Q", name: "Nope", roomCount: 1 } })).status === 403);
+ok("a pending organisation cannot list staff",
+  (await req("/api/admin/staff", { cookie: newOp })).status === 403);
+ok("but it can still read its own session",
+  (await req("/api/session", { cookie: newOp })).status === 200);
+
+section("the platform console")
+ok("an ordinary operator cannot list organisations",
+  (await req("/api/platform/orgs", { cookie: operator })).status === 403);
+ok("a caretaker cannot either",
+  (await req("/api/platform/orgs", { cookie: staff })).status === 403);
+ok("nor can the pending operator approve themselves",
+  (await req(`/api/platform/orgs/${su.json.orgId}/status`, { method: "POST", cookie: newOp,
+    body: { status: "active" } })).status === 403);
+
+// Promote the demo operator to platform admin, the way the D1 console would.
+await req("/api/dev/platformadmin", { method: "POST", cookie: operator });
+const admin = jarOf(await req("/api/auth/staff", { method: "POST", body: CREDS.operator }));
+
+const orgList = await req("/api/platform/orgs", { cookie: admin });
+ok("the platform admin lists organisations", orgList.status === 200);
+ok("pending ones come first", orgList.json.orgs[0].status === "pending");
+ok("the list carries counts, never tickets",
+  orgList.json.orgs.every((o) => typeof o.buildings === "number" && !("tickets" in o)));
+ok("the signup domain is recorded as evidence",
+  orgList.json.orgs.some((o) => o.signup_domain === "studentenwerk-testheim.de"));
+
+// The important one: approving is not reading.
+ok("a platform admin still cannot read another organisation's tickets", await (async () => {
+  const all = (await req("/api/tickets", { cookie: admin })).json.tickets;
+  // They're an operator in the demo org, so they see the demo org and no more.
+  return all.every((x) => ["A", "B", "C"].includes(x.building_code));
+})());
+
+ok("the demo organisation can't be suspended",
+  (await req("/api/platform/orgs/org-demo/status", { method: "POST", cookie: admin,
+    body: { status: "suspended" } })).status === 409);
+ok("you can't change your own organisation",
+  (await req(`/api/platform/orgs/${(await req("/api/session", { cookie: admin })).json.org.id}/status`,
+    { method: "POST", cookie: admin, body: { status: "suspended" } })).status === 409);
+ok("an invalid status is refused",
+  (await req(`/api/platform/orgs/${su.json.orgId}/status`, { method: "POST", cookie: admin,
+    body: { status: "deleted" } })).status === 400);
+
+ok("approving works",
+  (await req(`/api/platform/orgs/${su.json.orgId}/status`, { method: "POST", cookie: admin,
+    body: { status: "active" } })).status === 200);
+ok("the newly approved operator can now work",
+  (await req("/api/tickets", { cookie: newOp })).status === 200);
+ok("and sees nothing of the demo organisation",
+  (await req("/api/tickets", { cookie: newOp })).json.tickets.length === 0);
+const theirBuilding = await req("/api/admin/buildings", { method: "POST", cookie: newOp,
+  body: { code: "A", name: "Haus A Testheim", roomCount: 40 } });
+ok("they can create their own building",
+  theirBuilding.status === 200,
+  `same code as the demo org's Haus A, must be allowed: ${JSON.stringify(theirBuilding.json)}`);
+
+section("slugs stay unique across organisations")
+ok("their Haus A gets its own slug space", await (async () => {
+  const bs = (await req("/api/admin/buildings", { cookie: newOp })).json.buildings;
+  const theirA = bs.find((b) => b.code === "A");
+  if (!theirA) return false;
+  const u = await req(`/api/admin/buildings/${theirA.id}/units`, { method: "POST", cookie: newOp,
+    body: { code: "112", floor: 1, kind: "studio",
+            rooms: [{ code: "BA", roomType: "BATHROOM", kind: "private" }] } });
+  return u.status === 200;
+})());
+
+ok("the demo organisation's sticker still resolves to the demo room", await (async () => {
+  const r = await req("/api/r/b312-ba");
+  return r.status === 200 && r.json.room.building_code === "B";
+})());
+
+ok("their slug is different from ours despite the same building code", await (async () => {
+  const sheet = (await req("/api/stickers/A", { cookie: newOp })).json;
+  // Prefixed by the organisation, so /r/... can never be ambiguous.
+  return sheet.stickers.some((x) => x.qr_slug.includes("112-ba") && x.qr_slug !== "a112-ba");
+})());
+
+ok("scanning their slug gives their room, not ours", await (async () => {
+  const sheet = (await req("/api/stickers/A", { cookie: newOp })).json;
+  const slug = sheet.stickers.find((x) => x.qr_slug.includes("112-ba"))?.qr_slug;
+  if (!slug) return false;
+  const r = await req(`/api/r/${slug}`);
+  return r.status === 200 && r.json.room.building_code === "A";
+})());
+
+section("suspending an organisation")
+ok("suspending works",
+  (await req(`/api/platform/orgs/${su.json.orgId}/status`, { method: "POST", cookie: admin,
+    body: { status: "suspended", note: "not paid" } })).status === 200);
+ok("their session is revoked immediately",
+  (await req("/api/session", { cookie: newOp })).json.principal.kind === "anonymous");
+ok("they cannot sign back in and work",
+  (await req("/api/tickets", { cookie: jarOf(await req("/api/auth/staff", { method: "POST",
+    body: { email: "anna@studentenwerk-testheim.de", password: "testheim-2026-ok" } })) })).status === 403);
+ok("the note is kept for the console",
+  (await req("/api/platform/orgs", { cookie: admin })).json.orgs
+    .find((o) => o.id === su.json.orgId).note === "not paid");
+ok("their data survives being suspended",
+  (await req("/api/platform/orgs", { cookie: admin })).json.orgs
+    .find((o) => o.id === su.json.orgId).buildings >= 1);
+
 section("static assets");
 const page = await fetch(BASE + "/");
 ok("SPA index is served", page.status === 200 && (await page.text()).includes("DormTag"));

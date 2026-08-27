@@ -718,3 +718,17 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 /* Native selects default to a light palette in some browsers, which makes the
    option list unreadable on a dark page. */
 .in, select.in { color-scheme: light dark; }
+
+/* --- landing --------------------------------------------------------- */
+
+.landing { max-width: 380px; margin: 0 auto; text-align: center; padding-top: 6vh; }
+.landingmark { align-self: center; }
+.landingtitle { font-size: 27px; letter-spacing: -.03em; margin: 0; }
+.landingtag {
+  font-size: 15px; font-weight: 500; color: var(--amber);
+  margin: 0 0 6px; letter-spacing: -.01em;
+}
+.landingfoot {
+  display: flex; flex-direction: column; gap: 2px; margin-top: 10px;
+}
+.landingfoot a { text-decoration: none; }

@@ -18,7 +18,8 @@ import {
   hashNewPassword, derivePassword, sameSecret, readCookie,
   tooManyAttempts, recordAttempt,
   isStaff, HttpError, issueStaffSession, issueTenantSession, sessionResponse, clearCookie,
-  queueNotification, readerKey, notificationScope, tenantEmail,
+  queueNotification, readerKey, notificationScope, tenantEmail, orgOf,
+  orgBlocked, statusUsable,
 } from "./core";
 
 export type { Env };
@@ -39,17 +40,30 @@ async function resolvePrincipal(req: Request, env: Env): Promise<Principal> {
   const sid = readCookie(req, "sid");
   if (sid) {
     const row = await env.DB.prepare(
-      `SELECT s.id, s.display_name, s.is_operator, s.locale
-         FROM staff_sessions ss JOIN staff s ON s.id = ss.staff_id
+      `SELECT s.id, s.display_name, s.is_operator, s.locale, s.org_id,
+              s.is_platform_admin, o.status AS org_status
+         FROM staff_sessions ss
+         JOIN staff s ON s.id = ss.staff_id
+         LEFT JOIN orgs o ON o.id = s.org_id
         WHERE ss.token_hash = ?1 AND ss.revoked_at IS NULL AND ss.expires_at > ?2
           AND s.disabled_at IS NULL`
     ).bind(await sha256(sid), now()).first<any>();
     if (row) {
-      if (row.is_operator) return { kind: "operator", staffId: row.id, name: row.display_name, locale: row.locale };
+      // A pending or suspended organisation still resolves to a real principal:
+      // they have to be able to reach /api/session to be told why they can't get
+      // in. The data routes refuse separately, via orgBlocked.
+      if (row.is_operator) {
+        return {
+          kind: "operator", staffId: row.id, name: row.display_name,
+          locale: row.locale, orgId: row.org_id, orgStatus: row.org_status,
+          isPlatformAdmin: !!row.is_platform_admin,
+        };
+      }
       const bs = await env.DB.prepare(`SELECT building_id FROM staff_buildings WHERE staff_id = ?1`)
         .bind(row.id).all<any>();
       return {
         kind: "staff", staffId: row.id, name: row.display_name, locale: row.locale,
+        orgId: row.org_id, orgStatus: row.org_status,
         buildingIds: bs.results.map((b) => b.building_id),
       };
     }
@@ -58,14 +72,22 @@ async function resolvePrincipal(req: Request, env: Env): Promise<Principal> {
   const tid = readCookie(req, "tid");
   if (tid) {
     const row = await env.DB.prepare(
-      `SELECT t.id AS tenant_id, t.locale, r.id AS room_id, r.unit_id
+      `SELECT t.id AS tenant_id, t.locale, t.org_id, r.id AS room_id, r.unit_id,
+              o.status AS org_status
          FROM tenant_sessions ts
          JOIN tenants t ON t.id = ts.tenant_id
          JOIN tenancies tn ON tn.tenant_id = t.id AND tn.ends_on IS NULL
          JOIN rooms r ON r.id = tn.room_id
+         LEFT JOIN orgs o ON o.id = t.org_id
         WHERE ts.token_hash = ?1 AND ts.revoked_at IS NULL AND ts.expires_at > ?2`
     ).bind(await sha256(tid), now()).first<any>();
-    if (row) return { kind: "tenant", tenantId: row.tenant_id, roomId: row.room_id, unitId: row.unit_id, locale: row.locale };
+    if (row) {
+      return {
+        kind: "tenant", tenantId: row.tenant_id, roomId: row.room_id,
+        unitId: row.unit_id, locale: row.locale, orgId: row.org_id,
+        orgStatus: row.org_status,
+      };
+    }
   }
 
   const url = new URL(req.url);
@@ -88,18 +110,27 @@ async function resolvePrincipal(req: Request, env: Env): Promise<Principal> {
 function ticketScope(p: Principal): { where: string; binds: unknown[] } {
   switch (p.kind) {
     case "operator":
-      return { where: "1=1", binds: [] };
+      // Every building, but only in their own organisation. This used to be
+      // 1=1, which was correct with one customer and a breach with two.
+      return { where: "vtl.org_id = ?", binds: [p.orgId] };
     case "staff": {
       if (p.buildingIds.length === 0) return { where: "1=0", binds: [] };
       const q = p.buildingIds.map(() => "?").join(",");
-      return { where: `vtl.building_id IN (${q})`, binds: [...p.buildingIds] };
+      // The org check is redundant given the assignments are their own, and
+      // kept anyway: it costs nothing and it means one bad row in
+      // staff_buildings can't cross the boundary.
+      return {
+        where: `vtl.org_id = ? AND vtl.building_id IN (${q})`,
+        binds: [p.orgId, ...p.buildingIds],
+      };
     }
     case "tenant":
       // Own private room, plus every shared room in the same unit.
       return {
-        where: `((vtl.room_kind = 'private' AND vtl.room_id = ?)
-                 OR (vtl.room_kind = 'shared' AND vtl.unit_id = ?))`,
-        binds: [p.roomId, p.unitId],
+        where: `vtl.org_id = ?
+                AND ((vtl.room_kind = 'private' AND vtl.room_id = ?)
+                     OR (vtl.room_kind = 'shared' AND vtl.unit_id = ?))`,
+        binds: [p.orgId, p.roomId, p.unitId],
       };
     case "token":
       return { where: "vtl.ticket_id = ?", binds: [p.ticketId] };
@@ -243,6 +274,15 @@ const SYMPTOMS = [
   "COLD",
 ];
 
+/**
+ * Paths still reachable while an organisation waits for approval.
+ *
+ * Deliberately a short allowlist rather than a blocklist: a route added later
+ * is closed until somebody decides otherwise.
+ */
+const ORG_GATE_EXEMPT =
+  /^\/api\/(session|logout|setup-state|auth\/|me\/password|platform\/)/;
+
 const MAX_OFFERS = 4;
 const OFFER_HORIZON_DAYS = 14;
 
@@ -385,7 +425,8 @@ route("GET", "/api/r/:slug", async ({ env, params }) => {
   // holds several of the same type, so the resident can say which one.
   const room = await env.DB.prepare(
     `SELECT r.id AS room_id, r.room_type, r.kind AS room_kind, r.code AS room_code,
-            u.code AS unit_code, u.is_common, b.code AS building_code
+            u.code AS unit_code, u.is_common,
+            COALESCE(b.display_code, b.code) AS building_code
        FROM rooms r JOIN units u ON u.id = r.unit_id JOIN buildings b ON b.id = u.building_id
       WHERE r.qr_slug = ?1`
   ).bind(slug).first<any>();
@@ -397,7 +438,8 @@ route("GET", "/api/r/:slug", async ({ env, params }) => {
     const obj = await env.DB.prepare(
       `SELECT o.id, o.object_type, o.ordinal, o.riser,
               r.id AS room_id, r.room_type, r.kind AS room_kind, r.code AS room_code,
-              u.code AS unit_code, u.is_common, b.code AS building_code
+              u.code AS unit_code, u.is_common,
+            COALESCE(b.display_code, b.code) AS building_code
          FROM objects o JOIN rooms r ON r.id = o.room_id
          JOIN units u ON u.id = r.unit_id JOIN buildings b ON b.id = u.building_id
         WHERE o.qr_slug = ?1`
@@ -433,8 +475,10 @@ route("GET", "/api/r/:slug", async ({ env, params }) => {
 route("GET", "/api/stickers/:buildingCode", async ({ env, p, params }) => {
   if (!isStaff(p)) return bad("staff only", 403);
 
-  const b = await env.DB.prepare(`SELECT id, code, name FROM buildings WHERE code = ?1`)
-    .bind(params.buildingCode.toUpperCase()).first<any>();
+  const b = await env.DB.prepare(
+    `SELECT id, COALESCE(display_code, code) AS code, name FROM buildings
+      WHERE COALESCE(display_code, code) = ?1 AND org_id = ?2`
+  ).bind(params.buildingCode.toUpperCase(), orgOf(p) ?? "").first<any>();
   if (!b) return bad("unknown building", 404);
   if (p.kind === "staff" && !p.buildingIds.includes(b.id)) {
     return bad("not one of your buildings", 403);
@@ -542,10 +586,11 @@ route("POST", "/api/tickets", async ({ env, req, p }) => {
 
   const o = await env.DB.prepare(
     `SELECT o.id, r.kind AS room_kind, r.unit_id, r.id AS room_id,
-            u.is_common, u.building_id
+            u.is_common, u.building_id, b.org_id
        FROM objects o
        JOIN rooms r ON r.id = o.room_id
        JOIN units u ON u.id = r.unit_id
+       JOIN buildings b ON b.id = u.building_id
       WHERE o.id = ?1`
   ).bind(body.objectId).first<any>();
   if (!o) return bad("unknown object", 404);
@@ -600,7 +645,7 @@ route("POST", "/api/tickets", async ({ env, req, p }) => {
       `INSERT INTO ticket_events (ticket_id, to_state, actor_kind, actor_id, reason, created_at)
        VALUES (?1,'reported',?2,?3,'reported',?4)`
     ).bind(id, p.kind === "tenant" ? "tenant" : "system", p.kind === "tenant" ? p.tenantId : null, now()),
-    ...tellStaff(env, o.building_id, id, "reported", { symptom: body.symptom }),
+    ...tellStaff(env, o.building_id, id, "reported", { symptom: body.symptom }, o.org_id),
   ]);
   return json({ id, merged: false, token });
 });
@@ -734,7 +779,8 @@ route("POST", "/api/tickets/:id/book", async ({ env, req, p, params }) => {
   await env.DB.batch([
     ...transitionStmts(env, t, "scheduled", t.reschedule_count > 0 ? "rebooked" : "booked", p),
     ...tellStaff(env, t.loc.building_id, t.id,
-      t.reschedule_count > 0 ? "rebooked" : "booked", { startsAt: slot.starts_at }),
+      t.reschedule_count > 0 ? "rebooked" : "booked", { startsAt: slot.starts_at },
+      t.loc.org_id),
   ]);
   return json({ ok: true });
 });
@@ -781,7 +827,7 @@ route("POST", "/api/tickets/:id/reschedule", async ({ env, p, params }) => {
     ...transitionStmts(env, t, back, left > 0 ? "reschedule" : "needs_times", p),
     ...(isStaff(p)
       ? await tellTenant(env, t.id, "staff_cancelled", { remaining: left })
-      : tellStaff(env, t.loc.building_id, t.id, "tenant_rescheduled", {})),
+      : tellStaff(env, t.loc.building_id, t.id, "tenant_rescheduled", {}, t.loc.org_id)),
   ]);
   return json({ ok: true, remaining: left });
 });
@@ -884,7 +930,10 @@ route("POST", "/api/tickets/:id/escalate", async ({ env, req, p, params }) => {
       env.DB.prepare(`UPDATE slot_offers SET expires_at = ?1 WHERE id = ?2`).bind(now(), appt.slot_offer_id)
     );
   }
-  stmts.push(queueNotification(env, { audience: "operator" }, "escalated", t.id, { trade, reason }));
+  stmts.push(queueNotification(
+    env, { audience: "operator" }, "escalated", t.id, { trade, reason },
+    null, null, t.loc.org_id,
+  ));
   stmts.push(...(await tellTenant(env, t.id, "escalated", { trade })));
   await env.DB.batch(stmts);
   return json({ ok: true, trade, reason });
@@ -988,15 +1037,27 @@ function dashboardFilter(url: URL) {
   return { months, building, since: now() - months * 30 * DAY };
 }
 
-/** `AND building_code = ?` only when a building is selected. */
-const buildingClause = (building: string | null, alias = "vtl") =>
-  building ? `AND ${alias}.building_code = ?` : "";
+/**
+ * The WHERE fragment and binds every dashboard query carries.
+ *
+ * The organisation is always in it and the building only when one is selected.
+ * Folding both into a single pair means the ten aggregate queries below can't
+ * individually forget the org condition, which is the failure mode that leaks
+ * one customer's data to another.
+ *
+ * Clause order and bind order must match: org first, then building.
+ */
+const scopeClause = (orgId: string, building: string | null, alias = "vtl") =>
+  `AND ${alias}.org_id = ?` + (building ? ` AND ${alias}.building_code = ?` : "");
+
+const scopeBinds = (orgId: string, building: string | null) =>
+  building ? [orgId, building] : [orgId];
 
 route("GET", "/api/dashboard", async ({ env, p, url }) => {
   if (p.kind !== "operator") return bad("operator only", 403);
   const { months, building, since } = dashboardFilter(url);
-  const bBind = building ? [building] : [];
-  const bc = buildingClause(building);
+  const bBind = scopeBinds(p.orgId, building);
+  const bc = scopeClause(p.orgId, building);
 
   const [open, parts, closed, visits, repeats, buildings, trend, byType, external] = await Promise.all([
     env.DB.prepare(
@@ -1036,7 +1097,7 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
     ).bind(since, ...bBind).all<any>(),
 
     env.DB.prepare(
-      `SELECT b.id, b.code, b.name, b.room_count,
+      `SELECT b.id, COALESCE(b.display_code, b.code) AS code, b.name, b.room_count,
               (SELECT COUNT(*) FROM v_ticket_location v
                 WHERE v.building_id = b.id AND v.state NOT IN ('done','cancelled')) AS open_count,
               (SELECT COUNT(*) FROM v_ticket_location v
@@ -1047,8 +1108,8 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
                  FROM staff_buildings sb JOIN staff s ON s.id = sb.staff_id
                 WHERE sb.building_id = b.id AND s.disabled_at IS NULL AND s.is_operator = 0
               ) AS caretaker_names
-         FROM buildings b ORDER BY b.code`
-    ).bind(since).all<any>(),
+         FROM buildings b WHERE b.org_id = ?2 ORDER BY b.code`
+    ).bind(since, p.orgId).all<any>(),
 
     // Monthly reported vs. fixed, for the trend chart.
     env.DB.prepare(
@@ -1120,8 +1181,8 @@ route("GET", "/api/dashboard/month", async ({ env, p, url }) => {
   if (!/^\d{4}-\d{2}$/.test(bucket)) return bad("bucket must look like 2026-08");
 
   const { building } = dashboardFilter(url);
-  const bBind = building ? [building] : [];
-  const bc = buildingClause(building);
+  const bBind = scopeBinds(p.orgId, building);
+  const bc = scopeClause(p.orgId, building);
 
   const [totals, closed, byBuilding, byType, byCause, tickets] = await Promise.all([
     env.DB.prepare(
@@ -1198,8 +1259,8 @@ route("GET", "/api/dashboard/tickets", async ({ env, p, url }) => {
   if (p.kind !== "operator") return bad("operator only", 403);
   const { months, building, since } = dashboardFilter(url);
   const which = url.searchParams.get("filter") || "open";
-  const bBind = building ? [building] : [];
-  const bc = buildingClause(building);
+  const bBind = scopeBinds(p.orgId, building);
+  const bc = scopeClause(p.orgId, building);
 
   if (which === "parts") {
     const rows = await env.DB.prepare(
@@ -1319,6 +1380,10 @@ route("POST", "/api/notifications/read-all", async ({ env, p }) => {
 /* --- administration: buildings, rooms and staff ------------------ */
 
 route("GET",   "/api/setup-state",              (c) => admin.setupState(c));
+
+route("POST",  "/api/orgs/signup",              (c) => admin.signupOrg(c));
+route("GET",   "/api/platform/orgs",            (c) => admin.listOrgs(c));
+route("POST",  "/api/platform/orgs/:id/status", (c) => admin.setOrgStatus(c));
 route("POST",  "/api/admin/bootstrap",          (c) => admin.bootstrap(c));
 route("POST",  "/api/auth/setup",               (c) => admin.consumeInvite(c));
 route("POST",  "/api/auth/forgot",              (c) => admin.requestReset(c));
@@ -1350,8 +1415,11 @@ route("POST",  "/api/admin/staff/:id/enable",   (c) => admin.enableStaff(c));
 route("POST", "/api/dev/seed", async ({ env }) => {
   if (env.DEMO_MODE !== "true") return bad("disabled", 403);
   // Never wipe an estate somebody actually built.
-  const real = await env.DB.prepare(`SELECT COUNT(*) AS n FROM buildings WHERE seeded = 0`)
-    .first<any>();
+  // Only the demo organisation is ever reseeded, so a real customer's estate is
+  // untouchable even if someone finds this endpoint.
+  const real = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM buildings WHERE seeded = 0 AND org_id = 'org-demo'`
+  ).first<any>();
   if (((real?.n as number) ?? 0) > 0) {
     return bad("this database has real buildings in it — refusing to reseed", 409);
   }
@@ -1380,12 +1448,20 @@ async function tellTenant(env: Env, ticketId: string, kind: string, payload: Rec
   // The address is resolved now rather than at send time: if the resident later
   // changes it, mail already queued goes where it was addressed.
   const to = await tenantEmail(env, tenantId);
-  return [queueNotification(env, { audience: "tenant", tenantId }, kind, ticketId, payload, null, to)];
+  const org = await env.DB.prepare(`SELECT org_id FROM v_ticket_location WHERE ticket_id = ?1`)
+    .bind(ticketId).first<any>();
+  return [queueNotification(
+    env, { audience: "tenant", tenantId }, kind, ticketId, payload, null, to,
+    org?.org_id ?? null,
+  )];
 }
 
 /** Notify whoever covers the building this ticket is in. */
-function tellStaff(env: Env, buildingId: string, ticketId: string, kind: string, payload: Record<string, unknown> = {}) {
-  return [queueNotification(env, { audience: "staff", buildingId }, kind, ticketId, payload)];
+function tellStaff(env: Env, buildingId: string, ticketId: string, kind: string,
+                   payload: Record<string, unknown> = {}, orgId: string | null = null) {
+  return [queueNotification(
+    env, { audience: "staff", buildingId }, kind, ticketId, payload, null, null, orgId,
+  )];
 }
 
 async function loadTicket(env: Env, id: string) {
@@ -1410,7 +1486,13 @@ async function assertVisible(env: Env, p: Principal, id: string) {
 /* --- session ---------------------------------------------------- */
 
 route("GET", "/api/session", async ({ p, env }) => {
-  const buildings = await env.DB.prepare(`SELECT id, code, name, room_count FROM buildings ORDER BY code`).all<any>();
+  const org = orgOf(p);
+  const buildings = org
+    ? (await env.DB.prepare(
+        `SELECT id, COALESCE(display_code, code) AS code, name, room_count
+           FROM buildings WHERE org_id = ?1 ORDER BY code`
+      ).bind(org).all<any>())
+    : { results: [] as any[] };
   let home = null;
   let email: string | null = null;
   let wantsEmail = true;
@@ -1422,7 +1504,8 @@ route("GET", "/api/session", async ({ p, env }) => {
   }
   if (p.kind === "tenant") {
     home = await env.DB.prepare(
-      `SELECT u.id AS unit_id, u.code AS unit_code, b.code AS building_code, r.code AS room_code
+      `SELECT u.id AS unit_id, u.code AS unit_code,
+              COALESCE(b.display_code, b.code) AS building_code, r.code AS room_code
          FROM rooms r JOIN units u ON u.id = r.unit_id JOIN buildings b ON b.id = u.building_id
         WHERE r.id = ?1`
     ).bind(p.roomId).first<any>();
@@ -1445,6 +1528,14 @@ route("GET", "/api/session", async ({ p, env }) => {
     retention: { residentRecentDays: RESIDENT_RECENT_DAYS },
     email, wantsEmail,
     emailConfigured: !!env.RESEND_API_KEY,
+    // Shown in the account page: once several organisations use the app, nobody
+    // should have to guess whose estate they're looking at.
+    org: org
+      ? await env.DB.prepare(`SELECT id, name, status FROM orgs WHERE id = ?1`)
+          .bind(org).first<any>()
+      : null,
+    /** Signed in, but the organisation isn't switched on. */
+    orgBlocked: orgBlocked(p),
     needsSetup: ((await env.DB.prepare(`SELECT COUNT(*) AS n FROM staff`).first<any>())?.n ?? 0) === 0,
   });
 });
@@ -1468,7 +1559,7 @@ async function sendReminders(env: Env) {
   const to = now() + 2 * DAY;
 
   const due = await env.DB.prepare(
-    `SELECT a.id, a.ticket_id, a.starts_at, vtl.building_id
+    `SELECT a.id, a.ticket_id, a.starts_at, vtl.building_id, vtl.org_id
        FROM appointments a
        JOIN v_ticket_location vtl ON vtl.ticket_id = a.ticket_id
       WHERE a.status = 'booked' AND a.starts_at > ?1 AND a.starts_at < ?2`
@@ -1481,7 +1572,7 @@ async function sendReminders(env: Env) {
     try {
       await queueNotification(
         env, { audience: "tenant", tenantId }, "reminder", a.ticket_id,
-        { startsAt: a.starts_at }, a.id, await tenantEmail(env, tenantId),
+        { startsAt: a.starts_at }, a.id, await tenantEmail(env, tenantId), a.org_id,
       ).run();
       queued++;
     } catch {
@@ -1585,6 +1676,69 @@ route("GET", "/api/dev/mail/preview", async ({ p, url }) => {
   return json({ previews: out });
 });
 
+/**
+ * Create a second organisation, for proving isolation.
+ *
+ * Demo-mode only. Signup isn't built yet, and the thing worth testing now is
+ * that a second organisation sees nothing of the first — which needs a second
+ * organisation to exist before the signup flow does.
+ */
+/**
+ * Promote the caller to platform admin. Demo mode only.
+ *
+ * In production this is a single UPDATE in the D1 console, deliberately: an
+ * interface for granting the most powerful role in the system is a liability
+ * when exactly one person should ever hold it.
+ */
+route("POST", "/api/dev/platformadmin", async ({ env, p }) => {
+  if (env.DEMO_MODE !== "true") return bad("disabled", 403);
+  if (p.kind !== "operator") return bad("operator only", 403);
+  await env.DB.prepare(`UPDATE staff SET is_platform_admin = 1 WHERE id = ?1`)
+    .bind(p.staffId).run();
+  return json({ ok: true });
+});
+
+route("POST", "/api/dev/testorg", async ({ env, req, p }) => {
+  if (env.DEMO_MODE !== "true") return bad("disabled", 403);
+  if (p.kind !== "operator") return bad("operator only", 403);
+
+  const { orgId } = (await req.json()) as { orgId?: string };
+  const org = (orgId || "").trim();
+  if (!/^[a-z0-9-]{3,40}$/.test(org)) return bad("bad org id");
+
+  const opPw = await hashNewPassword("other-operator-2026");
+  const hmPw = await hashNewPassword("other-caretaker-2026");
+
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM orgs WHERE id = ?1`).bind(org),
+    env.DB.prepare(
+      `INSERT INTO orgs (id, name, status, signup_email, signup_domain, created_at, approved_at)
+       VALUES (?1,'Other Studierendenwerk','active','op@other.test','other.test',?2,?2)`
+    ).bind(org, now()),
+    env.DB.prepare(`DELETE FROM staff WHERE email IN ('op@other.test','hm@other.test')`),
+    env.DB.prepare(
+      `INSERT INTO staff (id, email, display_name, locale, is_operator,
+                          password_hash, password_salt, org_id)
+       VALUES (?1,'op@other.test','Other Operator','en',1,?2,?3,?4)`
+    ).bind(`${org}-op`, opPw.hash, opPw.salt, org),
+    env.DB.prepare(
+      `INSERT INTO staff (id, email, display_name, locale, is_operator,
+                          password_hash, password_salt, org_id)
+       VALUES (?1,'hm@other.test','Other Caretaker','en',0,?2,?3,?4)`
+    ).bind(`${org}-hm`, hmPw.hash, hmPw.salt, org),
+    env.DB.prepare(`DELETE FROM buildings WHERE id = ?1`).bind(`${org}-bz`),
+    env.DB.prepare(
+      `INSERT INTO buildings (id, code, name, room_count, seeded, org_id)
+       VALUES (?1,'Z','Haus Z',10,0,?2)`
+    ).bind(`${org}-bz`, org),
+    env.DB.prepare(
+      `INSERT INTO staff_buildings (staff_id, building_id) VALUES (?1,?2)`
+    ).bind(`${org}-hm`, `${org}-bz`),
+  ]);
+
+  return json({ ok: true, orgId: org });
+});
+
 route("POST", "/api/dev/mail", async ({ env, p, url }) => {
   if (p.kind !== "operator") return bad("operator only", 403);
 
@@ -1673,7 +1827,8 @@ async function seed(env: Env) {
     { id: "b-c", code: "C", name: "Haus C", rooms: 150 },
   ];
   buildings.forEach((b) =>
-    stmts.push(env.DB.prepare(`INSERT INTO buildings (id, code, name, room_count, seeded) VALUES (?1,?2,?3,?4,1)`)
+    stmts.push(env.DB.prepare(`INSERT INTO buildings (id, code, name, room_count, seeded, org_id)
+       VALUES (?1,?2,?3,?4,1,'org-demo')`)
       .bind(b.id, b.code, b.name, b.rooms))
   );
 
@@ -1734,16 +1889,18 @@ async function seed(env: Env) {
   const opPw = await hashNewPassword(DEMO_OPERATOR_PASSWORD);
   stmts.push(
     env.DB.prepare(
-      `INSERT INTO tenants (id, email, locale, activated_at, activation_code)
-       VALUES ('t-z2','z2@wohnheim.test','en',?1,?2)`
+      `INSERT INTO tenants (id, email, locale, activated_at, activation_code, org_id)
+       VALUES ('t-z2','z2@wohnheim.test','en',?1,?2,'org-demo')`
     ).bind(now(), DEMO_RESIDENT_CODE),
     env.DB.prepare(
-      `INSERT INTO staff (id, email, display_name, locale, is_operator, password_hash, password_salt)
-       VALUES ('s-hm','hausmeister@wohnheim.test','K. Neumann','de',0,?1,?2)`
+      `INSERT INTO staff (id, email, display_name, locale, is_operator,
+                          password_hash, password_salt, org_id)
+       VALUES ('s-hm','hausmeister@wohnheim.test','K. Neumann','de',0,?1,?2,'org-demo')`
     ).bind(hmPw.hash, hmPw.salt),
     env.DB.prepare(
-      `INSERT INTO staff (id, email, display_name, locale, is_operator, password_hash, password_salt)
-       VALUES ('s-op','verwaltung@wohnheim.test','Studierendenwerk','de',1,?1,?2)`
+      `INSERT INTO staff (id, email, display_name, locale, is_operator,
+                          password_hash, password_salt, org_id)
+       VALUES ('s-op','verwaltung@wohnheim.test','Studierendenwerk','de',1,?1,?2,'org-demo')`
     ).bind(opPw.hash, opPw.salt),
     env.DB.prepare(`INSERT INTO staff_buildings (staff_id, building_id) VALUES ('s-hm','b-a')`),
     env.DB.prepare(`INSERT INTO staff_buildings (staff_id, building_id) VALUES ('s-hm','b-b')`),
@@ -1924,6 +2081,13 @@ export default {
         if (!m) continue;
         const names: string[] = (rx as any).names || [];
         const params = Object.fromEntries(names.map((n, i) => [n, decodeURIComponent(m[i + 1])]));
+
+        // A pending or suspended organisation can read its own session, sign
+        // out, and nothing else. Refusing here rather than in each route means a
+        // new endpoint is closed by default instead of open by omission.
+        if (orgBlocked(p) && !ORG_GATE_EXEMPT.test(url.pathname)) {
+          return bad("your organisation is not active yet", 403);
+        }
         const res = await handler({ req, env, p, url, params });
         // Anything that changed state may have queued mail. Flush it after the
         // response so nobody waits on a third party, and so an outage can never
