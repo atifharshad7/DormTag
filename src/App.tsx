@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   QrCode, Calendar, Clock, Check, ChevronLeft, Package, AlertTriangle, Key,
   Wrench, LayoutDashboard, Languages, User, Users, ArrowRight, Plus,
-  LogOut, Camera, Building, Send, Settings,
+  LogOut, Camera, Building, Send, Settings, CalendarX,
 } from "lucide-react";
 import {
   api, T, SYMPTOMS_FOR, CAUSE, CAUSES_FOR,
@@ -15,7 +15,7 @@ import { ScannerModal } from "./Scanner";
 import { SlotPicker, type SlotRules } from "./SlotPicker";
 import { OperatorView } from "./Operator";
 import { Logo } from "./Logo";
-import { Manage, FirstRunSetup, AcceptInvite } from "./Admin";
+import { Manage, FirstRunSetup, AcceptInvite, ForgotPassword, ResetPassword, ChangePassword } from "./Admin";
 import { Account } from "./Account";
 import { About } from "./Auth";
 import { BellButton, NotificationPanel, useNotifications } from "./Notifications";
@@ -159,9 +159,11 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, initialTi
             <Tile key={s} label={symptomLabel(s, l)} active={symptom === s} onClick={() => setSymptom(s)} />
           ))}
         </div>
-        <textarea className="ta" rows={2} placeholder={t("noteOptional")} value={note}
-          onChange={(e) => setNote(e.target.value)} />
-        <button className="btn btn-primary" disabled={!symptom}
+        <textarea className="ta" rows={2}
+          placeholder={symptom === "OTHER" ? t("noteWanted") : t("noteOptional")}
+          value={note} onChange={(e) => setNote(e.target.value)} />
+        <button className="btn btn-primary"
+          disabled={!symptom || (symptom === "OTHER" && !note.trim())}
           onClick={async () => {
             try {
               const r = await api.report(objectId!, symptom!, note);
@@ -483,7 +485,7 @@ function StaffView({ l, t, tickets, reload, rules, initialTicket }: {
 function StaffTicket({ l, t, id, onBack, rules }: any) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
-  const [mode, setMode] = useState<"main" | "close" | "times" | "escalate">("main");
+  const [mode, setMode] = useState<"main" | "close" | "times" | "escalate" | "part">("main");
   const [trade, setTrade] = useState<string | null>(null);
   const [escWhy, setEscWhy] = useState<string | null>(null);
   const [escNote, setEscNote] = useState("");
@@ -562,6 +564,9 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
               <Wrench size={16} /> {t("goFix")}
             </button>
           )}
+          <button className="btn" onClick={() => setMode("part")}>
+            <Package size={16} aria-hidden /> {t("partNeeded")}
+          </button>
         </>
       )}
 
@@ -602,6 +607,14 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
           <button className="btn btn-primary" onClick={() => setMode("close")}><Wrench size={16} /> {t("markDone")}</button>
           <button className="btn btn-warn" onClick={() => act(() => api.noAccess(id))}>
             <AlertTriangle size={16} /> {t("noAccess")}
+          </button>
+          <button className="btn" onClick={() => setMode("part")}>
+            <Package size={16} aria-hidden /> {t("partNeeded")}
+          </button>
+          {/* The resident is expecting him, so cancelling has to be possible
+              and has to tell them. */}
+          <button className="btn" onClick={() => act(() => api.reschedule(id))}>
+            <CalendarX size={16} aria-hidden /> {t("cancelAppointment")}
           </button>
         </>
       )}
@@ -646,18 +659,33 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
               <Tile key={c} label={causeLabel(c, l)} active={cause === c} onClick={() => setCause(c)} />
             ))}
           </div>
-          <button className="btn btn-primary" disabled={!cause}
-            onClick={() => act(() => api.done(id, cause!), true)}>
-            <Check size={16} /> {t("markDone")}
-          </button>
-          <div className="hr" />
-          <p className="cardtitle">{t("partWhat")}</p>
-          <input className="in" value={what} onChange={(e) => setWhat(e.target.value)} placeholder="Siphon-Dichtung" />
-          <input className="in" value={eta} onChange={(e) => setEta(e.target.value)} placeholder={t("supplierEta")} />
-          <button className="btn btn-warn" disabled={!what}
-            onClick={() => act(() => api.orderPart(id, what, eta), true)}>
-            <Package size={16} /> {t("orderPart")}
-          </button>
+          <div className="row">
+            <button className="btn" onClick={() => setMode("main")}>{t("cancel")}</button>
+            <button className="btn btn-primary" disabled={!cause}
+              onClick={() => act(() => api.done(id, cause!), true)}>
+              <Check size={16} /> {t("markDone")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Ordering a part used to live inside the "Done" panel, which meant
+          saying "not done, waiting for a part" started with tapping Done. */}
+      {mode === "part" && (
+        <div className="card">
+          <p className="cardtitle"><Package size={15} aria-hidden /> {t("partWhat")}</p>
+          <input className="in" value={what} onChange={(e) => setWhat(e.target.value)}
+            placeholder="Siphon-Dichtung" />
+          <input className="in" value={eta} onChange={(e) => setEta(e.target.value)}
+            placeholder={t("supplierEta")} />
+          <p className="muted">{t("etaHint")}</p>
+          <div className="row">
+            <button className="btn" onClick={() => setMode("main")}>{t("cancel")}</button>
+            <button className="btn btn-warn" disabled={!what}
+              onClick={() => act(() => api.orderPart(id, what, eta), true)}>
+              <Package size={16} /> {t("orderPart")}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -674,10 +702,11 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
 
 /** Minimal path router: /r/:slug is a scanned sticker, /t/:token a report link. */
 function readRoute() {
-  const m = location.pathname.match(/^\/(r|t|setup)\/([A-Za-z0-9_-]+)\/?$/);
+  const m = location.pathname.match(/^\/(r|t|setup|reset)\/([A-Za-z0-9_-]+)\/?$/);
   if (!m) return { kind: "app" as const };
   if (m[1] === "r") return { kind: "scan" as const, slug: m[2] };
   if (m[1] === "setup") return { kind: "invite" as const, token: m[2] };
+  if (m[1] === "reset") return { kind: "reset" as const, token: m[2] };
   return { kind: "token" as const, token: m[2] };
 }
 
@@ -687,7 +716,7 @@ export default function App() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [route, setRoute] = useState(readRoute);
   const [screen, setScreen] =
-    useState<"main" | "stickers" | "sent" | "manage" | "account" | "about">("main");
+    useState<"main" | "stickers" | "sent" | "manage" | "account" | "about" | "password" | "forgot">("main");
   const [bellOpen, setBellOpen] = useState(false);
   const [openTicket, setOpenTicket] = useState<string | null>(null);
   const [stickerBuilding, setStickerBuilding] = useState<string | null>(null);
@@ -783,17 +812,25 @@ export default function App() {
       </header>
 
       <main className={(kind === "operator" && screen !== "manage") || screen === "stickers" ? "wide" : "narrow"}>
-        {route.kind === "invite" ? (
+        {route.kind === "reset" ? (
+          <ResetPassword t={t} token={route.token}
+            onDone={async () => { goApp(); await loadSession(); }} />
+        ) : route.kind === "invite" ? (
           <AcceptInvite t={t} token={route.token} onDone={async () => { goApp(); await loadSession(); }} />
         ) : kind === "anonymous" && session.needsSetup ? (
           <FirstRunSetup t={t} onDone={loadSession} />
+        ) : kind === "anonymous" && screen === "forgot" ? (
+          <ForgotPassword t={t} onBack={() => setScreen("main")} />
         ) : screen === "account" ? (
           <Account l={l} t={t} session={session}
             onBack={() => setScreen("main")}
             onLanguage={() => setL(l === "de" ? "en" : "de")}
             onManage={() => setScreen("manage")}
+            onPassword={() => setScreen("password")}
             onAbout={() => setScreen("about")}
             onSignOut={async () => { await api.logout(); setScreen("main"); await loadSession(); }} />
+        ) : screen === "password" ? (
+          <ChangePassword t={t} onBack={() => setScreen("account")} />
         ) : screen === "about" ? (
           <About t={t} onBack={() => setScreen("account")} />
         ) : screen === "manage" && kind === "operator" ? (
@@ -810,7 +847,8 @@ export default function App() {
           <StickerSheet l={l} t={t} buildings={session.buildings} initialBuilding={stickerBuilding}
             onBack={() => { setStickerBuilding(null); setScreen("main"); }} />
         ) : kind === "anonymous" ? (
-          <SignIn l={l} t={t} session={session} onDone={loadSession} />
+          <SignIn l={l} t={t} session={session} onDone={loadSession}
+            onForgot={() => setScreen("forgot")} />
         ) : kind === "tenant" ? (
           <TenantView key={homeKey + ":" + (openTicket ?? "")} l={l} t={t} tickets={tickets} reload={reload}
             home={session.home} onScan={() => setScanning(true)}

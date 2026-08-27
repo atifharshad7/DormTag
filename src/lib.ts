@@ -33,6 +33,7 @@ export const T = {
   whatBroken:    { de: "Was ist defekt?",                 en: "What's broken?" },
   whatWrong:     { de: "Was ist das Problem?",            en: "What's wrong with it?" },
   noteOptional:  { de: "Notiz (optional)",                en: "Note (optional)" },
+  noteWanted:      { de: "Beschreibe es kurz",       en: "Tell us briefly what it is" },
   send:          { de: "Absenden",                        en: "Send" },
   merged:        { de: "Zu bestehender Meldung hinzugefügt.", en: "Added to an existing report." },
   myReports:     { de: "Meine Meldungen",                 en: "My reports" },
@@ -79,6 +80,9 @@ export const T = {
   partWhat:      { de: "Welches Teil?",                   en: "Which part?" },
   supplierEta:   { de: "Laut Händler",                    en: "Supplier says" },
   orderPart:     { de: "Teil bestellen",                  en: "Order part" },
+  partNeeded:      { de: "Teil bestellen",           en: "Order a part" },
+  cancelAppointment: { de: "Termin absagen",         en: "Cancel appointment" },
+  etaHint:         { de: "Nur was der Händler sagt. Kein Versprechen.", en: "Only what the supplier said. Not a promise." },
   partArrived:   { de: "Teil ist da",                     en: "Part arrived" },
 
   openTickets:   { de: "Offene Meldungen",                en: "Open tickets" },
@@ -148,6 +152,17 @@ export const T = {
   createOperator:  { de: "Konto anlegen",            en: "Create account" },
   setPassword:     { de: "Passwort festlegen",       en: "Set your password" },
   setPasswordHint: { de: "Dein Konto ist angelegt. Wähle ein Passwort.", en: "Your account exists. Choose a password." },
+  forgotLink:      { de: "Passwort vergessen?",      en: "Forgot your password?" },
+  forgotTitle:     { de: "Passwort zurücksetzen",    en: "Reset your password" },
+  forgotHint:      { de: "Wir schicken einen Link an deine E-Mail-Adresse.", en: "We'll send a link to your email address." },
+  forgotSent:      { de: "Falls es zu dieser Adresse ein Konto gibt, ist der Link unterwegs.", en: "If that address has an account, a link is on its way." },
+  sendLink:        { de: "Link senden",              en: "Send the link" },
+  backToSignIn:    { de: "Zurück zur Anmeldung",     en: "Back to sign in" },
+  newPassword:     { de: "Neues Passwort",           en: "New password" },
+  currentPassword: { de: "Aktuelles Passwort",       en: "Current password" },
+  changePassword:  { de: "Passwort ändern",          en: "Change password" },
+  passwordChanged: { de: "Passwort geändert",        en: "Password changed" },
+  signedOutElse:   { de: "Andere Geräte wurden abgemeldet.", en: "Other devices have been signed out." },
   manageWord:      { de: "Verwalten",                en: "Manage" },
   staffWord:       { de: "Personal",                 en: "Staff" },
   addBuilding:     { de: "Gebäude anlegen",          en: "Add building" },
@@ -370,26 +385,42 @@ export const OBJECT_TYPE: Record<string, { de: string; en: string; icon: LucideI
 };
 
 export const SYMPTOM = {
-  LEAKING:  { de: "undicht",         en: "leaking" },
-  BLOCKED:  { de: "verstopft",       en: "blocked" },
-  NO_POWER: { de: "geht nicht",      en: "not working" },
-  COLD:     { de: "wird nicht warm", en: "not heating" },
-  NOISE:    { de: "macht Geräusche", en: "making noise" },
-  BROKEN:   { de: "kaputt",          en: "broken" },
+  LEAKING:      { de: "undicht",              en: "leaking" },
+  BLOCKED:      { de: "verstopft",            en: "blocked" },
+  NO_POWER:     { de: "geht nicht",           en: "not working" },
+  NOT_HEATING:  { de: "wird nicht warm",      en: "not heating" },
+  NOT_COOLING:  { de: "kühlt nicht",          en: "not cooling" },
+  NO_HOT_WATER: { de: "kein warmes Wasser",   en: "no hot water" },
+  DRAUGHTY:     { de: "zieht",                en: "draughty" },
+  STUCK:        { de: "klemmt",               en: "stuck" },
+  NOISE:        { de: "macht Geräusche",      en: "making noise" },
+  BROKEN:       { de: "kaputt",               en: "broken" },
+  OTHER:        { de: "etwas anderes",        en: "something else" },
+  // Retired, kept so tickets reported before the split still read correctly.
+  // "not heating" made no sense on a window or a fridge, which is what the
+  // three specific codes above replace.
+  COLD:         { de: "wird nicht warm",      en: "not heating" },
 } as const;
 
+/**
+ * The symptoms offered per fixture.
+ *
+ * Deliberately short lists. A resident tapping three wrong-sounding options is
+ * worse than tapping "something else" and typing a sentence, which is why OTHER
+ * closes every list rather than existing as a fallback nobody reaches.
+ */
 export const SYMPTOMS_FOR: Record<string, (keyof typeof SYMPTOM)[]> = {
-  SINK: ["LEAKING", "BLOCKED", "BROKEN"],
-  DRAIN: ["BLOCKED", "LEAKING", "NOISE"],
-  SHOWER: ["LEAKING", "BLOCKED", "COLD", "BROKEN"],
-  LIGHT: ["NO_POWER", "BROKEN"],
-  SOCKET: ["NO_POWER", "BROKEN"],
-  STOVE: ["NO_POWER", "BROKEN"],
-  FRIDGE: ["NO_POWER", "NOISE", "COLD"],
-  RADIATOR: ["COLD", "NOISE", "LEAKING"],
-  WASHER: ["NO_POWER", "LEAKING", "NOISE"],
-  DOOR: ["BROKEN", "NOISE"],
-  WINDOW: ["BROKEN", "COLD", "LEAKING"],
+  SINK:     ["LEAKING", "BLOCKED", "BROKEN", "OTHER"],
+  DRAIN:    ["BLOCKED", "LEAKING", "NOISE", "OTHER"],
+  SHOWER:   ["NO_HOT_WATER", "LEAKING", "BLOCKED", "BROKEN", "OTHER"],
+  LIGHT:    ["NO_POWER", "BROKEN", "OTHER"],
+  SOCKET:   ["NO_POWER", "BROKEN", "OTHER"],
+  STOVE:    ["NO_POWER", "BROKEN", "OTHER"],
+  FRIDGE:   ["NOT_COOLING", "NO_POWER", "NOISE", "OTHER"],
+  RADIATOR: ["NOT_HEATING", "NOISE", "LEAKING", "OTHER"],
+  WASHER:   ["NO_POWER", "LEAKING", "NOISE", "OTHER"],
+  DOOR:     ["STUCK", "BROKEN", "OTHER"],
+  WINDOW:   ["DRAUGHTY", "STUCK", "BROKEN", "LEAKING", "OTHER"],
 };
 
 export const TRADE = {
@@ -577,6 +608,10 @@ export const api = {
   bootstrap:        (email: string, name: string, password: string) =>
                       post("/admin/bootstrap", { email, name, password }),
   acceptInvite:     (token: string, password: string) => post("/auth/setup", { token, password }),
+  forgotPassword:   (email: string) => post("/auth/forgot", { email }),
+  resetPassword:    (token: string, password: string) => post("/auth/reset", { token, password }),
+  changePassword:   (currentPassword: string, newPassword: string) =>
+                      post("/me/password", { currentPassword, newPassword }),
 
   setEmail:         (email: string | null, wantsEmail: boolean) =>
                       post("/me/email", { email, wantsEmail }),

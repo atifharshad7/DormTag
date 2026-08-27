@@ -58,7 +58,9 @@ export function About({ t, onBack }: { t: T; onBack: () => void }) {
 /* Sign in — two real credential paths, no role switching             */
 /* ================================================================== */
 
-export function SignIn({ l, t, session, onDone }: { l: Locale; t: T; session: any; onDone: () => Promise<void> }) {
+export function SignIn({ l, t, session, onDone, onForgot }: {
+  l: Locale; t: T; session: any; onDone: () => Promise<void>; onForgot?: () => void;
+}) {
   const [showAbout, setShowAbout] = useState(false);
   const [tab, setTab] = useState<"resident" | "staff">("resident");
   const [code, setCode] = useState("");
@@ -132,6 +134,11 @@ export function SignIn({ l, t, session, onDone }: { l: Locale; t: T; session: an
       <button className="btn btn-primary btn-big" disabled={busy} onClick={submit}>
         {t("signInBtn")} <ArrowRight size={16} />
       </button>
+
+      {/* Only on the staff tab: residents have a room code, not a password. */}
+      {tab === "staff" && onForgot && (
+        <button className="aboutlink" onClick={onForgot}>{t("forgotLink")}</button>
+      )}
 
       <button className="aboutlink" onClick={() => setShowAbout(true)}>
         <HelpCircle size={14} aria-hidden /> {t("aboutLink")}
@@ -249,12 +256,17 @@ export function ScanLanding({ l, t, slug, principal, onSignIn, onDone }: {
           )}
 
           {current && (
-            <textarea className="ta" rows={2} placeholder={t("noteOptional")}
+            <textarea className="ta" rows={2}
+              placeholder={symptom === "OTHER" ? t("noteWanted") : t("noteOptional")}
               value={note} onChange={(e) => setNote(e.target.value)} />
           )}
 
           {err && <div className="err">{err}</div>}
-          <button className="btn btn-primary" disabled={!objectId || !symptom || busy} onClick={send}>
+          {/* "Something else" carries no information on its own, so the note
+              stops being optional when it's chosen. */}
+          <button className="btn btn-primary"
+            disabled={!objectId || !symptom || busy || (symptom === "OTHER" && !note.trim())}
+            onClick={send}>
             {t("send")} <ArrowRight size={16} />
           </button>
         </>

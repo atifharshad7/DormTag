@@ -95,6 +95,12 @@ const T = {
       subject: "Ein Fachbetrieb übernimmt",
       body: `Der Hausmeister hat die Reparatur an einen Fachbetrieb weitergegeben${trade ? ` (${trade})` : ""}.`,
     }),
+    password_reset: (url: string) => ({
+      subject: "Passwort zurücksetzen",
+      body: "Du hast ein neues Passwort angefordert. Der Link gilt eine Stunde und"
+        + " nur einmal.\n\n" + url
+        + "\n\nWarst das nicht du? Dann ignoriere die Mail. Dein Passwort bleibt gültig.",
+    }),
     reminder: (when: string, clock: string) => ({
       subject: `Termin morgen: ${when}`,
       body: `Der Hausmeister kommt morgen um ${clock}.`
@@ -140,6 +146,11 @@ const T = {
       subject: "An external firm is taking this on",
       body: `The caretaker handed the repair to a qualified firm${trade ? ` (${trade})` : ""}.`,
     }),
+    password_reset: (url: string) => ({
+      subject: "Reset your password",
+      body: "You asked for a new password. The link works once, for one hour.\n\n" + url
+        + "\n\nDidn't ask? Ignore this. Your current password still works.",
+    }),
     reminder: (when: string, clock: string) => ({
       subject: `Appointment tomorrow: ${when}`,
       body: `The caretaker is coming tomorrow at ${clock}.`
@@ -165,7 +176,12 @@ function localClock(ms: number, locale: Locale) {
 }
 
 export function renderMail(row: any, origin: string): { subject: string; text: string } | null {
-  const locale: Locale = row.locale === "en" ? "en" : "de";
+  const payloadEarly = (() => {
+    try { return JSON.parse(row.payload || "{}"); } catch { return {}; }
+  })();
+  // A password reset has no tenant to take a locale from, so it carries its own.
+  const locale: Locale =
+    (payloadEarly.locale ?? row.locale) === "en" ? "en" : "de";
   const s = T[locale];
   const payload = (() => {
     try { return JSON.parse(row.payload || "{}"); } catch { return {}; }
@@ -182,6 +198,11 @@ export function renderMail(row: any, origin: string): { subject: string; text: s
     case "fixed":           m = s.fixed(); break;
     case "escalated":
       m = s.escalated(label(TRADE, payload.trade ?? null, locale) || null); break;
+    case "password_reset": {
+      // Stands alone: no place line, no ticket link, nothing but the link.
+      const m2 = s.password_reset(String(payload.url ?? origin));
+      return { subject: m2.subject, text: `${m2.body}\n\n${s.footer(origin)}` };
+    }
     case "reminder":
       m = s.reminder(
         localDateTime(Number(payload.startsAt), locale),

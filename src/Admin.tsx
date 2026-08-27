@@ -77,6 +77,110 @@ export function AcceptInvite({ t, token, onDone }: { t: T; token: string; onDone
 }
 
 /* ================================================================== */
+/* Forgot and reset                                                    */
+/* ================================================================== */
+
+export function ForgotPassword({ t, onBack }: { t: T; onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  return (
+    <div className="col signin">
+      <button className="linkback" onClick={onBack}>
+        <ChevronLeft size={16} /> {t("backToSignIn")}
+      </button>
+      <h2>{t("forgotTitle")}</h2>
+
+      {sent ? (
+        // The same message whether or not the account exists: otherwise this
+        // form becomes a way to discover who has one.
+        <div className="flash">{t("forgotSent")}</div>
+      ) : (
+        <>
+          <p className="muted">{t("forgotHint")}</p>
+          <label className="field"><span>{t("emailLabel")}</span>
+            <input className="in" type="email" autoComplete="username" value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && email.includes("@") && setBusy(true)} /></label>
+          <button className="btn btn-primary btn-big" disabled={busy || !email.includes("@")}
+            onClick={async () => {
+              setBusy(true);
+              try { await api.forgotPassword(email); } catch { /* same answer either way */ }
+              setSent(true); setBusy(false);
+            }}>
+            {t("sendLink")}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function ResetPassword({ t, token, onDone }: {
+  t: T; token: string; onDone: () => Promise<void>;
+}) {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  return (
+    <div className="col signin">
+      <h2>{t("forgotTitle")}</h2>
+      <p className="muted">{t("signedOutElse")}</p>
+      {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+      <label className="field"><span>{t("newPassword")}</span>
+        <input className="in" type="password" autoComplete="new-password" value={password}
+          onChange={(e) => setPassword(e.target.value)} /></label>
+      <p className="muted">{t("pwRule")}</p>
+      <button className="btn btn-primary btn-big" disabled={busy}
+        onClick={async () => {
+          setBusy(true); setErr("");
+          try { await api.resetPassword(token, password); await onDone(); }
+          catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+        }}>
+        {t("signInBtn")}
+      </button>
+    </div>
+  );
+}
+
+/** Change your own password. Requires the current one, on purpose. */
+export function ChangePassword({ t, onBack }: { t: T; onBack: () => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState(false);
+
+  return (
+    <div className="col">
+      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
+      <h2>{t("changePassword")}</h2>
+      {done && <div className="flash">{t("passwordChanged")} · {t("signedOutElse")}</div>}
+      {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+      <label className="field"><span>{t("currentPassword")}</span>
+        <input className="in" type="password" autoComplete="current-password" value={current}
+          onChange={(e) => setCurrent(e.target.value)} /></label>
+      <label className="field"><span>{t("newPassword")}</span>
+        <input className="in" type="password" autoComplete="new-password" value={next}
+          onChange={(e) => setNext(e.target.value)} /></label>
+      <p className="muted">{t("pwRule")}</p>
+      <button className="btn btn-primary" disabled={busy || !current || !next}
+        onClick={async () => {
+          setBusy(true); setErr(""); setDone(false);
+          try {
+            await api.changePassword(current, next);
+            setCurrent(""); setNext(""); setDone(true);
+          } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+        }}>
+        {t("changePassword")}
+      </button>
+    </div>
+  );
+}
+
+/* ================================================================== */
 /* Manage: buildings and staff                                         */
 /* ================================================================== */
 

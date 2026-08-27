@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronLeft, Languages, LogOut, Settings, HelpCircle, User, Wrench, LayoutDashboard, Mail, Check } from "lucide-react";
+import { ChevronLeft, Languages, LogOut, Settings, HelpCircle, User, Wrench, LayoutDashboard, Mail, Check, KeyRound } from "lucide-react";
 import { api, type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -12,13 +12,14 @@ type T = (k: StrKey) => string;
  * can't read German needs it before they can read anything else. Once they're in,
  * the choice is made and it belongs here.
  */
-export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, onSignOut }: {
+export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, onSignOut, onPassword }: {
   l: Locale; t: T; session: any;
   onBack: () => void;
   onLanguage: () => void;
   onManage: () => void;
   onAbout: () => void;
   onSignOut: () => void;
+  onPassword?: () => void;
 }) {
   const kind = session.principal.kind;
   const home = session.home;
@@ -57,6 +58,15 @@ export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, 
         <span>{t("language")}</span>
         <span className="mono">{l.toUpperCase()}</span>
       </button>
+
+      {/* Residents sign in with a room code and have no password to change. */}
+      {kind !== "tenant" && onPassword && (
+        <button className="accountrow" onClick={onPassword}>
+          <KeyRound size={16} strokeWidth={1.75} aria-hidden />
+          <span>{t("changePassword")}</span>
+          <span className="mono">→</span>
+        </button>
+      )}
 
       {kind === "operator" && (
         <button className="accountrow" onClick={onManage}>

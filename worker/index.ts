@@ -232,6 +232,17 @@ const RETAIN_REPORTER_DAYS = 365;   // then the reporter link is anonymised
 const RETAIN_ATTEMPTS_DAYS = 30;    // login throttling records
 const RESIDENT_RECENT_DAYS = 90;    // how long "done" stays in a resident's list
 
+/**
+ * Symptoms the API accepts. Previously anything went, which is how a window
+ * could be reported as "not heating".
+ */
+const SYMPTOMS = [
+  "LEAKING", "BLOCKED", "NO_POWER", "NOT_HEATING", "NOT_COOLING",
+  "NO_HOT_WATER", "DRAUGHTY", "STUCK", "NOISE", "BROKEN", "OTHER",
+  // Retired, still accepted so historic data and the seed keep working.
+  "COLD",
+];
+
 const MAX_OFFERS = 4;
 const OFFER_HORIZON_DAYS = 14;
 
@@ -527,6 +538,7 @@ route("GET", "/api/tickets/:id", async ({ env, p, params }) => {
 route("POST", "/api/tickets", async ({ env, req, p }) => {
   const body = (await req.json()) as { objectId: string; symptom: string; note?: string };
   if (!body.objectId || !body.symptom) return bad("objectId and symptom required");
+  if (!SYMPTOMS.includes(String(body.symptom))) return bad("unknown symptom");
 
   const o = await env.DB.prepare(
     `SELECT o.id, r.kind AS room_kind, r.unit_id, r.id AS room_id,
@@ -1309,6 +1321,9 @@ route("POST", "/api/notifications/read-all", async ({ env, p }) => {
 route("GET",   "/api/setup-state",              (c) => admin.setupState(c));
 route("POST",  "/api/admin/bootstrap",          (c) => admin.bootstrap(c));
 route("POST",  "/api/auth/setup",               (c) => admin.consumeInvite(c));
+route("POST",  "/api/auth/forgot",              (c) => admin.requestReset(c));
+route("POST",  "/api/auth/reset",               (c) => admin.consumeReset(c));
+route("POST",  "/api/me/password",              (c) => admin.changePassword(c));
 
 route("GET",   "/api/admin/vocabulary",         (c) => admin.adminVocabulary(c));
 
@@ -1572,7 +1587,26 @@ route("GET", "/api/dev/mail/preview", async ({ p, url }) => {
 
 route("POST", "/api/dev/mail", async ({ env, p, url }) => {
   if (p.kind !== "operator") return bad("operator only", 403);
-  return json(await flushMail(env, url.origin));
+
+  // Diagnostics, because "configured: false" on its own can't distinguish a
+  // missing binding from an empty one, and the dashboard shows "Value
+  // encrypted" either way. Length only: never the value itself.
+  const raw = env.RESEND_API_KEY;
+  const diag = {
+    keyBound: raw !== undefined,
+    keyLength: typeof raw === "string" ? raw.length : 0,
+    keyLooksRight: typeof raw === "string" && raw.trim().startsWith("re_"),
+    hasWhitespace: typeof raw === "string" && raw !== raw.trim(),
+    queued: (await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM notifications
+        WHERE email_to IS NOT NULL AND emailed_at IS NULL`
+    ).first<any>())?.n ?? 0,
+    addressed: (await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM notifications WHERE email_to IS NOT NULL`
+    ).first<any>())?.n ?? 0,
+  };
+
+  return json({ ...(await flushMail(env, url.origin)), diag });
 });
 
 /** A resident turning email off keeps the bell. */
@@ -1763,10 +1797,10 @@ async function seed(env: Env) {
 
   // Background noise so the pattern has to stand out from something.
   const noise: [string, string, string, string][] = [
-    ["A", "LIGHT", "NO_POWER", "CONSUMABLE"], ["A", "RADIATOR", "COLD", "RISER"],
+    ["A", "LIGHT", "NO_POWER", "CONSUMABLE"], ["A", "RADIATOR", "NOT_HEATING", "RISER"],
     ["B", "LIGHT", "NO_POWER", "CONSUMABLE"], ["B", "SHOWER", "LEAKING", "SEAL"],
     ["C", "LIGHT", "NO_POWER", "CONSUMABLE"], ["C", "WASHER", "NOISE", "CONSUMABLE"],
-    ["B", "WINDOW", "COLD", "SEAL"], ["C", "SOCKET", "NO_POWER", "WIRING"],
+    ["B", "WINDOW", "DRAUGHTY", "SEAL"], ["C", "SOCKET", "NO_POWER", "WIRING"],
   ];
   noise.forEach(([bc, type, sym, cause], i) => {
     const pool = objects.filter((o) => o.id.startsWith(`u-${bc}-`) && o.type === type);
@@ -1829,7 +1863,7 @@ async function seed(env: Env) {
     // Fresh and untouched
     env.DB.prepare(
       `INSERT INTO tickets (id, object_id, symptom, state, reported_at, needs_access, note)
-       VALUES ('L4','u-B-207-Z1-RADIATOR','COLD','reported',?1,1,'Wird seit Freitag nicht warm.')`
+       VALUES ('L4','u-B-207-Z1-RADIATOR','NOT_HEATING','reported',?1,1,'Wird seit Freitag nicht warm.')`
     ).bind(now() - 6e6),
     env.DB.prepare(`INSERT INTO ticket_reporters (id, ticket_id, locale, token, is_primary, created_at) VALUES ('r4','L4','de',?1,1,?2)`)
       .bind(randomToken(), now() - 6e6),

@@ -11,6 +11,7 @@
 import type { Env, Principal, RouteCtx } from "./core";
 import {
   bad, json, now, uid, DAY, sha256, randomToken, hashNewPassword,
+  derivePassword, sameSecret, tooManyAttempts, recordAttempt,
   isStaff, issueStaffSession, sessionResponse, HttpError,
 } from "./core";
 
@@ -541,4 +542,133 @@ export async function consumeInvite({ env, req }: RouteCtx) {
 export async function adminVocabulary({ p }: RouteCtx) {
   requireOperator(p);
   return json({ roomTypes: ROOM_TYPES, objectTypes: OBJECT_TYPES, objectsFor: OBJECTS_FOR });
+}
+
+/* ---------------------------------------------------------------- */
+/* passwords                                                        */
+/* ---------------------------------------------------------------- */
+
+/** Short, because a reset link arrives instantly. An invite may sit for days. */
+const RESET_MINUTES = 60;
+
+/**
+ * Change your own password.
+ *
+ * The current one is required: without it, anyone who finds an unlocked laptop
+ * can lock the real owner out of their own account.
+ */
+export async function changePassword({ env, req, p }: RouteCtx) {
+  if (!isStaff(p)) return bad("staff only", 403);
+  const staffId = (p as any).staffId as string;
+
+  const { currentPassword, newPassword } = (await req.json()) as
+    { currentPassword?: string; newPassword?: string };
+
+  if (!newPassword || newPassword.length < MIN_PASSWORD) {
+    return bad(`password needs at least ${MIN_PASSWORD} characters`);
+  }
+
+  const me = await env.DB.prepare(
+    `SELECT password_hash, password_salt FROM staff WHERE id = ?1`
+  ).bind(staffId).first<any>();
+  if (!me?.password_hash) return bad("no password set", 409);
+
+  const attempt = await derivePassword(currentPassword ?? "", me.password_salt);
+  if (!sameSecret(attempt, me.password_hash)) {
+    return bad("that isn't your current password", 401);
+  }
+
+  const pw = await hashNewPassword(newPassword);
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE staff SET password_hash = ?1, password_salt = ?2 WHERE id = ?3`)
+      .bind(pw.hash, pw.salt, staffId),
+    // Every session ends, including this one: if somebody else had yours,
+    // changing the password should lock them out. A fresh cookie comes back in
+    // the response, so the person who did it stays signed in.
+    env.DB.prepare(
+      `UPDATE staff_sessions SET revoked_at = ?1 WHERE staff_id = ?2 AND revoked_at IS NULL`
+    ).bind(now(), staffId),
+  ]);
+  return sessionResponse("sid", await issueStaffSession(env, staffId));
+}
+
+/**
+ * Ask for a reset link.
+ *
+ * Always answers the same way. A form that says "no such account" is a way to
+ * find out who has one.
+ *
+ * Requesting a reset does not invalidate the existing password: a malicious
+ * request against your address should cost you nothing but an email.
+ */
+export async function requestReset({ env, req, url }: RouteCtx) {
+  const { email } = (await req.json()) as { email?: string };
+  const addr = (email ?? "").trim().toLowerCase();
+  const same = { ok: true, message: "if that address has an account, a link is on its way" };
+  if (!addr.includes("@")) return json(same);
+
+  if (await tooManyAttempts(env, `reset:${addr}`)) return json(same);
+  await recordAttempt(env, `reset:${addr}`, false);
+
+  const staff = await env.DB.prepare(
+    `SELECT id, locale FROM staff WHERE email = ?1 AND disabled_at IS NULL`
+  ).bind(addr).first<any>();
+  if (!staff) return json(same);
+
+  const token = randomToken();
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE password_resets SET consumed_at = ?1
+        WHERE staff_id = ?2 AND consumed_at IS NULL`
+    ).bind(now(), staff.id),
+    env.DB.prepare(
+      `INSERT INTO password_resets (id, staff_id, token_hash, created_at, expires_at)
+       VALUES (?1,?2,?3,?4,?5)`
+    ).bind(uid(), staff.id, await sha256(token), now(),
+           now() + RESET_MINUTES * 60_000),
+    // Queued so the existing sender delivers it. Deliberately addressed to a
+    // tenant audience with no tenant: that matches nobody's bell scope, so a
+    // personal reset link can't surface in someone else's notifications, while
+    // flushMail still picks it up because it selects on email_to.
+    env.DB.prepare(
+      `INSERT INTO notifications
+         (id, ticket_id, audience, tenant_id, building_id, kind, payload,
+          ref, created_at, email_to)
+       VALUES (?1,NULL,'tenant',NULL,NULL,'password_reset',?2,NULL,?3,?4)`
+    ).bind(uid(),
+           JSON.stringify({ url: `${url.origin}/reset/${token}`, locale: staff.locale }),
+           now(), addr),
+  ]);
+  return json(same);
+}
+
+/** Consume the link, set a new password, and end every other session. */
+export async function consumeReset({ env, req }: RouteCtx) {
+  const { token, password } = (await req.json()) as { token?: string; password?: string };
+  if (!token) return bad("missing reset link");
+  if (!password || password.length < MIN_PASSWORD) {
+    return bad(`password needs at least ${MIN_PASSWORD} characters`);
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT r.id, r.staff_id FROM password_resets r
+       JOIN staff s ON s.id = r.staff_id
+      WHERE r.token_hash = ?1 AND r.consumed_at IS NULL AND r.expires_at > ?2
+        AND s.disabled_at IS NULL`
+  ).bind(await sha256(token), now()).first<any>();
+  if (!row) return bad("that reset link is invalid or has expired", 401);
+
+  const pw = await hashNewPassword(password);
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE staff SET password_hash = ?1, password_salt = ?2 WHERE id = ?3`)
+      .bind(pw.hash, pw.salt, row.staff_id),
+    env.DB.prepare(`UPDATE password_resets SET consumed_at = ?1 WHERE id = ?2`)
+      .bind(now(), row.id),
+    // A reset is the one moment to assume somebody else may have been in there.
+    env.DB.prepare(
+      `UPDATE staff_sessions SET revoked_at = ?1 WHERE staff_id = ?2 AND revoked_at IS NULL`
+    ).bind(now(), row.staff_id),
+  ]);
+
+  return sessionResponse("sid", await issueStaffSession(env, row.staff_id));
 }
