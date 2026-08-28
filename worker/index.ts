@@ -1666,6 +1666,7 @@ route("POST",  "/api/admin/buildings/:id/units/bulk", (c) => admin.bulkUnits(c))
 
 route("PATCH", "/api/admin/rooms/:id",          (c) => admin.updateRoom(c));
 route("POST",  "/api/admin/rooms/:id/turnover", (c) => admin.turnoverRoom(c));
+route("GET",   "/api/admin/rooms/:id/history",  (c) => admin.roomHistory(c));
 route("GET",   "/api/admin/buildings/:id/codes",         (c) => admin.listCodes(c));
 route("POST",  "/api/admin/buildings/:id/codes",         (c) => admin.generateCodes(c));
 route("POST",  "/api/admin/buildings/:id/codes/reissue", (c) => admin.reissueAll(c));

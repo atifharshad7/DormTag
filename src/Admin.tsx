@@ -181,7 +181,7 @@ export function ChangePassword({ t, onBack }: { t: T; onBack: () => void }) {
 }
 
 /* ================================================================== */
-/* Manage: buildings and staff                                         */
+/* Buildings and staff, each its own page                              */
 /* ================================================================== */
 
 function CopyLink({ t, token }: { t: T; token: string }) {
@@ -201,7 +201,9 @@ function CopyLink({ t, token }: { t: T; token: string }) {
   );
 }
 
-function Buildings({ l, t }: { l: Locale; t: T }) {
+export function BuildingsPage({ l, t, onBack }: {
+  l: Locale; t: T; onBack?: () => void;
+}) {
   const [rows, setRows] = useState<any[] | null>(null);
   const [err, setErr] = useState("");
   const [adding, setAdding] = useState(false);
@@ -222,8 +224,14 @@ function Buildings({ l, t }: { l: Locale; t: T }) {
 
   return (
     <div className="col">
+      {onBack && (
+        <button className="linkback" onClick={onBack}>
+          <ChevronLeft size={16} /> {t("backToApp")}
+        </button>
+      )}
       <div className="rowspread">
         <h2>{t("buildings")}</h2>
+        {/* Add building belongs here, not behind Staff. */}
         <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
           <Plus size={16} /> {t("addBuilding")}
         </button>
@@ -524,22 +532,23 @@ function Staff({ l, t, me }: { l: Locale; t: T; me: string }) {
   );
 }
 
-export function Manage({ l, t, me, onBack }: { l: Locale; t: T; me: string; onBack: () => void }) {
-  const [tab, setTab] = useState<"buildings" | "staff">("buildings");
+/**
+ * Staff, on its own page.
+ *
+ * This was one tab of a Manage screen whose other tab was Buildings. Both are
+ * destinations in the operator's left panel now, so the wrapper was a third
+ * route to the same forms — and it left "Add building" sitting behind Staff,
+ * which is where nobody would look for it.
+ */
+export function StaffPage({ l, t, me, onBack }: {
+  l: Locale; t: T; me: string; onBack: () => void;
+}) {
   return (
     <div className="col">
-      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
-      <div className="tabs">
-        <button className={"tab" + (tab === "buildings" ? " tab-on" : "")}
-          onClick={() => setTab("buildings")}>
-          <Building size={15} strokeWidth={1.75} aria-hidden /> {t("buildings")}
-        </button>
-        <button className={"tab" + (tab === "staff" ? " tab-on" : "")}
-          onClick={() => setTab("staff")}>
-          <Users size={15} strokeWidth={1.75} aria-hidden /> {t("staffWord")}
-        </button>
-      </div>
-      {tab === "buildings" ? <Buildings l={l} t={t} /> : <Staff l={l} t={t} me={me} />}
+      <button className="linkback" onClick={onBack}>
+        <ChevronLeft size={16} /> {t("backToApp")}
+      </button>
+      <Staff l={l} t={t} me={me} />
     </div>
   );
 }

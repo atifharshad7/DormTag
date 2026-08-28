@@ -12,11 +12,10 @@ type T = (k: StrKey) => string;
  * can't read German needs it before they can read anything else. Once they're in,
  * the choice is made and it belongs here.
  */
-export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, onSignOut, onPassword, onPlatform }: {
+export function Account({ l, t, session, onBack, onLanguage, onAbout, onSignOut, onPassword, onPlatform }: {
   l: Locale; t: T; session: any;
   onBack: () => void;
   onLanguage: () => void;
-  onManage: () => void;
   onAbout: () => void;
   onSignOut: () => void;
   onPassword?: () => void;
@@ -66,14 +65,6 @@ export function Account({ l, t, session, onBack, onLanguage, onManage, onAbout, 
         <button className="accountrow" onClick={onPassword}>
           <KeyRound size={16} strokeWidth={1.75} aria-hidden />
           <span>{t("changePassword")}</span>
-          <span className="mono">→</span>
-        </button>
-      )}
-
-      {kind === "operator" && (
-        <button className="accountrow" onClick={onManage}>
-          <Settings size={16} strokeWidth={1.75} aria-hidden />
-          <span>{t("manageWord")}</span>
           <span className="mono">→</span>
         </button>
       )}

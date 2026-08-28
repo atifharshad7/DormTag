@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, Printer, RefreshCw, Plus, AlertTriangle, X, UserPlus } from "lucide-react";
+import { ChevronLeft, Printer, RefreshCw, Plus, AlertTriangle, X, UserPlus, Clock } from "lucide-react";
 import { api, fmtDay, type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -24,6 +24,7 @@ export function BuildingCodes({ l, t, building, onBack }: {
   const [showSheet, setShowSheet] = useState(false);
   const [reissuing, setReissuing] = useState(false);
   const [turnover, setTurnover] = useState<string | null>(null);
+  const [history, setHistory] = useState<Record<string, any[] | "loading">>({});
   const [note, setNote] = useState("");
 
   const load = useCallback(() => {
@@ -113,10 +114,51 @@ export function BuildingCodes({ l, t, building, onBack }: {
                           </div>
                         </div>
                       ) : (
-                        <button className="linkmore noprint"
-                          onClick={() => { setTurnover(c.room_id); setNote(""); }}>
-                          {t("turnoverWord")}
-                        </button>
+                        <div className="row noprint coderowacts">
+                          <button className="linkmore"
+                            onClick={() => { setTurnover(c.room_id); setNote(""); }}>
+                            {t("turnoverWord")}
+                          </button>
+                          {/* Dates and the handover note, never the old code
+                              strings: a revoked code has no legitimate use. */}
+                          <button className="linkmore" onClick={async () => {
+                            if (history[c.room_id]) {
+                              setHistory((h) => { const n = { ...h }; delete n[c.room_id]; return n; });
+                              return;
+                            }
+                            setHistory((h) => ({ ...h, [c.room_id]: "loading" }));
+                            try {
+                              const r = await api.roomHistory(c.room_id);
+                              setHistory((h) => ({ ...h, [c.room_id]: r.history }));
+                            } catch (e: any) {
+                              setErr(e.message);
+                              setHistory((h) => { const n = { ...h }; delete n[c.room_id]; return n; });
+                            }
+                          }}>
+                            <Clock size={13} aria-hidden />
+                            {history[c.room_id] ? t("hideHistory") : t("historyWord")}
+                          </button>
+                        </div>
+                      )}
+
+                      {history[c.room_id] && (
+                        <div className="codehistory noprint">
+                          {history[c.room_id] === "loading" ? (
+                            <p className="muted">…</p>
+                          ) : (history[c.room_id] as any[]).length <= 1 ? (
+                            <p className="muted">{t("noHistoryYet")}</p>
+                          ) : (
+                            (history[c.room_id] as any[]).map((h, i) => (
+                              <p className="muted mono histrow" key={i}>
+                                {h.issued_at ? fmtDay(h.issued_at, l) : "–"}
+                                {" → "}
+                                {h.ends_on ? fmtDay(h.ends_on, l) : t("currentHolder")}
+                                {!h.was_used && ` · ${t("neverUsed")}`}
+                                {h.note && ` · ${h.note}`}
+                              </p>
+                            ))
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}

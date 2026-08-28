@@ -1296,6 +1296,25 @@ ok("a shared room has no resident to replace", await (async () => {
   return (await req(`/api/admin/rooms/${shared.id}/turnover`, { method: "POST", cookie: operator })).status === 409;
 })());
 
+section("access codes: who held the room before")
+const histRoom = (await req(`/api/admin/buildings/${codeB.id}/codes`, { cookie: operator }))
+  .json.codes.find((c) => c.room_id === aCode.room_id);
+const hist = await req(`/api/admin/rooms/${aCode.room_id}/history`, { cookie: operator });
+ok("the history opens", hist.status === 200, JSON.stringify(hist.json).slice(0, 120));
+// The turnover earlier ended one tenancy and issued another, so there are two.
+ok("it shows the handover", hist.json.history.length >= 2, `${hist.json.history.length}`);
+ok("exactly one is current",
+  hist.json.history.filter((h) => h.ends_on === null).length === 1);
+ok("the ended one kept its note",
+  hist.json.history.some((h) => h.ends_on !== null && h.note === "Neuvermietung"),
+  JSON.stringify(hist.json.history.map((h) => h.note)));
+// Dead codes have no legitimate use, so they aren't returned at all.
+ok("no code strings come back",
+  !JSON.stringify(hist.json).includes(aCode.code) && !JSON.stringify(hist.json).includes("activation"));
+ok("it names the room for the heading", !!hist.json.room.building_code);
+ok("a caretaker cannot read it",
+  (await req(`/api/admin/rooms/${aCode.room_id}/history`, { cookie: staff })).status === 403);
+
 section("access codes: reissuing a whole building")
 const codesBefore = (await req(`/api/admin/buildings/${codeB.id}/codes`, { cookie: operator })).json.codes;
 const all = await req(`/api/admin/buildings/${codeB.id}/codes/reissue`, { method: "POST", cookie: operator });
@@ -1549,6 +1568,9 @@ ok("another organisation gets nothing from our riser", await (async () => {
     { cookie: otherOp });
   return r.status === 403 || r.json.total === 0;
 })());
+
+ok("another organisation cannot read ours",
+  (await req(`/api/admin/rooms/${aCode.room_id}/history`, { cookie: otherOp })).status === 404);
 
 ok("their bell is empty of our notifications",
   (await req("/api/notifications", { cookie: otherOp })).json.notifications.length === 0);

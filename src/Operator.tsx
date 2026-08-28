@@ -600,21 +600,6 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
     if (err) return <div className="err">{err}</div>;
     if (!d) return <p className="muted">…</p>;
 
-    if (section === "buildings") {
-      return (
-        <div className="col">
-          <h2>{t("buildings")}</h2>
-          <div className="bgrid">
-            {d.buildings.map((b: any) => (
-              <BuildingCard key={b.id} l={l} t={t} b={b} active={false}
-                onFilter={() => { setBuilding(b.code); setSection("dashboard"); }}
-                onChanged={load} showUnits />
-            ))}
-          </div>
-        </div>
-      );
-    }
-
     if (section === "codes") {
       return (
         <div className="col">
@@ -755,23 +740,27 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
         ))}
       </div>
 
-      <div className="card">
-        <div className="rowspread">
-          <p className="cardtitle">{t("reportedVsFixed")}</p>
-          <span className="muted mono">{d.metrics.closedCount} {t("closedInPeriod")}</span>
+      {/* Side by side on a wide screen, stacked below it. They answer related
+          questions, so a scroll between them is a waste of a big monitor. */}
+      <div className="dashpair">
+        <div className="card">
+          <div className="rowspread">
+            <p className="cardtitle">{t("reportedVsFixed")}</p>
+            <span className="muted mono">{d.metrics.closedCount} {t("closedInPeriod")}</span>
+          </div>
+          <TrendChart l={l} t={t} data={d.trend} selected={month} onSelect={setMonth}
+            mode={chartFor("trend")} />
         </div>
-        <TrendChart l={l} t={t} data={d.trend} selected={month} onSelect={setMonth}
-          mode={chartFor("trend")} />
+
+        <div className="card">
+          <p className="cardtitle">{t("byTradeWord")}</p>
+          <TradePanel l={l} t={t} data={d.byTrade} mode={chartFor("trade")} />
+        </div>
       </div>
 
       {month && (
         <MonthPanel l={l} t={t} bucket={month} building={building} onClose={() => setMonth(null)} />
       )}
-
-      <div className="card">
-        <p className="cardtitle">{t("byTradeWord")}</p>
-        <TradePanel l={l} t={t} data={d.byTrade} mode={chartFor("trade")} />
-      </div>
 
       <div className="card">
         <div className="rowspread">
@@ -837,10 +826,12 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
   return (
     <div className="opshell">
       <Sidebar t={t} section={section} orgName={session?.org?.name}
+        personName={session?.principal?.name}
         isPlatformAdmin={session?.principal?.isPlatformAdmin}
         onGo={(next) => {
           setCodesFor(null); setRepeat(null); setDrill(null);
-          if (next === "account" || next === "staff" || next === "orgs") {
+          if (next === "account" || next === "staff" || next === "orgs"
+              || next === "buildings") {
             onAccount?.(next);
             return;
           }

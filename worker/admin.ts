@@ -1148,6 +1148,49 @@ export async function listCodes({ env, p, params }: RouteCtx) {
   });
 }
 
+/**
+ * Who has held one room, and when.
+ *
+ * Ended tenancies are never deleted, so the history is already there. The usual
+ * question is "who had Z2 before?", asked because a resident is disputing
+ * something or a caretaker turned up for a fault nobody reported — a question
+ * about one room, not a list of every dead code in the building.
+ *
+ * Deliberately no code strings. A revoked code has no legitimate use, and a page
+ * listing every code a building ever had is a worse thing to leave open on a
+ * screen than the current sheet.
+ */
+export async function roomHistory({ env, p, params }: RouteCtx) {
+  requireOperator(p);
+
+  const room = await env.DB.prepare(
+    `SELECT r.id, r.code, r.label, u.code AS unit_code,
+            COALESCE(b.display_code, b.code) AS building_code
+       FROM rooms r
+       JOIN units u ON u.id = r.unit_id
+       JOIN buildings b ON b.id = u.building_id
+      WHERE r.id = ?1 AND b.org_id = ?2`
+  ).bind(params.id, myOrg(p)).first<any>();
+  if (!room) return bad("unknown room", 404);
+
+  const rows = await env.DB.prepare(
+    `SELECT tn.issued_at, tn.starts_on, tn.ends_on, tn.note,
+            (t.activated_at IS NOT NULL) AS was_used
+       FROM tenancies tn
+       JOIN tenants t ON t.id = tn.tenant_id
+      WHERE tn.room_id = ?1
+      ORDER BY COALESCE(tn.issued_at, tn.starts_on) DESC`
+  ).bind(room.id).all<any>();
+
+  return json({
+    room: {
+      id: room.id, code: room.code, label: room.label,
+      unit_code: room.unit_code, building_code: room.building_code,
+    },
+    history: rows.results,
+  });
+}
+
 /* ---------------------------------------------------------------- */
 /* bulk unit creation                                               */
 /* ---------------------------------------------------------------- */

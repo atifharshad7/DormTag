@@ -129,6 +129,7 @@ export const T = {
   noData:          { de: "Keine Daten im Zeitraum.", en: "No data in this period." },
   reportedVsFixed: { de: "Gemeldet und erledigt",    en: "Reported and fixed" },
   dashboardWord:   { de: "Dashboard",                en: "Dashboard" },
+  moreWord:        { de: "Mehr",                     en: "More" },
   chartsWord:      { de: "Darstellung",              en: "How it's drawn" },
   monthsWord:      { de: "Monate",                   en: "months" },
   customise:       { de: "Anpassen",                 en: "Customise" },
@@ -365,6 +366,12 @@ export const T = {
   printStickers:   { de: "Aufkleber drucken",        en: "Print stickers" },
   accessCodes:     { de: "Zugangscodes",             en: "Access codes" },
   turnoverWord:    { de: "Neuer Bewohner",           en: "New resident" },
+  historyWord:     { de: "Verlauf",                  en: "History" },
+  hideHistory:     { de: "Verlauf ausblenden",       en: "Hide history" },
+  currentHolder:   { de: "aktuell",                  en: "current" },
+  endedOn:         { de: "beendet",                  en: "ended" },
+  noHistoryYet:    { de: "Noch kein Wechsel.",       en: "No handover yet." },
+  wasUsed:         { de: "benutzt",                  en: "used" },
   turnoverHint:    { de: "Alter Code, Sitzungen und Links werden ungültig.", en: "The old code, sessions and links all stop working." },
   turnoverNote:    { de: "Notiz (optional)",         en: "Note (optional)" },
   reissueAll:      { de: "Alle Codes neu",           en: "Reissue every code" },
@@ -738,6 +745,7 @@ export const api = {
   buildingCodes:    (id: string) => call(`/admin/buildings/${id}/codes`),
   generateCodes:    (id: string) => post(`/admin/buildings/${id}/codes`),
   reissueAll:       (id: string) => post(`/admin/buildings/${id}/codes/reissue`),
+  roomHistory:      (roomId: string) => call(`/admin/rooms/${roomId}/history`),
   turnoverRoom:     (roomId: string, note?: string) =>
                       post(`/admin/rooms/${roomId}/turnover`, note ? { note } : {}),
 

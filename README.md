@@ -32,7 +32,9 @@ Every repair is logged to the exact room and fixture, so after a year the operat
 ### For operators
 
 * A **left panel** rather than a header: Dashboard, Buildings, Staff, QR stickers,
-  Access codes, and Organisations for a platform admin. Building it as a panel is
+  Access codes, and Organisations for a platform admin. On a phone the same
+  component becomes a bottom tab bar — Dashboard, Buildings, Staff, More — because
+  a strip that scrolled sideways hid destinations with no sign they were there. Building it as a panel is
   what let the building cards shed four buttons each — the actions became
   destinations, so a card is a summary again and tapping it filters.
 * Metrics you can click into. **Open reports** and **oldest open** are always
@@ -55,6 +57,10 @@ Every repair is logged to the exact room and fixture, so after a year the operat
   only seeing established ones.
 * Filter everything by period and building; commission external firms; generate
   access codes; fill a whole building from its pattern.
+* Per-room **code history**: when each code was issued, when it ended, and the
+  handover note. Dates and notes only, never the old code strings — a revoked
+  code has no legitimate use, and a page listing every code a building ever had
+  is worse to leave open on a screen than the current sheet.
 
 ## Design notes
 
@@ -299,7 +305,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 500 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 508 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure
@@ -313,7 +319,7 @@ src/
   App.tsx            # app shell, resident and caretaker views
   Operator.tsx       # dashboard: metrics, charts, drill-downs
   Auth.tsx           # sign in, about page, scan landing, sticker sheet
-  Admin.tsx          # first-run setup, invite acceptance, manage staff
+  Admin.tsx          # first-run setup, invites, the buildings and staff pages
   BuildingEdit.tsx   # building card and forms, shared by dashboard and Manage
   Account.tsx        # language, sign out, Manage, About
   Notifications.tsx  # the bell and its panel

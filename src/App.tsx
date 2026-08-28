@@ -15,7 +15,7 @@ import { ScannerModal } from "./Scanner";
 import { SlotPicker, type SlotRules } from "./SlotPicker";
 import { OperatorView } from "./Operator";
 import { Logo } from "./Logo";
-import { Manage, FirstRunSetup, AcceptInvite, ForgotPassword, ResetPassword, ChangePassword } from "./Admin";
+import { StaffPage, BuildingsPage, FirstRunSetup, AcceptInvite, ForgotPassword, ResetPassword, ChangePassword } from "./Admin";
 import { Account } from "./Account";
 import { Landing, DemoPicker, SignUpOrg, OrgWaiting } from "./Landing";
 import { Platform } from "./Platform";
@@ -719,8 +719,8 @@ export default function App() {
   const [route, setRoute] = useState(readRoute);
   const [screen, setScreen] =
     useState<
-    "main" | "stickers" | "sent" | "manage" | "account" | "about" |
-    "password" | "forgot" | "landing" | "demo" | "signup" | "platform"
+    "main" | "stickers" | "sent" | "account" | "about" | "password" | "forgot" |
+    "landing" | "demo" | "signup" | "platform" | "staff" | "buildings"
   >("landing");
   const [bellOpen, setBellOpen] = useState(false);
   const [openTicket, setOpenTicket] = useState<string | null>(null);
@@ -762,12 +762,22 @@ export default function App() {
   }, [signedIn, screen]);
   const { items: notifItems, unread, reload: reloadNotifs } = useNotifications(signedIn);
 
+  // Bumped by goHome and used as OperatorView's key. The operator view holds its
+  // own section, drill-down and building state; resetting `screen` left all of
+  // that untouched, so clicking the logo from Access codes appeared to do
+  // nothing. Remounting clears everything at once, and nothing new has to be
+  // remembered when another sub-screen is added later.
+  const [opKey, setOpKey] = useState(0);
+
   const goHome = useCallback(() => {
     history.pushState({}, "", "/");
     setRoute({ kind: "app" });
     setScreen("main");
     setSent(null);
     setHomeKey((n) => n + 1);
+    setOpKey((n) => n + 1);
+    setStickerBuilding(null);
+    setOpenTicket(null);
   }, []);
 
   const goApp = useCallback(() => {
@@ -807,7 +817,8 @@ export default function App() {
    * for several screen values. Two conditions that had to agree, and didn't —
    * hence a centred column with a gap beside the panel.
    */
-  const otherScreens = ["stickers", "manage", "account", "password", "about", "platform", "sent"];
+  const otherScreens = ["stickers", "account", "password", "about", "platform", "sent",
+                        "staff", "buildings"];
   const operatorOwnView =
     kind === "operator" && route.kind === "app" && !otherScreens.includes(screen);
   const wideView = kind === "operator" || screen === "stickers";
@@ -837,10 +848,15 @@ export default function App() {
                   aria-label={t("stickers")}><QrCode size={14} aria-hidden /></button>
               )}
               <BellButton t={t} unread={unread} onClick={() => setBellOpen(true)} />
-              <button className="who whobtn" onClick={() => setScreen("account")}
-                aria-label={t("account")}>
-                <RoleIcon size={14} strokeWidth={1.75} aria-hidden /> {whoLabel}
-              </button>
+              {/* Operators reach Account from the left panel, which also shows
+                  the organisation and the person. Keeping it here as well meant
+                  the same name twice on one screen. */}
+              {kind !== "operator" && (
+                <button className="who whobtn" onClick={() => setScreen("account")}
+                  aria-label={t("account")}>
+                  <RoleIcon size={14} strokeWidth={1.75} aria-hidden /> {whoLabel}
+                </button>
+              )}
             </>
           )}
           {/* Language stays in the header while signed out: someone who can't
@@ -885,7 +901,6 @@ export default function App() {
           <Account l={l} t={t} session={session}
             onBack={() => setScreen("main")}
             onLanguage={() => setL(l === "de" ? "en" : "de")}
-            onManage={() => setScreen("manage")}
             onPassword={() => setScreen("password")}
             onPlatform={session.principal.isPlatformAdmin ? () => setScreen("platform") : undefined}
             onAbout={() => setScreen("about")}
@@ -894,8 +909,11 @@ export default function App() {
           <ChangePassword t={t} onBack={() => setScreen("account")} />
         ) : screen === "about" ? (
           <About t={t} onBack={() => setScreen("account")} />
-        ) : screen === "manage" && kind === "operator" ? (
-          <Manage l={l} t={t} me={session.principal.staffId} onBack={() => setScreen("main")} />
+        ) : screen === "staff" && kind === "operator" ? (
+          <StaffPage l={l} t={t} me={session.principal.staffId}
+            onBack={() => setScreen("main")} />
+        ) : screen === "buildings" && kind === "operator" ? (
+          <BuildingsPage l={l} t={t} onBack={() => setScreen("main")} />
         ) : screen === "sent" ? (
           <ReportDone t={t} token={sent?.token} onHome={goApp} />
         ) : route.kind === "scan" ? (
@@ -918,12 +936,11 @@ export default function App() {
           <StaffView key={homeKey + ":" + (openTicket ?? "")} l={l} t={t} tickets={tickets} reload={reload}
             rules={session.slotRules} initialTicket={openTicket} />
         ) : (
-          <OperatorView l={l} t={t} session={session}
+          <OperatorView key={opKey} l={l} t={t} session={session}
             onStickers={(code) => { setStickerBuilding(code || null); setScreen("stickers"); }}
             onAccount={(sec) => {
-              // Staff and Organisations live in the account area; the panel just
-              // takes you there rather than duplicating the screens.
-              if (sec === "staff") setScreen("manage");
+              if (sec === "staff") setScreen("staff");
+              else if (sec === "buildings") setScreen("buildings");
               else if (sec === "orgs") setScreen("platform");
               else setScreen("account");
             }} />

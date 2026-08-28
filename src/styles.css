@@ -231,6 +231,7 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 
 /* --- dashboard -------------------------------------------------- */
 
+/* auto-fill, so the row uses the width it has rather than a fixed count */
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
 .metric { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 13px; }
 .metric .big { font-size: 26px; font-weight: 500; margin: 3px 0 0; letter-spacing: -0.02em; }
@@ -809,7 +810,10 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   border: 0; border-right: 1px solid var(--line); border-radius: 0;
   padding: 16px 10px; display: flex; flex-direction: column; gap: 2px;
 }
-.opmain { padding: 20px 20px 64px; max-width: 1180px; }
+/* No cap: on a wide monitor a fixed width left a third of the screen doing
+   nothing. Auto-fill grids mean the content fills whatever space there is
+   without four buildings turning into six slots, two of them empty. */
+.opmain { padding: 20px 22px 64px; }
 .sborg { padding: 0 8px 13px; }
 .sborgrole {
   font-size: 9.5px; color: var(--muted); letter-spacing: .06em; margin: 0 0 2px;
@@ -835,24 +839,48 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   .sbnav:hover { background: rgba(232,232,227,.07); }
 }
 
-/* A phone still needs to get around, so the panel becomes a strip rather
-   than vanishing behind a hamburger. */
-@media (max-width: 720px) {
-  .opshell { flex-direction: column; gap: 10px; }
-  .sidebar {
-    width: 100%; position: static; height: auto; overflow-y: visible;
-    flex-direction: row; overflow-x: auto;
-    padding: 8px; gap: 4px; align-items: center;
-    border: 1px solid var(--line); border-radius: 10px;
-  }
+.sborgperson { font-size: 11px; color: var(--muted); margin: 2px 0 0; }
+
+/* --- the phone: a bottom tab bar ------------------------------------- */
+
+.tabbar, .tabsheet { display: none; }
+
+@media (max-width: 860px) {
+  /* The left panel is a desktop shape. On a phone it's four tabs in thumb
+     reach, with the rest behind More — rather than a strip that scrolled
+     sideways with no sign there was anything off-screen. */
+  .sidebar { display: none; }
+  .opshell { display: block; }
   .opmain { padding: 0; }
-  main.opview { padding: 14px 14px 56px; }
-  .sborg { display: none; }
-  .sbnav { width: auto; white-space: nowrap; padding: 8px 11px; }
-  .sbsplit, .sbfoot {
-    margin: 0; padding: 0; border: 0; border-left: 1px solid var(--line);
-    padding-left: 4px;
+  main.opview { padding: 14px 14px 78px; }
+
+  .tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    background: var(--card); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
   }
+  .tabbtn {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 8px 2px; border: 0; background: none; cursor: pointer;
+    font: inherit; font-size: 10px; color: var(--muted); min-height: 54px;
+  }
+  .tabbtn-on { color: var(--amber); }
+  .tabbtn span { white-space: nowrap; }
+
+  .tabsheet {
+    display: flex; flex-direction: column; gap: 2px;
+    position: fixed; left: 0; right: 0; bottom: 54px; z-index: 7;
+    background: var(--card); border-top: 1px solid var(--line);
+    padding: 12px 10px calc(12px + env(safe-area-inset-bottom));
+    box-shadow: 0 -12px 32px rgba(0,0,0,.35);
+  }
+  .tabsheet .sborg { padding: 0 10px 10px; }
+
+  /* Two-up rather than four across, so the numbers stay readable. */
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bgrid { grid-template-columns: 1fr; }
+  .dashctl { width: 100%; }
+  .dashctl .ctlnarrow { flex: 1; }
 }
 
 /* --- dashboard header and metric extras ------------------------------ */
@@ -910,3 +938,27 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 
 /* Four buildings fit one row rather than three-then-one. */
 .bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 9px; }
+
+/* --- access code history --------------------------------------------- */
+
+.coderowacts { gap: 14px; flex: 0 0 auto; }
+.codehistory {
+  flex: 1 1 100%; padding: 6px 0 2px 0; border-top: 0.5px dashed var(--line);
+}
+.histrow { font-size: 11.5px; margin: 3px 0 0; }
+
+
+/* --- wide monitors --------------------------------------------------- */
+
+@media (min-width: 1500px) {
+  /* The trend and the trade breakdown answer related questions, so on a wide
+     screen they belong side by side rather than a scroll apart. */
+  .dashpair {
+    display: grid; grid-template-columns: 1.7fr 1fr; gap: 10px; align-items: start;
+  }
+}
+.dashpair { display: contents; }
+
+@media (min-width: 1500px) {
+  .dashpair { display: grid; }
+}
