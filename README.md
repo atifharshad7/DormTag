@@ -151,32 +151,57 @@ production rather than in a test.
 ## Resident access codes
 
 An operator generates a code per bedroom, prints the sheet, and the
-Studierendenwerk hands them out with the keys. Format:
+Studierendenwerk hands them out with the keys. A code is eight opaque
+characters:
 
 ```
-B312-Z2-WS26-K7M2
+7KM2QX9F
 ```
 
-Room so whoever distributes can match code to door, semester so a stale sheet is
-obvious at a glance, random tail as the actual secret. The tail's alphabet
-excludes `O`, `0`, `I`, `1` and `L`, because somebody reads this off paper and
-types it on a phone.
+Nothing in it says which room it opens or when it was issued. Two earlier
+versions got this wrong and both are worth recording:
 
-A code belongs to a **tenancy**, not a person: "whoever holds Z2 this semester".
-Otherwise last year's occupant keeps access to this year's occupant's room. The
-semester in the string is a **label, never authorisation** — an old code stops
-working because its tenancy ended, not because it says 25.
+`B312-Z2-WS26-K7M2` told a next-door neighbour everything except four
+characters. Four characters is 31⁴ ≈ 920 thousand combinations, which a script
+works through in hours. Eight is 31⁸ ≈ 850 billion.
 
-**Bedrooms only.** "Private" would have been the obvious filter and is wrong: a
-studio's own bathroom is private to that flat and still has no resident. A test
-caught that.
+Then `WS26-7KM2QX` still carried the semester, on the theory that a stale sheet
+should be obvious at a glance. But students stay in the same room for two to four
+years, so a code issued in 2026 would have read as expired while working
+perfectly — and reissuing 240 codes every semester, mostly to people who hadn't
+moved, is churn. The **issue date belongs on the sheet**, where a 2026 date reads
+as long-standing rather than expired.
+
+The alphabet excludes `O`, `0`, `I`, `1` and `L`, because somebody reads this off
+paper and types it on a phone.
+
+**Sign-in is throttled on the caller, not on the code.** An earlier version keyed
+the limit on the code being attempted, which meant somebody working through
+`AAAAAA`, `AAAAAB`, `AAAAAC` never hit the same key twice and was never slowed at
+all. A test brute-forces the endpoint and asserts it gets locked out; it runs last
+in the suite, because a working throttle locks out the test client.
+
+**Turnover is per room**, which is how it actually happens: somebody hands back
+their keys, tells the operator, and one new code is issued and one slip printed.
+DormTag doesn't try to detect turnover — the operator learns about it through
+their own move-out process.
+
+Ending a tenancy cuts off everything it granted: sign-in stops because the lookup
+requires a live tenancy, existing sessions die for the same reason, and
+**capability tokens are revoked explicitly**. That last part matters — those links
+hang off the ticket rather than the tenancy, and they don't merely show a report,
+they book appointments and grant entry to the flat. Somebody who moved out must
+not be able to let a caretaker into their old room. Their past reports stay in the
+history, attached to the room.
+
+**Reissuing a whole building** is kept as a secondary action for the cases where
+it's genuinely right: a house emptied for renovation, or a sheet you think leaked.
 
 **Generate is safe to press repeatedly**, deliberately, because an operator will
-press it whenever they're unsure. It issues codes only for bedrooms with no live
-tenancy, so after adding rooms it covers exactly the new ones and leaves every
-existing resident alone. **Rotate** ends every tenancy in a building and issues a
-fresh set; the old codes die the same day. **Regenerate** does one room, for the
-resident who lost theirs.
+press it whenever they're unsure. It covers bedrooms with no live tenancy, so
+after adding rooms it issues codes for exactly the new ones. **Bedrooms only** —
+"private" would have been the obvious filter and is wrong, because a studio's own
+bathroom is private to that flat and still has no resident. A test caught that.
 
 Two decisions worth naming. Codes are stored in **plain text**, so a sheet can be
 reprinted — the same reasoning as a hotel key card, where recoverable beats
@@ -185,8 +210,7 @@ dump exposes live codes. And the sheet is **re-viewable** behind a deliberate
 click with a warning, because the alternative pushes people to screenshot it.
 
 **No names, no email addresses at creation.** The account is a room, so nothing
-personal is held until a resident volunteers an address themselves. That's a far
-easier ask of a Studierendenwerk than importing five hundred students.
+personal is held until a resident volunteers an address themselves.
 `tenants.email` is `NOT NULL UNIQUE` and can't be relaxed without rebuilding a
 live table, so generated rooms carry a placeholder on the reserved `.invalid`
 domain, which the mail sender and the UI both treat as "no address".
@@ -215,7 +239,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 451 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 453 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure

@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, Printer, RefreshCw, Plus, AlertTriangle, X } from "lucide-react";
-import { api, roomLabel, fmtDay, type Locale, type StrKey } from "./lib";
+import { ChevronLeft, Printer, RefreshCw, Plus, AlertTriangle, X, UserPlus } from "lucide-react";
+import { api, fmtDay, type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
 
 /**
  * Resident access codes for one building.
  *
- * The sheet is a page of working credentials, so it sits behind a deliberate
- * click and carries a warning rather than being the default view. It is
- * re-viewable, because the alternative pushes people to screenshot it and makes
- * a lost sheet a reason to reissue a whole building.
+ * The code is opaque: nothing in it says which room it opens or when it was
+ * issued. The date is a column on the sheet instead, because students stay in
+ * the same room for years and a four-year-old code is long-standing rather than
+ * stale.
+ *
+ * Turnover is per room, which is how it actually happens: somebody hands back
+ * their keys, the operator issues one new code and prints one slip.
  */
 export function BuildingCodes({ l, t, building, onBack }: {
   l: Locale; t: T; building: any; onBack: () => void;
@@ -19,8 +22,9 @@ export function BuildingCodes({ l, t, building, onBack }: {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [showSheet, setShowSheet] = useState(false);
-  const [rotating, setRotating] = useState(false);
-  const [semester, setSemester] = useState("");
+  const [reissuing, setReissuing] = useState(false);
+  const [turnover, setTurnover] = useState<string | null>(null);
+  const [note, setNote] = useState("");
 
   const load = useCallback(() => {
     api.buildingCodes(building.id).then(setData).catch((e) => setErr(e.message));
@@ -34,18 +38,13 @@ export function BuildingCodes({ l, t, building, onBack }: {
     finally { setBusy(""); }
   };
 
-  const current = data?.building?.semester;
-
   return (
     <div className="col">
       <button className="linkback noprint" onClick={onBack}>
         <ChevronLeft size={16} /> {t("backToDash")}
       </button>
 
-      <div className="rowspread">
-        <h2>{t("codesFor")} {building.name}</h2>
-        {current && <span className="plate plate-sm">{current}</span>}
-      </div>
+      <h2>{t("codesFor")} {building.name}</h2>
 
       {err && <div className="err noprint" onClick={() => setErr("")}>{err}</div>}
       {!data && !err && <p className="muted">…</p>}
@@ -66,30 +65,7 @@ export function BuildingCodes({ l, t, building, onBack }: {
             ) : (
               <p className="muted">{t("noneMissing")}</p>
             )}
-            <button className="btn" disabled={!!busy} onClick={() => setRotating((v) => !v)}>
-              <RefreshCw size={15} /> {t("rotateCodes")}
-            </button>
           </div>
-
-          {rotating && (
-            <div className="card noprint">
-              <p className="cardtitle"><AlertTriangle size={15} aria-hidden /> {t("rotateCodes")}</p>
-              <p className="muted">{t("rotateWarn")}</p>
-              <label className="field"><span>{t("semesterLabel")}</span>
-                <input className="in mono" value={semester} placeholder="SS27" maxLength={4}
-                  onChange={(e) => setSemester(e.target.value.toUpperCase())} /></label>
-              <div className="row">
-                <button className="btn" onClick={() => setRotating(false)}>{t("cancel")}</button>
-                <button className="btn btn-warn" disabled={!/^(WS|SS)\d{2}$/.test(semester) || !!busy}
-                  onClick={() => act("rot", async () => {
-                    await api.rotateCodes(building.id, semester);
-                    setRotating(false); setSemester(""); setShowSheet(true);
-                  })}>
-                  {t("rotateCodes")}
-                </button>
-              </div>
-            </div>
-          )}
 
           {data.codes.length > 0 && (
             showSheet ? (
@@ -114,12 +90,61 @@ export function BuildingCodes({ l, t, building, onBack }: {
                         {data.building.code}-{c.unit_code} · {c.label || c.room_code}
                       </span>
                       <span className="codeval mono">{c.code}</span>
-                      <button className="linkmore noprint" disabled={!!busy}
-                        onClick={() => act(c.code, () => api.regenerateCode(c.room_id))}>
-                        {t("newCodeFor")}
-                      </button>
+                      <span className="muted mono codewhen">
+                        {t("issuedOn")} {c.issued_at ? fmtDay(c.issued_at, l) : "–"}
+                        {!c.activated_at && ` · ${t("neverUsed")}`}
+                      </span>
+                      {turnover === c.room_id ? (
+                        <div className="col noprint" style={{ gap: 6, width: "100%" }}>
+                          <p className="muted">{t("turnoverHint")}</p>
+                          <input className="in" value={note} placeholder={t("turnoverNote")}
+                            maxLength={80} onChange={(e) => setNote(e.target.value)} />
+                          <div className="row">
+                            <button className="btn" onClick={() => { setTurnover(null); setNote(""); }}>
+                              {t("cancel")}
+                            </button>
+                            <button className="btn btn-warn" disabled={!!busy}
+                              onClick={() => act(c.code, async () => {
+                                await api.turnoverRoom(c.room_id, note);
+                                setTurnover(null); setNote("");
+                              })}>
+                              <UserPlus size={15} /> {t("turnoverWord")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button className="linkmore noprint"
+                          onClick={() => { setTurnover(c.room_id); setNote(""); }}>
+                          {t("turnoverWord")}
+                        </button>
+                      )}
                     </div>
                   ))}
+                </div>
+
+                <div className="noprint" style={{ marginTop: 14 }}>
+                  {reissuing ? (
+                    <div className="card">
+                      <p className="cardtitle">
+                        <AlertTriangle size={15} aria-hidden /> {t("reissueAll")}
+                      </p>
+                      <p className="muted">{t("reissueWarn")}</p>
+                      <div className="row">
+                        <button className="btn" onClick={() => setReissuing(false)}>{t("cancel")}</button>
+                        <button className="btn btn-warn" disabled={!!busy}
+                          onClick={() => act("all", async () => {
+                            await api.reissueAll(building.id);
+                            setReissuing(false);
+                          })}>
+                          {t("reissueAll")} ({data.codes.length})
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button className="linkmore" onClick={() => setReissuing(true)}>
+                      <RefreshCw size={13} aria-hidden /> {t("reissueAll")}
+                    </button>
+                  )}
                 </div>
               </>
             ) : (

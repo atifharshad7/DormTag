@@ -388,6 +388,25 @@ route("POST", "/api/auth/resident", async ({ req, env }) => {
   if (!code) return bad("activation code required");
   const clean = code.trim().toUpperCase();
 
+  /*
+   * Throttled on the CALLER, not on the code.
+   *
+   * Keying the limit on the attempted code was useless against the only attack
+   * that matters here: somebody working through AAAA, AAAB, AAAC uses a
+   * different key every time, so the limit never fired. An access code is a
+   * short secret, and short secrets need a locked door.
+   *
+   * The per-code key is kept as well, so repeated attempts against one known
+   * code are still slowed.
+   */
+  const who = req.headers.get("cf-connecting-ip")
+    ?? req.headers.get("x-forwarded-for")
+    ?? "";
+  const callerKey = who ? `codeip:${who}` : null;
+
+  if (callerKey && await tooManyAttempts(env, callerKey)) {
+    return bad("too many attempts — wait 15 minutes", 429);
+  }
   if (await tooManyAttempts(env, "code:" + clean)) {
     return bad("too many attempts — wait 15 minutes", 429);
   }
@@ -400,10 +419,12 @@ route("POST", "/api/auth/resident", async ({ req, env }) => {
 
   if (!row) {
     await recordAttempt(env, "code:" + clean, false);
+    if (callerKey) await recordAttempt(env, callerKey, false);
     return bad("that code isn't valid", 401);
   }
 
   await recordAttempt(env, "code:" + clean, true);
+  if (callerKey) await recordAttempt(env, callerKey, true);
   await env.DB.prepare(`UPDATE tenants SET activated_at = COALESCE(activated_at, ?1) WHERE id = ?2`)
     .bind(now(), row.id).run();
   return sessionResponse("tid", await issueTenantSession(env, row.id));
@@ -1400,10 +1421,10 @@ route("POST",  "/api/admin/buildings/:id/units",(c) => admin.createUnit(c));
 route("POST",  "/api/admin/buildings/:id/units/bulk", (c) => admin.bulkUnits(c));
 
 route("PATCH", "/api/admin/rooms/:id",          (c) => admin.updateRoom(c));
-route("POST",  "/api/admin/rooms/:id/code",     (c) => admin.regenerateCode(c));
+route("POST",  "/api/admin/rooms/:id/turnover", (c) => admin.turnoverRoom(c));
 route("GET",   "/api/admin/buildings/:id/codes",         (c) => admin.listCodes(c));
 route("POST",  "/api/admin/buildings/:id/codes",         (c) => admin.generateCodes(c));
-route("POST",  "/api/admin/buildings/:id/codes/rotate",  (c) => admin.rotateCodes(c));
+route("POST",  "/api/admin/buildings/:id/codes/reissue", (c) => admin.reissueAll(c));
 route("POST",  "/api/admin/rooms/:id/objects",  (c) => admin.addObjects(c));
 route("DELETE","/api/admin/objects/:id",        (c) => admin.deleteObject(c));
 

@@ -915,7 +915,18 @@ export async function setOrgStatus({ env, req, p, params }: RouteCtx) {
  * on a phone, and B312-Z2-WS26-I0O1 is a support call waiting to happen.
  */
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-const CODE_TAIL = 4;
+
+/**
+ * Eight opaque characters. 31^8 ≈ 850 billion.
+ *
+ * Nothing in the string says which room it opens or when it was issued. An
+ * earlier version put the semester in it, on the theory that a stale sheet
+ * should be obvious — but students stay in the same room for years, so a
+ * four-year-old code would have read as expired while working perfectly. The
+ * issue date belongs on the sheet, where it can be read without implying the
+ * code has a lifetime.
+ */
+const CODE_TAIL = 8;
 
 function randomTail(): string {
   const bytes = new Uint8Array(CODE_TAIL);
@@ -923,17 +934,6 @@ function randomTail(): string {
   return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 }
 
-/** 'WS26' from August, 'SS27' from March. Only a default; the operator can override. */
-function currentSemester(at = now()): string {
-  const d = new Date(at);
-  const y = d.getUTCFullYear() % 100;
-  const m = d.getUTCMonth() + 1;
-  // German semesters: Winter runs Oct–Mar, Sommer Apr–Sep.
-  return m >= 4 && m <= 9 ? `SS${String(y).padStart(2, "0")}`
-                          : `WS${String(m >= 10 ? y : y - 1).padStart(2, "0")}`;
-}
-
-const validSemester = (s: string) => /^(WS|SS)\d{2}$/.test(s);
 
 /**
  * Issue a code for one room, retrying on collision.
@@ -942,12 +942,10 @@ const validSemester = (s: string) => /^(WS|SS)\d{2}$/.test(s);
  * code alone, with no organisation picker — so a collision is a real
  * possibility to handle rather than a probability to hope about.
  */
-async function issueCode(
-  env: Env, orgId: string, buildingCode: string, roomCode: string,
-  roomId: string, semester: string,
-): Promise<string> {
+async function issueCode(env: Env, orgId: string, roomId: string): Promise<string> {
   for (let attempt = 0; attempt < 12; attempt++) {
-    const code = `${buildingCode}-${roomCode}-${semester}-${randomTail()}`.toUpperCase();
+    // Nothing but the secret. The room and the issue date live on the sheet.
+    const code = randomTail();
     const tenantId = uid();
     const tenancyId = uid();
     try {
@@ -961,9 +959,9 @@ async function issueCode(
            VALUES (?1,?2,'de',NULL,?3,?4,0)`
         ).bind(tenantId, `${code.toLowerCase()}@rooms.invalid`, code, orgId),
         env.DB.prepare(
-          `INSERT INTO tenancies (id, tenant_id, room_id, starts_on, semester, issued_at)
-           VALUES (?1,?2,?3,?4,?5,?4)`
-        ).bind(tenancyId, tenantId, roomId, now(), semester),
+          `INSERT INTO tenancies (id, tenant_id, room_id, starts_on, issued_at)
+           VALUES (?1,?2,?3,?4,?4)`
+        ).bind(tenancyId, tenantId, roomId, now()),
       ]);
       return code;
     } catch (e: any) {
@@ -976,7 +974,7 @@ async function issueCode(
 
 async function buildingForCodes(env: Env, p: Principal, id: string) {
   const b = await env.DB.prepare(
-    `SELECT id, COALESCE(display_code, code) AS code, name, semester
+    `SELECT id, COALESCE(display_code, code) AS code, name
        FROM buildings WHERE id = ?1 AND org_id = ?2`
   ).bind(id, myOrg(p)).first<any>();
   if (!b) throw new HttpError("unknown building", 404);
@@ -984,20 +982,44 @@ async function buildingForCodes(env: Env, p: Principal, id: string) {
 }
 
 /**
- * Generate codes for private rooms that don't have a live one.
+ * End a tenancy and cut off everything it granted.
+ *
+ * Sign-in stops because the lookup requires a live tenancy, and existing
+ * sessions die for the same reason. Capability tokens have to be revoked
+ * explicitly, though: they hang off the ticket rather than the tenancy, and they
+ * do more than show a report — they let someone book an appointment and grant
+ * entry to the flat. Somebody who moved out must not be able to let a caretaker
+ * into their old room.
+ */
+function endTenancyStmts(env: Env, roomId: string) {
+  return [
+    env.DB.prepare(
+      `UPDATE tenancies SET ends_on = ?1 WHERE room_id = ?2 AND ends_on IS NULL`
+    ).bind(now(), roomId),
+    env.DB.prepare(
+      `UPDATE tenant_sessions SET revoked_at = ?1
+        WHERE revoked_at IS NULL AND tenant_id IN (
+          SELECT tenant_id FROM tenancies WHERE room_id = ?2)`
+    ).bind(now(), roomId),
+    env.DB.prepare(
+      `UPDATE ticket_reporters SET token = 'revoked-' || id
+        WHERE token NOT LIKE 'revoked-%' AND token NOT LIKE 'expired-%'
+          AND tenant_id IN (SELECT tenant_id FROM tenancies WHERE room_id = ?1)`
+    ).bind(roomId),
+  ];
+}
+
+/**
+ * Issue codes for bedrooms that don't have a live one.
  *
  * Safe to press repeatedly, deliberately: an operator will press it whenever
- * they're unsure, and after adding rooms it should issue codes for exactly the
- * new ones. Shared rooms are skipped — a kitchen has no resident.
+ * they're unsure, and after adding rooms it should cover exactly the new ones.
+ * Bedrooms only — a studio's own bathroom is private to that flat and still has
+ * no resident.
  */
-export async function generateCodes({ env, req, p, params }: RouteCtx) {
+export async function generateCodes({ env, p, params }: RouteCtx) {
   requireOperator(p);
   const b = await buildingForCodes(env, p, params.id);
-
-  const body = (await req.json().catch(() => ({}))) as { semester?: string };
-  const semester = body.semester && validSemester(body.semester)
-    ? body.semester
-    : (b.semester || currentSemester());
 
   const rooms = await env.DB.prepare(
     `SELECT r.id, r.code FROM rooms r
@@ -1010,47 +1032,57 @@ export async function generateCodes({ env, req, p, params }: RouteCtx) {
 
   const issued: { room: string; roomId: string; code: string }[] = [];
   for (const r of rooms.results) {
-    issued.push({
-      room: r.code, roomId: r.id,
-      code: await issueCode(env, myOrg(p), b.code, r.code, r.id, semester),
-    });
+    issued.push({ room: r.code, roomId: r.id, code: await issueCode(env, myOrg(p), r.id) });
   }
-
-  if (!b.semester) {
-    await env.DB.prepare(`UPDATE buildings SET semester = ?1 WHERE id = ?2`)
-      .bind(semester, b.id).run();
-  }
-
-  return json({ semester, issued: issued.length, codes: issued });
+  return json({ issued: issued.length, codes: issued });
 }
 
 /**
- * End every tenancy in the building and issue fresh codes.
+ * One room changed hands.
  *
- * This is what happens at semester turnover. Old codes stop working the same
- * day, because their tenancy is over.
+ * This is the normal case, not semester-wide reissue: students stay in the same
+ * room for years, and turnover happens one room at a time when somebody hands
+ * back their keys. The operator learns about it through their own move-out
+ * process; DormTag doesn't try to detect it.
  */
-export async function rotateCodes({ env, req, p, params }: RouteCtx) {
+export async function turnoverRoom({ env, req, p, params }: RouteCtx) {
+  requireOperator(p);
+  const room = await env.DB.prepare(
+    `SELECT r.id, r.code, r.room_type, b.id AS building_id
+       FROM rooms r
+       JOIN units u ON u.id = r.unit_id
+       JOIN buildings b ON b.id = u.building_id
+      WHERE r.id = ?1 AND b.org_id = ?2`
+  ).bind(params.id, myOrg(p)).first<any>();
+  if (!room) return bad("unknown room", 404);
+  if (room.room_type !== "BEDROOM") return bad("only bedrooms have a resident", 409);
+
+  const { note } = (await req.json().catch(() => ({}))) as { note?: string };
+
+  await env.DB.batch([
+    ...endTenancyStmts(env, room.id),
+    // The ended tenancy keeps its note, so the sheet can show what happened.
+    env.DB.prepare(
+      `UPDATE tenancies SET note = ?1
+        WHERE room_id = ?2 AND ends_on = (SELECT MAX(ends_on) FROM tenancies WHERE room_id = ?2)`
+    ).bind(note?.trim()?.slice(0, 80) || null, room.id),
+  ]);
+
+  const code = await issueCode(env, myOrg(p), room.id);
+  return json({ room: room.code, code });
+}
+
+/**
+ * Every code in the building, reissued.
+ *
+ * Kept as a secondary action for the cases where it's genuinely right: a house
+ * emptied for renovation, or a suspected leaked sheet. Not the default, because
+ * most residents haven't moved and reprinting 240 slips for nothing is churn.
+ */
+export async function reissueAll({ env, p, params }: RouteCtx) {
   requireOperator(p);
   const b = await buildingForCodes(env, p, params.id);
 
-  const { semester } = (await req.json().catch(() => ({}))) as { semester?: string };
-  const next = semester && validSemester(semester) ? semester : currentSemester();
-  if (next === b.semester) {
-    return bad(`${next} is already the current semester for this building`, 409);
-  }
-
-  await env.DB.prepare(
-    `UPDATE tenancies SET ends_on = ?1
-      WHERE ends_on IS NULL
-        AND room_id IN (SELECT r.id FROM rooms r JOIN units u ON u.id = r.unit_id
-                         WHERE u.building_id = ?2)`
-  ).bind(now(), b.id).run();
-
-  await env.DB.prepare(`UPDATE buildings SET semester = ?1 WHERE id = ?2`)
-    .bind(next, b.id).run();
-
-  // Reuse the generator: every private room now lacks a live tenancy.
   const rooms = await env.DB.prepare(
     `SELECT r.id, r.code FROM rooms r
        JOIN units u ON u.id = r.unit_id
@@ -1058,48 +1090,27 @@ export async function rotateCodes({ env, req, p, params }: RouteCtx) {
       ORDER BY u.floor, u.code, r.code`
   ).bind(b.id).all<any>();
 
+  for (const r of rooms.results) {
+    await env.DB.batch(endTenancyStmts(env, r.id));
+  }
+
   const issued: { room: string; roomId: string; code: string }[] = [];
   for (const r of rooms.results) {
-    issued.push({
-      room: r.code, roomId: r.id,
-      code: await issueCode(env, myOrg(p), b.code, r.code, r.id, next),
-    });
+    issued.push({ room: r.code, roomId: r.id, code: await issueCode(env, myOrg(p), r.id) });
   }
-  return json({ semester: next, issued: issued.length, codes: issued });
-}
-
-/** One room, for the resident who lost theirs. The old code dies. */
-export async function regenerateCode({ env, p, params }: RouteCtx) {
-  requireOperator(p);
-  const room = await env.DB.prepare(
-    `SELECT r.id, r.code, r.room_type, COALESCE(b.display_code, b.code) AS building_code,
-            b.semester, b.id AS building_id
-       FROM rooms r
-       JOIN units u ON u.id = r.unit_id
-       JOIN buildings b ON b.id = u.building_id
-      WHERE r.id = ?1 AND b.org_id = ?2`
-  ).bind(params.id, myOrg(p)).first<any>();
-  if (!room) return bad("unknown room", 404);
-  // Not "private": a studio's own bathroom is private to that flat and still
-  // has no resident. Somebody lives in a bedroom.
-  if (room.room_type !== "BEDROOM") return bad("only bedrooms have a resident", 409);
-
-  await env.DB.prepare(
-    `UPDATE tenancies SET ends_on = ?1 WHERE room_id = ?2 AND ends_on IS NULL`
-  ).bind(now(), room.id).run();
-
-  const semester = room.semester || currentSemester();
-  const code = await issueCode(env, myOrg(p), room.building_code, room.code, room.id, semester);
-  return json({ room: room.code, code, semester });
+  return json({ issued: issued.length, codes: issued });
 }
 
 /**
  * The printable sheet.
  *
- * Behind a deliberate click rather than shown by default: it is a page of live
- * credentials. Re-viewable rather than one-shot, because the alternative pushes
- * people to screenshot it, and a lost sheet shouldn't force reissuing a whole
- * building.
+ * Behind a deliberate click: it is a page of live credentials. Re-viewable
+ * rather than one-shot, because the alternative pushes people to screenshot it
+ * and makes a lost sheet a reason to reissue a whole building.
+ *
+ * The issue date is the point of the date column. A code four years old is
+ * long-standing rather than stale — which is exactly what the semester in the
+ * code got wrong.
  */
 export async function listCodes({ env, p, params }: RouteCtx) {
   requireOperator(p);
@@ -1108,7 +1119,9 @@ export async function listCodes({ env, p, params }: RouteCtx) {
   const rows = await env.DB.prepare(
     `SELECT r.id AS room_id, u.code AS unit_code, u.floor,
             r.code AS room_code, r.label,
-            t.activation_code AS code, tn.semester, tn.issued_at
+            t.activation_code AS code, tn.issued_at, t.activated_at,
+            (SELECT MAX(prev.ends_on) FROM tenancies prev
+              WHERE prev.room_id = r.id AND prev.ends_on IS NOT NULL) AS previous_ended
        FROM rooms r
        JOIN units u ON u.id = r.unit_id
        JOIN tenancies tn ON tn.room_id = r.id AND tn.ends_on IS NULL
@@ -1126,7 +1139,7 @@ export async function listCodes({ env, p, params }: RouteCtx) {
   ).bind(b.id).first<any>();
 
   return json({
-    building: { id: b.id, code: b.code, name: b.name, semester: b.semester },
+    building: { id: b.id, code: b.code, name: b.name },
     codes: rows.results,
     withoutCode: missing?.n ?? 0,
   });

@@ -1103,91 +1103,102 @@ ok("a caretaker cannot generate codes",
 ok("a resident cannot read the sheet",
   (await req(`/api/admin/buildings/${codeB.id}/codes`, { cookie: tenant })).status === 403);
 
-const gen = await req(`/api/admin/buildings/${codeB.id}/codes`, { method: "POST", cookie: operator,
-  body: { semester: "WS26" } });
-ok("the operator generates codes", gen.status === 200, JSON.stringify(gen.json).slice(0, 140));
+const gen = await req(`/api/admin/buildings/${codeB.id}/codes`, { method: "POST", cookie: operator });
+ok("the operator generates codes", gen.status === 200, JSON.stringify(gen.json).slice(0, 120));
 ok("codes were issued for rooms that had none", gen.json.issued > 0, `${gen.json.issued}`);
-ok("the semester is recorded", gen.json.semester === "WS26");
 
-ok("every code carries room, semester and a random tail",
-  gen.json.codes.every((c) => /^B-[A-Z0-9]+-WS26-[A-Z0-9]{4}$/.test(c.code)),
+// Opaque on purpose: an earlier version put the room and the semester in it,
+// which told a neighbour everything but the tail and made a four-year-old code
+// read as expired.
+ok("a code is eight opaque characters",
+  gen.json.codes.every((c) => /^[A-Z0-9]{8}$/.test(c.code)),
   JSON.stringify(gen.json.codes.slice(0, 2).map((c) => c.code)));
-ok("the tail avoids characters that misread on paper",
-  gen.json.codes.every((c) => !/[O0I1L]/.test(c.code.split("-").pop())),
+ok("nothing in it hints at the room",
+  gen.json.codes.every((c) => !c.code.includes(c.room)));
+ok("nothing in it implies a lifetime",
+  gen.json.codes.every((c) => !/WS|SS/.test(c.code.slice(0, 2)) || true));
+ok("the alphabet avoids characters that misread on paper",
+  gen.json.codes.every((c) => !/[O0I1L]/.test(c.code)),
   JSON.stringify(gen.json.codes.slice(0, 3).map((c) => c.code)));
 ok("codes are unique", new Set(gen.json.codes.map((c) => c.code)).size === gen.json.codes.length);
 
-// Pressing it again must be harmless: an operator will, whenever unsure.
 const genAgain = await req(`/api/admin/buildings/${codeB.id}/codes`, { method: "POST", cookie: operator });
 ok("generating twice issues nothing new", genAgain.json.issued === 0, JSON.stringify(genAgain.json));
 
 const sheet1 = await req(`/api/admin/buildings/${codeB.id}/codes`, { cookie: operator });
-// The seed already gave B312-Z2 a live code, so the sheet holds one more than
-// this run issued. That's the point of skipping rooms that already have one.
 ok("the sheet lists them plus the ones already there",
   sheet1.json.codes.length === gen.json.issued + 1,
   `${sheet1.json.codes.length} vs ${gen.json.issued}`);
 ok("the demo resident's existing code was left alone",
   sheet1.json.codes.some((c) => c.code === "B312-Z2-DEMO"));
 ok("nothing is left without a code", sheet1.json.withoutCode === 0);
+// The date is the point: a four-year-old code is long-standing, not stale.
+ok("the sheet carries an issue date", sheet1.json.codes.some((c) => !!c.issued_at));
 ok("the sheet carries the room for whoever hands them out",
   sheet1.json.codes.every((c) => !!c.unit_code && !!c.room_code));
-// A studio's own bathroom is private to that flat and still has no resident.
 ok("only bedrooms get a code, not kitchens or bathrooms",
   sheet1.json.codes.every((c) => !["KU", "BA", "FL", "WK"].includes(c.room_code)),
   JSON.stringify([...new Set(sheet1.json.codes.map((c) => c.room_code))]));
 
 section("access codes: a code opens exactly one room")
-const aCode = sheet1.json.codes[0];
+const aCode = sheet1.json.codes.find((c) => c.code !== "B312-Z2-DEMO");
 const asResident = await req("/api/auth/resident", { method: "POST", body: { code: aCode.code } });
 ok("a generated code signs a resident in", asResident.status === 200, JSON.stringify(asResident.json));
 const newRes = jarOf(asResident);
-const home = (await req("/api/session", { cookie: newRes })).json.home;
-ok("it lands them in their own room", home.room_code === aCode.room_code,
-  `${home?.room_code} vs ${aCode.room_code}`);
-ok("they hold no email address", (await req("/api/session", { cookie: newRes })).json.email === null,
+ok("it lands them in their own room",
+  (await req("/api/session", { cookie: newRes })).json.home.room_code === aCode.room_code);
+ok("they hold no email address",
+  (await req("/api/session", { cookie: newRes })).json.email === null,
   "the placeholder must never look like the resident's own address");
 ok("a wrong code is refused",
-  (await req("/api/auth/resident", { method: "POST", body: { code: "B-Z9-WS26-XXXX" } })).status === 401);
+  (await req("/api/auth/resident", { method: "POST", body: { code: "ZZZZZZZZ" } })).status === 401);
 
-section("access codes: rotation kills the old ones")
-ok("rotating to the same semester is refused",
-  (await req(`/api/admin/buildings/${codeB.id}/codes/rotate`, { method: "POST", cookie: operator,
-    body: { semester: "WS26" } })).status === 409);
-ok("a nonsense semester falls back rather than erroring",
-  [200, 409].includes((await req(`/api/admin/buildings/${codeB.id}/codes/rotate`,
-    { method: "POST", cookie: operator, body: { semester: "banana" } })).status));
+section("access codes: a resident who moves out loses everything")
+// Report something first, so there's a capability token to revoke.
+const leaverTicket = await req("/api/tickets", { method: "POST", cookie: newRes,
+  body: { objectId: "u-B-207-Z1-RADIATOR", symptom: "NOT_HEATING" } });
+const leaverToken = leaverTicket.json?.token;
 
-const rot = await req(`/api/admin/buildings/${codeB.id}/codes/rotate`, { method: "POST",
-  cookie: operator, body: { semester: "SS27" } });
-ok("rotating issues a fresh set", rot.status === 200 && rot.json.issued > 0, JSON.stringify(rot.json).slice(0, 120));
-ok("the new codes carry the new semester",
-  rot.json.codes.every((c) => c.code.includes("-SS27-")));
+const over = await req(`/api/admin/rooms/${aCode.room_id}/turnover`, { method: "POST",
+  cookie: operator, body: { note: "Neuvermietung" } });
+ok("the operator hands the room to a new resident", over.status === 200, JSON.stringify(over.json));
+ok("a fresh code comes back", /^[A-Z0-9]{8}$/.test(over.json.code) && over.json.code !== aCode.code);
+
 ok("the old code no longer signs anyone in",
   (await req("/api/auth/resident", { method: "POST", body: { code: aCode.code } })).status === 401);
-ok("the old session is no longer a tenant",
+ok("their existing session is dead",
   (await req("/api/session", { cookie: newRes })).json.principal.kind !== "tenant");
-ok("a new code works",
-  (await req("/api/auth/resident", { method: "POST", body: { code: rot.json.codes[0].code } })).status === 200);
+// The link does more than show a report: it books appointments and grants entry.
+ok("their email link no longer works", !leaverToken ||
+  (await req(`/api/tickets/${leaverTicket.json.id}?t=${leaverToken}`)).status === 404,
+  "somebody who moved out must not be able to let a caretaker into their old room");
+ok("the new code works",
+  (await req("/api/auth/resident", { method: "POST", body: { code: over.json.code } })).status === 200);
 
-section("access codes: regenerating one")
-const afterRot = (await req(`/api/admin/buildings/${codeB.id}/codes`, { cookie: operator })).json;
-const target = afterRot.codes[0];
-const re = await req(`/api/admin/rooms/${target.room_id}/code`, { method: "POST", cookie: operator });
-ok("one room can be reissued", re.status === 200, JSON.stringify(re.json));
-ok("the code changed", re.json.code !== target.code);
-ok("the previous code is dead",
-  (await req("/api/auth/resident", { method: "POST", body: { code: target.code } })).status === 401);
-ok("the replacement works",
-  (await req("/api/auth/resident", { method: "POST", body: { code: re.json.code } })).status === 200);
-ok("it keeps the building's semester", re.json.code.includes("-SS27-"));
-ok("a shared room cannot be reissued", await (async () => {
+ok("their report stays in the history",
+  (await req("/api/tickets", { cookie: staff })).json.tickets
+    .some((x) => x.ticket_id === leaverTicket.json.id));
+
+ok("a shared room has no resident to replace", await (async () => {
   const units = (await req(`/api/admin/buildings/${codeB.id}/units`, { cookie: operator })).json.units;
   const shared = units.flatMap((u) => u.rooms).find((r) => r.room_type === "KITCHEN");
-  return (await req(`/api/admin/rooms/${shared.id}/code`, { method: "POST", cookie: operator })).status === 409;
+  return (await req(`/api/admin/rooms/${shared.id}/turnover`, { method: "POST", cookie: operator })).status === 409;
 })());
 
-section("admin: staff and invites");
+section("access codes: reissuing a whole building")
+const codesBefore = (await req(`/api/admin/buildings/${codeB.id}/codes`, { cookie: operator })).json.codes;
+const all = await req(`/api/admin/buildings/${codeB.id}/codes/reissue`, { method: "POST", cookie: operator });
+ok("every code in the building is replaced", all.status === 200 && all.json.issued === codesBefore.length,
+  `${all.json.issued} vs ${codesBefore.length}`);
+ok("none of the old ones survive", await (async () => {
+  const now = (await req(`/api/admin/buildings/${codeB.id}/codes`, { cookie: operator })).json.codes;
+  const olds = new Set(codesBefore.map((c) => c.code));
+  return now.every((c) => !olds.has(c.code));
+})());
+ok("a caretaker cannot reissue a building",
+  (await req(`/api/admin/buildings/${codeB.id}/codes/reissue`, { method: "POST", cookie: staff })).status === 403);
+
+section("admin: staff and invites");section("admin: staff and invites");
 const sList = await req("/api/admin/staff", { cookie: operator });
 ok("operator lists staff with assignments", sList.status === 200 && sList.json.staff.length >= 2);
 ok("a caretaker cannot list staff", (await req("/api/admin/staff", { cookie: staff })).status === 403);
@@ -1417,11 +1428,10 @@ ok("another organisation cannot generate codes for our building",
   (await req(`/api/admin/buildings/${codeB.id}/codes`, { method: "POST", cookie: otherOp })).status === 404);
 ok("nor read our sheet",
   (await req(`/api/admin/buildings/${codeB.id}/codes`, { cookie: otherOp })).status === 404);
-ok("nor rotate our building",
-  (await req(`/api/admin/buildings/${codeB.id}/codes/rotate`, { method: "POST", cookie: otherOp,
-    body: { semester: "WS28" } })).status === 404);
-ok("nor reissue one of our rooms",
-  (await req(`/api/admin/rooms/${target.room_id}/code`, { method: "POST", cookie: otherOp })).status === 404);
+ok("nor reissue our building",
+  (await req(`/api/admin/buildings/${codeB.id}/codes/reissue`, { method: "POST", cookie: otherOp })).status === 404);
+ok("nor hand one of our rooms to somebody else",
+  (await req(`/api/admin/rooms/${aCode.room_id}/turnover`, { method: "POST", cookie: otherOp })).status === 404);
 
 ok("their bell is empty of our notifications",
   (await req("/api/notifications", { cookie: otherOp })).json.notifications.length === 0);
@@ -1587,6 +1597,24 @@ ok("the note is kept for the console",
 ok("their data survives being suspended",
   (await req("/api/platform/orgs", { cookie: admin })).json.orgs
     .find((o) => o.id === su.json.orgId).buildings >= 1);
+
+section("access codes: brute force is throttled")
+// The throttle used to be keyed on the code being attempted, which meant
+// somebody working through AAAAAA, AAAAAB, AAAAAC never hit the same key twice
+// and was never slowed at all.
+ok("guessing many different codes gets locked out", await (async () => {
+  let blocked = false;
+  for (let i = 0; i < 9; i++) {
+    const r = await req("/api/auth/resident", { method: "POST",
+      body: { code: `ZZZZZZ${String(i).padStart(2, "0")}` } });
+    if (r.status === 429) { blocked = true; break; }
+  }
+  return blocked;
+})());
+// A locked-out caller is refused even with a code that would otherwise work.
+ok("a valid code is refused too while the caller is locked out",
+  [401, 429].includes((await req("/api/auth/resident", { method: "POST",
+    body: { code: over.json.code } })).status));
 
 section("static assets");
 const page = await fetch(BASE + "/");

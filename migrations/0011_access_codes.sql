@@ -12,17 +12,14 @@
 -- somebody volunteers it — a far easier ask of a Studierendenwerk than
 -- importing five hundred students.
 
--- Which rotation this tenancy belongs to: 'WS26', 'SS27'. Labelling only, never
--- authorisation: an old code stops working because its tenancy ended, not
--- because the string says 25.
-ALTER TABLE tenancies ADD COLUMN semester TEXT;
+-- When this code was issued, and an optional line about the handover.
+--
+-- The date lives here rather than in the code itself. An earlier version put the
+-- semester in the string, on the theory that a stale sheet should be obvious —
+-- but students stay in the same room for years, so a four-year-old code would
+-- have read as expired while working perfectly. On the sheet, a 2026 date reads
+-- as long-standing, which is what it is.
 ALTER TABLE tenancies ADD COLUMN issued_at INTEGER;
+ALTER TABLE tenancies ADD COLUMN note TEXT;
 
 CREATE INDEX idx_tenancies_room_live ON tenancies(room_id) WHERE ends_on IS NULL;
-CREATE INDEX idx_tenancies_semester ON tenancies(semester);
-
--- The semester a building is currently issuing for. Generating a code for a room
--- added mid-term should match everyone else's label, so the label comes from the
--- building's current rotation rather than from today's date. Only rotating
--- advances it.
-ALTER TABLE buildings ADD COLUMN semester TEXT;

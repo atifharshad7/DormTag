@@ -333,6 +333,13 @@ export const T = {
   printSheet:     { de: "Bogen drucken",             en: "Print sheet" },
   printStickers:   { de: "Aufkleber drucken",        en: "Print stickers" },
   accessCodes:     { de: "Zugangscodes",             en: "Access codes" },
+  turnoverWord:    { de: "Neuer Bewohner",           en: "New resident" },
+  turnoverHint:    { de: "Alter Code, Sitzungen und Links werden ungültig.", en: "The old code, sessions and links all stop working." },
+  turnoverNote:    { de: "Notiz (optional)",         en: "Note (optional)" },
+  reissueAll:      { de: "Alle Codes neu",           en: "Reissue every code" },
+  reissueWarn:     { de: "Für ein leergezogenes Haus. Sonst besser einzeln.", en: "For a building emptied out. Otherwise do it one room at a time." },
+  issuedOn:        { de: "ausgegeben",               en: "issued" },
+  neverUsed:       { de: "nie benutzt",              en: "never used" },
   codesFor:        { de: "Codes für",                en: "Codes for" },
   generateCodes:   { de: "Codes erzeugen",           en: "Generate codes" },
   rotateCodes:     { de: "Semesterwechsel",          en: "New semester" },
@@ -696,11 +703,10 @@ export const api = {
   setRoomLabel:     (id: string, label: string) =>
                       call(`/admin/rooms/${id}`, { method: "PATCH", body: JSON.stringify({ label }) }),
   buildingCodes:    (id: string) => call(`/admin/buildings/${id}/codes`),
-  generateCodes:    (id: string, semester?: string) =>
-                      post(`/admin/buildings/${id}/codes`, semester ? { semester } : {}),
-  rotateCodes:      (id: string, semester: string) =>
-                      post(`/admin/buildings/${id}/codes/rotate`, { semester }),
-  regenerateCode:   (roomId: string) => post(`/admin/rooms/${roomId}/code`),
+  generateCodes:    (id: string) => post(`/admin/buildings/${id}/codes`),
+  reissueAll:       (id: string) => post(`/admin/buildings/${id}/codes/reissue`),
+  turnoverRoom:     (roomId: string, note?: string) =>
+                      post(`/admin/rooms/${roomId}/turnover`, note ? { note } : {}),
 
   addObjects:       (roomId: string, objectType: string, count: number) =>
                       post(`/admin/rooms/${roomId}/objects`, { objectType, count }),

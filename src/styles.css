@@ -755,3 +755,4 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   .coderow { break-inside: avoid; border-bottom: 0.5px solid #999; }
   .codeval { font-size: 14px; }
 }
+.codewhen { font-size: 11px; }
