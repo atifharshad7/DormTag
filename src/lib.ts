@@ -128,6 +128,27 @@ export const T = {
   nothingHere:     { de: "Nichts vorhanden.",        en: "Nothing here." },
   noData:          { de: "Keine Daten im Zeitraum.", en: "No data in this period." },
   reportedVsFixed: { de: "Gemeldet und erledigt",    en: "Reported and fixed" },
+  dashboardWord:   { de: "Dashboard",                en: "Dashboard" },
+  chartsWord:      { de: "Darstellung",              en: "How it's drawn" },
+  monthsWord:      { de: "Monate",                   en: "months" },
+  customise:       { de: "Anpassen",                 en: "Customise" },
+  whichNumbers:    { de: "Welche Zahlen?",           en: "Which numbers?" },
+  alwaysShown:     { de: "immer sichtbar",           en: "always shown" },
+  oldestOpen:      { de: "Älteste offen",            en: "Oldest open" },
+  perRoom:         { de: "Meldungen je Zimmer",      en: "Reports per room" },
+  repeatedCount:   { de: "Mehrfach gemeldet",        en: "Reported more than once" },
+  byTradeWord:     { de: "Nach Gewerk",              en: "By trade" },
+  chartBars:       { de: "Balken",                   en: "bars" },
+  chartLines:      { de: "Linien",                   en: "lines" },
+  chartDonut:      { de: "Ring",                     en: "donut" },
+  allRooms2:       { de: "Alle Räume",               en: "All rooms" },
+  roomBedroom:     { de: "Zimmer",                   en: "Bedroom" },
+  roomKitchen:     { de: "Küche",                    en: "Kitchen" },
+  roomBathroom:    { de: "Bad",                      en: "Bathroom" },
+  roomCommon:      { de: "Gemeinschaft",             en: "Common areas" },
+  causesLogged:    { de: "Erfasste Ursachen",        en: "Causes recorded" },
+  whenTheyHappened:{ de: "Wann",                     en: "When" },
+  savedWord:       { de: "Gespeichert",              en: "Saved" },
   fixed:           { de: "erledigt",                 en: "fixed" },
   stillOpen:       { de: "noch offen",               en: "still open" },
   byObject:        { de: "Häufigste Objekte",        en: "Most reported items" },
@@ -732,8 +753,14 @@ export const api = {
   disableStaff:     (id: string) => post(`/admin/staff/${id}/disable`),
   enableStaff:      (id: string) => post(`/admin/staff/${id}/enable`),
 
-  dashboard:        (months: number, building: string | null) =>
-                      call(`/dashboard?months=${months}${building ? `&building=${building}` : ""}`),
+  dashPrefs:        () => call("/dashboard/prefs"),
+  saveDashPrefs:    (metrics: string[], charts: Record<string, string>) =>
+                      call("/dashboard/prefs", { method: "PUT", body: JSON.stringify({ metrics, charts }) }),
+  repeatDetail:     (riser: string, object: string, months: number) =>
+                      call(`/dashboard/repeat?riser=${encodeURIComponent(riser)}&object=${object}&months=${months}`),
+  dashboard:        (months: number, building: string | null, rooms?: string | null) =>
+                      call(`/dashboard?months=${months}${building ? `&building=${building}` : ""}`
+                        + (rooms ? `&rooms=${rooms}` : "")),
   dashboardMonth:   (bucket: string, building: string | null) =>
                       call(`/dashboard/month?bucket=${bucket}${building ? `&building=${building}` : ""}`),
   dashboardTickets: (which: string, months: number, building: string | null) =>

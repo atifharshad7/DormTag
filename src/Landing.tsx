@@ -21,14 +21,16 @@ export function Landing({ l, t, onDemo, onSignUp, onSignIn, onAbout }: {
       <h2 className="landingtitle">{t("appName")}</h2>
       <p className="landingtag">{t("aboutTag1")} {t("aboutTag2")}</p>
 
-      <button className="btn btn-primary btn-big" onClick={onDemo}>
-        <Play size={17} aria-hidden /> {t("landingTry")}
-      </button>
-      <button className="btn btn-big" onClick={onSignUp}>
+      {/* Register first: the page should read as a product rather than as a
+          demo. The demo stays easy to find, just not the headline. */}
+      <button className="btn btn-primary btn-big" onClick={onSignUp}>
         <Building2 size={17} aria-hidden /> {t("landingRegister")}
       </button>
       <button className="btn btn-big" onClick={onSignIn}>
         <LogIn size={17} aria-hidden /> {t("landingSignIn")}
+      </button>
+      <button className="btn btn-big" onClick={onDemo}>
+        <Play size={17} aria-hidden /> {t("landingTry")}
       </button>
 
       <div className="landingfoot">

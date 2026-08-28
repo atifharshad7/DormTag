@@ -276,6 +276,117 @@ ok("object breakdown is ranked", dash.byType.every((x, i, a) => i === 0 || a[i -
   JSON.stringify(dash.byType.map((x) => x.n)));
 ok("object breakdown names real types", dash.byType.every((x) => !!x.object_type));
 
+section("dashboard: what the operator chooses")
+const prefs0 = await req("/api/dashboard/prefs", { cookie: operator });
+ok("prefs come with defaults", prefs0.status === 200 && prefs0.json.metrics.length === 3,
+  JSON.stringify(prefs0.json.metrics));
+ok("the optional list is offered", prefs0.json.available.includes("perRoom"));
+// Deliberately absent: the screen is about open work, and oldest-open is the one
+// number that surfaces a ticket everybody stopped seeing.
+ok("open and oldest are not switchable off",
+  !prefs0.json.available.includes("open") && !prefs0.json.available.includes("oldestOpen"));
+ok("a caretaker cannot read prefs",
+  (await req("/api/dashboard/prefs", { cookie: staff })).status === 403);
+
+const saved = await req("/api/dashboard/prefs", { method: "PUT", cookie: operator,
+  body: { metrics: ["perRoom", "medianDays"], charts: { trend: "lines", trade: "bars" } } });
+ok("prefs can be changed", saved.status === 200);
+ok("they come back on the dashboard", await (async () => {
+  const dd = (await req("/api/dashboard?months=12", { cookie: operator })).json;
+  return dd.prefs.metrics.includes("perRoom") && dd.prefs.charts.trend === "lines";
+})());
+
+// Chart types are validated per panel, not globally: a donut over eight fixtures
+// with three tied would hide the answer bar lengths make obvious.
+const bogus = await req("/api/dashboard/prefs", { method: "PUT", cookie: operator,
+  body: { metrics: ["nonsense"], charts: { byType: "donut", trend: "pie" } } });
+ok("an unknown metric is dropped", !bogus.json.metrics.includes("nonsense"));
+ok("a donut is refused for the fixture ranking", bogus.json.charts.byType === "bars",
+  JSON.stringify(bogus.json.charts));
+ok("an unknown chart type falls back", bogus.json.charts.trend === "bars");
+
+// Put something sensible back for the rest of the suite.
+await req("/api/dashboard/prefs", { method: "PUT", cookie: operator,
+  body: { metrics: ["failedPct", "waitingParts", "external"], charts: {} } });
+
+section("dashboard: the new numbers")
+const dNew = (await req("/api/dashboard?months=12", { cookie: operator })).json;
+ok("the oldest open ticket is reported", dNew.oldest !== null && dNew.oldestDays >= 0,
+  `${dNew.oldestDays}`);
+ok("it carries enough to name the room",
+  !!dNew.oldest.building_code && !!dNew.oldest.object_type);
+ok("nothing older than it is still open", await (async () => {
+  const open = (await req("/api/dashboard/tickets?filter=open&months=12", { cookie: operator }))
+    .json.tickets;
+  return open.every((x) => x.reported_at >= dNew.oldest.reported_at);
+})());
+
+ok("reports per room is a ratio, not a count",
+  dNew.metrics.perRoom !== null && Number(dNew.metrics.perRoom) < 5,
+  `${dNew.metrics.perRoom}`);
+ok("deltas compare against the period before", "open" in (dNew.deltas ?? {}));
+
+ok("faults are grouped by trade", dNew.byTrade.length > 0,
+  JSON.stringify(dNew.byTrade));
+ok("the trade totals match the fixture totals", await (async () => {
+  const trades = dNew.byTrade.reduce((n, x) => n + x.n, 0);
+  const reported = dNew.trend.reduce((n, x) => n + x.reported, 0);
+  return trades === reported;
+})());
+ok("lights and sockets land in electrical",
+  dNew.byTrade.some((x) => x.trade === "ELECTRICAL" && x.n >= 20),
+  JSON.stringify(dNew.byTrade));
+
+section("dashboard: most reported, by room type")
+const allRooms = (await req("/api/dashboard?months=12", { cookie: operator })).json.byType;
+const bedrooms = (await req("/api/dashboard?months=12&rooms=BEDROOM", { cookie: operator })).json.byType;
+ok("the room filter narrows the panel",
+  bedrooms.reduce((n, x) => n + x.n, 0) < allRooms.reduce((n, x) => n + x.n, 0),
+  `${bedrooms.reduce((n, x) => n + x.n, 0)} vs ${allRooms.reduce((n, x) => n + x.n, 0)}`);
+ok("bedrooms hold no drains", !bedrooms.some((x) => x.object_type === "DRAIN"),
+  JSON.stringify(bedrooms.map((x) => x.object_type)));
+const common = (await req("/api/dashboard?months=12&rooms=COMMON", { cookie: operator })).json.byType;
+ok("common areas cover hallways and laundries", common.length > 0,
+  JSON.stringify(common.map((x) => x.object_type)));
+ok("a nonsense room filter is ignored rather than erroring", await (async () => {
+  const r = await req("/api/dashboard?months=12&rooms=DUNGEON", { cookie: operator });
+  return r.status === 200 && r.json.byType.length === allRooms.length;
+})());
+ok("the filter does not touch the trend", await (async () => {
+  const a = (await req("/api/dashboard?months=12", { cookie: operator })).json.trend;
+  const b = (await req("/api/dashboard?months=12&rooms=BEDROOM", { cookie: operator })).json.trend;
+  return JSON.stringify(a) === JSON.stringify(b);
+})());
+
+section("dashboard: behind a repeat fault")
+const worst = dNew.repeats[0];
+ok("the panel has something to drill into", !!worst?.riser, JSON.stringify(worst));
+const rep = await req(`/api/dashboard/repeat?riser=${encodeURIComponent(worst.riser)}&object=${worst.object_type}&months=12`,
+  { cookie: operator });
+ok("the drill-down opens", rep.status === 200, JSON.stringify(rep.json).slice(0, 120));
+ok("the total matches the panel", rep.json.total === worst.ticket_count,
+  `${rep.json.total} vs ${worst.ticket_count}`);
+// Eleven tickets across seven rooms is a riser problem; eleven in one room is
+// one bad fixture. That distinction is what the drill-down is for.
+ok("it says which rooms", rep.json.rooms.length === worst.rooms_affected,
+  `${rep.json.rooms.length} vs ${worst.rooms_affected}`);
+ok("it says which causes were recorded", Array.isArray(rep.json.causes));
+ok("it spreads them over months", rep.json.months_.length > 0);
+ok("it lists the tickets themselves", rep.json.tickets.length > 0);
+ok("every ticket is that fixture on that riser",
+  rep.json.tickets.every((x) => x.object_type === worst.object_type));
+
+ok("a shorter window returns fewer or equal", await (async () => {
+  const short = await req(`/api/dashboard/repeat?riser=${encodeURIComponent(worst.riser)}&object=${worst.object_type}&months=1`,
+    { cookie: operator });
+  return short.json.total <= rep.json.total;
+})());
+ok("riser and object are both required",
+  (await req("/api/dashboard/repeat?riser=X", { cookie: operator })).status === 400);
+ok("a caretaker cannot drill in",
+  (await req(`/api/dashboard/repeat?riser=${encodeURIComponent(worst.riser)}&object=${worst.object_type}`,
+    { cookie: staff })).status === 403);
+
 section("dashboard: month drill-down");
 const bucketWithData = dash.trend[dash.trend.length - 1].bucket;
 const mo = await req(`/api/dashboard/month?bucket=${bucketWithData}`, { cookie: operator });
@@ -1432,6 +1543,12 @@ ok("nor reissue our building",
   (await req(`/api/admin/buildings/${codeB.id}/codes/reissue`, { method: "POST", cookie: otherOp })).status === 404);
 ok("nor hand one of our rooms to somebody else",
   (await req(`/api/admin/rooms/${aCode.room_id}/turnover`, { method: "POST", cookie: otherOp })).status === 404);
+
+ok("another organisation gets nothing from our riser", await (async () => {
+  const r = await req(`/api/dashboard/repeat?riser=${encodeURIComponent(worst.riser)}&object=${worst.object_type}&months=12`,
+    { cookie: otherOp });
+  return r.status === 403 || r.json.total === 0;
+})());
 
 ok("their bell is empty of our notifications",
   (await req("/api/notifications", { cookie: otherOp })).json.notifications.length === 0);

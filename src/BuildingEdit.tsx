@@ -179,10 +179,11 @@ export function AddUnitForm({ l, t, building, onDone, onCancel }: {
  * Tapping the card filters the dashboard, as before. Editing is behind a pencil
  * so a mis-tap while reading the numbers can't rename a building.
  */
-export function BuildingCard({ l, t, b, active, onFilter, onChanged, onStickers, onCodes }: {
+export function BuildingCard({ l, t, b, active, onFilter, onChanged, showUnits }: {
   l: Locale; t: T; b: any; active: boolean;
   onFilter: () => void; onChanged: () => void;
-  onStickers?: () => void; onCodes?: () => void;
+  /** Only on the Buildings page: the dashboard card is a summary, not a menu. */
+  showUnits?: boolean;
 }) {
   const [mode, setMode] = useState<"idle" | "edit" | "unit" | "bulk">("idle");
   const load = Math.min(100, Math.round(((b.open_count ?? 0) / 20) * 100));
@@ -235,29 +236,19 @@ export function BuildingCard({ l, t, b, active, onFilter, onChanged, onStickers,
         ? <p className="muted"><Users size={13} aria-hidden /> {b.caretakers.map((c: any) => c.name).join(", ")}</p>
         : <p className="muted warnline"><AlertTriangle size={13} aria-hidden /> {t("noCaretaker")}</p>}
 
-      <div className="row cardactions">
-        <button className="linkmore" onClick={() => setMode("unit")}>
-          <Plus size={13} aria-hidden /> {t("addUnit")}
-        </button>
-        <button className="linkmore" onClick={() => setMode("bulk")}>
-          <Layers size={13} aria-hidden /> {t("addManyUnits")}
-        </button>
-        {/* Printing stickers belongs next to creating units: you make the rooms,
-            then you print their codes. Arriving from here skips the picker. */}
-        {onStickers && (
-          <button className="linkmore" onClick={onStickers}>
-            <Printer size={13} aria-hidden /> {t("printStickers")}
+      {/* The card used to carry Add unit, Add many units, Print stickers and
+          Access codes. All four are destinations in the left panel now, so this
+          is a summary again and tapping it filters the dashboard. */}
+      {showUnits && (
+        <div className="row cardactions">
+          <button className="linkmore" onClick={() => setMode("unit")}>
+            <Plus size={13} aria-hidden /> {t("addUnit")}
           </button>
-        )}
-        {onCodes && (
-          <button className="linkmore" onClick={onCodes}>
-            <KeyRound size={13} aria-hidden /> {t("accessCodes")}
+          <button className="linkmore" onClick={() => setMode("bulk")}>
+            <Layers size={13} aria-hidden /> {t("addManyUnits")}
           </button>
-        )}
-        <button className="linkmore" onClick={onFilter} style={{ marginLeft: "auto" }}>
-          {active ? t("clearFilter") : t("filterToThis")} →
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

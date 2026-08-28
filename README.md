@@ -31,19 +31,44 @@ Every repair is logged to the exact room and fixture, so after a year the operat
 
 ### For operators
 
-* Five metrics you can click into: what's open, the median time to fix, what's waiting on parts, what's with an external firm, and how often nobody was home.
-* Reported-versus-fixed by month. Tap a bar for that month's counts, median fix time, and splits by building, fixture and cause.
-* Repeat-fault ranking by riser, which is what turns eleven separate complaints into one plumbing problem.
-* Filter everything by period (1, 3, 6 or 12 months) and by building.
-* Commission external firms and record the order reference.
-* Manage each building from its own card: rename it, add units, assign caretakers, print its stickers. A building nobody covers shows an amber warning there, where you're already looking.
-* Create staff accounts and hand out one-time setup links, so you never learn anyone's password.
+* A **left panel** rather than a header: Dashboard, Buildings, Staff, QR stickers,
+  Access codes, and Organisations for a platform admin. Building it as a panel is
+  what let the building cards shed four buttons each — the actions became
+  destinations, so a card is a summary again and tapping it filters.
+* Metrics you can click into. **Open reports** and **oldest open** are always
+  there; the rest are chosen. Oldest-open isn't optional on purpose: it's the one
+  number that surfaces the ticket everybody stopped seeing.
+* **Customise** picks which numbers appear and how each panel is drawn, stored per
+  organisation rather than per person, because two operators discussing different
+  figures is a bad outcome.
+* Reported-versus-fixed by month, as bars or lines. Tap a bar for that month's
+  counts, median fix time, and splits by building, fixture and cause.
+* **By trade** — electrical, plumbing, heating, openings, appliances. Grouping by
+  trade asks a better question than grouping by fixture: it tells you which
+  framework contract to negotiate rather than only what breaks.
+* Most reported items, narrowable to bedrooms, kitchens, bathrooms or common
+  areas. A corridor light is a caretaker problem; a bedroom light is usually the
+  resident's own bulb.
+* **Repeat faults by riser, and tappable.** Behind a row: which rooms, which
+  causes were recorded, when they happened, and the tickets themselves — with the
+  window adjustable, so you can check whether a pattern is forming rather than
+  only seeing established ones.
+* Filter everything by period and building; commission external firms; generate
+  access codes; fill a whole building from its pattern.
 
 ## Design notes
 
 * **Sticker granularity follows ambiguity.** One sticker per room, so a four-person flat needs 7 instead of 26. An extra sticker per fixture only where a room holds several of the same type, like a laundry with three washing machines, because "machine 3" has to reach machine 3.
 * **Nothing invents a time.** When an appointment falls through the ticket reuses the caretaker's remaining offers and withdraws the rejected one. If none are left it waits for him to propose new ones.
 * **Access follows the unit, not the room.** A shared kitchen inside a locked flat still needs somebody to let the caretaker in. Only genuine common areas need nobody present.
+* **A chart picker offers only what suits the data.** A trend reads honestly as
+  bars or lines; four trades are parts of a whole so a donut works. The
+  eight-fixture ranking is bars only, because three fixtures are tied at 4 and
+  angles hide what bar lengths make obvious. The app has an opinion where the
+  evidence is clear.
+* **The median time to fix was removed.** Accurate, and there was nothing an
+  operator could do with it that the oldest-open list doesn't do better. It's
+  still available as an optional metric.
 * **Room types stay codes.** Free-text room names would give you "Bad", "Badezimmer", "bathroom" and "WC" as four different things and the dashboard's grouping would quietly stop working. An optional label sits on top for what a code can't express.
 * **A building's code is immutable**, because it's baked into every printed QR slug. The name is freely editable, and the sticker prints the name, so renaming never kills a sticker.
 * **Analytics are per object, never per person.** The dashboard groups by building, riser and fixture, never by caretaker response time. A system that scores individual employees triggers works-council co-determination in a German public body.
@@ -274,7 +299,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 466 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 500 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure
@@ -296,6 +321,7 @@ src/
   Platform.tsx       # the platform console: which organisations exist
   Codes.tsx          # resident access codes and the printable sheet
   PasswordField.tsx  # password input with a show/hide toggle, and a typed-twice pair
+  Sidebar.tsx        # the operator's left panel
   SlotPicker.tsx     # appointment time picker
   Scanner.tsx        # in-app QR scanner
   Logo.tsx           # the house-and-QR mark

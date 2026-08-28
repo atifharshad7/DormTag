@@ -1074,13 +1074,122 @@ const scopeClause = (orgId: string, building: string | null, alias = "vtl") =>
 const scopeBinds = (orgId: string, building: string | null) =>
   building ? [orgId, building] : [orgId];
 
+/**
+ * The metrics an operator may choose from, and the four that are on by default.
+ *
+ * `open` and `oldestOpen` are not in the optional list: they're always shown.
+ * Open tickets is what the screen is for, and oldest-open is the one number that
+ * surfaces the ticket everybody stopped seeing — letting somebody switch that
+ * off would mean switching off the most useful thing on the page.
+ */
+/**
+ * Which trade each fixture belongs to.
+ *
+ * Grouping by trade asks a more useful question than grouping by fixture:
+ * "Elektro 46%" tells an operator which framework contract to negotiate, where
+ * "Light 19" only tells them what breaks.
+ */
+const TRADE_OF: Record<string, string> = {
+  LIGHT: "ELECTRICAL", SOCKET: "ELECTRICAL",
+  SINK: "PLUMBING", DRAIN: "PLUMBING", SHOWER: "PLUMBING", WASHER: "PLUMBING",
+  RADIATOR: "HEATING",
+  WINDOW: "OPENINGS", DOOR: "OPENINGS",
+  STOVE: "APPLIANCE", FRIDGE: "APPLIANCE",
+};
+
+/** Room types the "most reported" panel can be narrowed to. */
+const ROOM_FILTERS: Record<string, string[]> = {
+  BEDROOM: ["BEDROOM"],
+  KITCHEN: ["KITCHEN"],
+  BATHROOM: ["BATHROOM"],
+  // Places nobody lives, which behave differently: a corridor light is a
+  // caretaker problem, a bedroom light is usually the resident's own bulb.
+  COMMON: ["HALLWAY", "LAUNDRY"],
+};
+
+const OPTIONAL_METRICS = [
+  "failedPct", "waitingParts", "external", "medianDays",
+  "closedCount", "perRoom", "repeatedCount",
+];
+const DEFAULT_METRICS = ["failedPct", "waitingParts", "external"];
+
+/** Only the chart types that suit each panel's data. See the comment below. */
+const CHART_CHOICES: Record<string, string[]> = {
+  // A trend reads as bars (each month split into fixed and still open) or as
+  // lines (the gap between reported and fixed). Both are honest.
+  trend: ["bars", "lines"],
+  // Four groups that are parts of a real whole: a donut works, so do bars.
+  trade: ["donut", "bars"],
+  // Deliberately bars only. Eight fixtures with three tied at 4 are
+  // indistinguishable as angles and obvious as bar lengths, so offering a donut
+  // here would let somebody choose a chart that hides the answer.
+  byType: ["bars"],
+};
+const DEFAULT_CHARTS = { trend: "bars", trade: "donut", byType: "bars" };
+
+function readPrefs(row: any) {
+  const parse = (v: any, fallback: any) => {
+    try { return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+  };
+  const metrics: string[] = parse(row?.dash_metrics, DEFAULT_METRICS)
+    .filter((m: string) => OPTIONAL_METRICS.includes(m));
+  const charts = { ...DEFAULT_CHARTS, ...parse(row?.dash_charts, {}) };
+  // A stored chart type that isn't valid for its panel falls back rather than
+  // rendering something unreadable.
+  for (const [panel, choice] of Object.entries(charts)) {
+    if (!CHART_CHOICES[panel]?.includes(String(choice))) {
+      (charts as any)[panel] = DEFAULT_CHARTS[panel as keyof typeof DEFAULT_CHARTS];
+    }
+  }
+  return { metrics, charts };
+}
+
+route("GET", "/api/dashboard/prefs", async ({ env, p }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+  const row = await env.DB.prepare(
+    `SELECT dash_metrics, dash_charts FROM orgs WHERE id = ?1`
+  ).bind(p.orgId).first<any>();
+  return json({
+    ...readPrefs(row),
+    available: OPTIONAL_METRICS,
+    chartChoices: CHART_CHOICES,
+  });
+});
+
+route("PUT", "/api/dashboard/prefs", async ({ env, req, p }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+  const { metrics, charts } = (await req.json()) as
+    { metrics?: string[]; charts?: Record<string, string> };
+
+  const cleanMetrics = (metrics ?? []).filter((m) => OPTIONAL_METRICS.includes(m));
+  const cleanCharts: Record<string, string> = {};
+  for (const [panel, choice] of Object.entries(charts ?? {})) {
+    if (CHART_CHOICES[panel]?.includes(choice)) cleanCharts[panel] = choice;
+  }
+
+  await env.DB.prepare(
+    `UPDATE orgs SET dash_metrics = ?1, dash_charts = ?2 WHERE id = ?3`
+  ).bind(JSON.stringify(cleanMetrics), JSON.stringify(cleanCharts), p.orgId).run();
+  return json({ metrics: cleanMetrics, charts: { ...DEFAULT_CHARTS, ...cleanCharts } });
+});
+
 route("GET", "/api/dashboard", async ({ env, p, url }) => {
   if (p.kind !== "operator") return bad("operator only", 403);
   const { months, building, since } = dashboardFilter(url);
   const bBind = scopeBinds(p.orgId, building);
   const bc = scopeClause(p.orgId, building);
 
-  const [open, parts, closed, visits, repeats, buildings, trend, byType, external] = await Promise.all([
+  // Panel-local, not a third global filter: "where do faults happen" is a
+  // question about that one panel, not something you'd want the trend filtered by.
+  const roomKey = (url.searchParams.get("rooms") || "").toUpperCase();
+  const roomTypes = ROOM_FILTERS[roomKey] ?? null;
+  const roomClause = roomTypes
+    ? `AND vtl.room_type IN (${roomTypes.map(() => "?").join(",")})`
+    : "";
+  const roomBinds = roomTypes ?? [];
+
+  const [open, parts, closed, visits, repeats, buildings, trend, byType,
+         tradeRows, oldest, previous, roomCount, external] = await Promise.all([
     env.DB.prepare(
       `SELECT COUNT(*) AS n FROM v_ticket_location vtl
         WHERE vtl.state NOT IN ('done','cancelled') ${bc}`
@@ -1146,9 +1255,44 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
     env.DB.prepare(
       `SELECT vtl.object_type, COUNT(*) AS n
          FROM v_ticket_location vtl
-        WHERE vtl.reported_at >= ? ${bc}
+        WHERE vtl.reported_at >= ? ${bc} ${roomClause}
         GROUP BY vtl.object_type ORDER BY n DESC LIMIT 8`
+    ).bind(since, ...bBind, ...roomBinds).all<any>(),
+
+    // Everything reported in the period, by trade rather than by fixture.
+    env.DB.prepare(
+      `SELECT vtl.object_type, COUNT(*) AS n
+         FROM v_ticket_location vtl
+        WHERE vtl.reported_at >= ? ${bc}
+        GROUP BY vtl.object_type`
     ).bind(since, ...bBind).all<any>(),
+
+    // The oldest thing still open, which is the one number that surfaces the
+    // ticket everybody stopped seeing.
+    env.DB.prepare(
+      `SELECT vtl.ticket_id, vtl.reported_at, vtl.building_code, vtl.unit_code,
+              vtl.room_type, vtl.room_label, vtl.object_type
+         FROM v_ticket_location vtl
+        WHERE vtl.state NOT IN ('done','cancelled') ${bc}
+        ORDER BY vtl.reported_at LIMIT 1`
+    ).bind(...bBind).first<any>(),
+
+    // The same window one period earlier, for the change under each metric.
+    env.DB.prepare(
+      `SELECT COUNT(*) AS reported,
+              SUM(CASE WHEN vtl.state NOT IN ('done','cancelled') THEN 1 ELSE 0 END) AS still_open
+         FROM v_ticket_location vtl
+        WHERE vtl.reported_at >= ? AND vtl.reported_at < ? ${bc}`
+    ).bind(since - (now() - since), since, ...bBind).first<any>(),
+
+    // Rooms per building, so reports-per-room can compare houses of different
+    // sizes against each other.
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM rooms r
+         JOIN units u ON u.id = r.unit_id
+         JOIN buildings b ON b.id = u.building_id
+        WHERE b.org_id = ?1`
+    ).bind(p.orgId).first<any>(),
 
     // Work handed to an external trade, split by whether it's been commissioned.
     env.DB.prepare(
@@ -1166,8 +1310,30 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
   const vc = Object.fromEntries(visits.results.map((r: any) => [r.status, r.n]));
   const visitTotal = (vc.completed || 0) + (vc.no_access || 0);
 
+  // Grouped in code rather than SQL: the mapping is a product decision that
+  // belongs next to the escalation trades, not buried in a CASE expression.
+  const byTrade = new Map<string, number>();
+  for (const r of tradeRows.results as any[]) {
+    const trade = TRADE_OF[r.object_type] ?? "OTHER";
+    byTrade.set(trade, (byTrade.get(trade) ?? 0) + r.n);
+  }
+
+  const prefsRow = await env.DB.prepare(
+    `SELECT dash_metrics, dash_charts FROM orgs WHERE id = ?1`
+  ).bind(p.orgId).first<any>();
+
+  const reportedNow = (trend.results as any[]).reduce((n, t: any) => n + t.reported, 0);
+  const reportedBefore = previous?.reported ?? 0;
+  const openBefore = previous?.still_open ?? 0;
+
+  /** Percentage change, or null when there's nothing to compare against. */
+  const delta = (nowVal: number, thenVal: number) =>
+    thenVal > 0 ? Math.round(((nowVal - thenVal) / thenVal) * 100) : null;
+
   return json({
-    filter: { months, building, ranges: RANGE_MONTHS },
+    filter: { months, building, ranges: RANGE_MONTHS, rooms: roomKey || null,
+              roomOptions: Object.keys(ROOM_FILTERS) },
+    prefs: readPrefs(prefsRow),
     metrics: {
       open: open.n,
       medianDays: median.toFixed(1),
@@ -1177,9 +1343,24 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
       failedCount: vc.no_access || 0,
       external: external?.n ?? 0,
       awaitingCommission: external?.uncommissioned ?? 0,
+      // Two decimals: reports per room is a small number and rounding it to one
+      // would make three buildings look identical.
+      perRoom: (roomCount?.n ?? 0) > 0
+        ? (reportedNow / roomCount.n).toFixed(2) : null,
+      repeatedCount: (repeats.results as any[]).filter((r: any) => r.tickets >= 3).length,
     },
+    deltas: {
+      open: delta(open.n, openBefore),
+      reported: delta(reportedNow, reportedBefore),
+    },
+    oldest: oldest ?? null,
+    oldestDays: oldest
+      ? Math.max(0, Math.round((now() - oldest.reported_at) / DAY)) : null,
     trend: trend.results,
     byType: byType.results,
+    byTrade: [...byTrade.entries()]
+      .map(([trade, n]) => ({ trade, n }))
+      .sort((a, b) => b.n - a.n),
     repeats: repeats.results,
     buildings: buildings.results.map((b: any) => ({
       ...b,
@@ -1196,6 +1377,67 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
  * Same month expression as the chart itself, so the numbers on the bar and the
  * numbers in the panel are computed the same way rather than nearly the same way.
  */
+/**
+ * Everything behind one repeat-fault row.
+ *
+ * The panel says "C-S2 · Drain, 11 tickets" and until now that was a dead end:
+ * an operator could see there was a problem and not get at it. This is the
+ * evidence — which rooms, which causes, when, and the tickets themselves.
+ *
+ * `min` lets the threshold drop below the panel's three, so somebody can check
+ * whether a pattern is forming rather than only seeing established ones.
+ */
+route("GET", "/api/dashboard/repeat", async ({ env, p, url }) => {
+  if (p.kind !== "operator") return bad("operator only", 403);
+
+  const riser = url.searchParams.get("riser") || "";
+  const objectType = (url.searchParams.get("object") || "").toUpperCase();
+  if (!riser || !objectType) return bad("riser and object required");
+
+  const { months, since } = dashboardFilter(url);
+
+  const rows = await env.DB.prepare(
+    `SELECT vtl.ticket_id, vtl.building_code, vtl.unit_code, vtl.room_code,
+            vtl.room_type, vtl.room_label, vtl.object_type, vtl.state,
+            vtl.reported_at, vtl.closed_at, vtl.cause
+       FROM v_ticket_location vtl
+       JOIN objects o ON o.id = vtl.object_id
+      WHERE o.riser = ?1 AND vtl.object_type = ?2
+        AND vtl.reported_at >= ?3 AND vtl.org_id = ?4
+      ORDER BY vtl.reported_at DESC`
+  ).bind(riser, objectType, since, p.orgId).all<any>();
+
+  const tickets = rows.results as any[];
+
+  // Counted here rather than in SQL: three small groupings over a handful of
+  // rows isn't worth three more round trips.
+  const byRoom = new Map<string, number>();
+  const byCause = new Map<string, number>();
+  const byMonth = new Map<string, number>();
+  for (const t of tickets) {
+    const room = `${t.building_code}-${t.unit_code} ${t.room_label || t.room_code}`;
+    byRoom.set(room, (byRoom.get(room) ?? 0) + 1);
+    if (t.cause) byCause.set(t.cause, (byCause.get(t.cause) ?? 0) + 1);
+    const m = new Date(t.reported_at).toISOString().slice(0, 7);
+    byMonth.set(m, (byMonth.get(m) ?? 0) + 1);
+  }
+
+  const openNow = tickets.filter((t) => !["done", "cancelled"].includes(t.state)).length;
+
+  return json({
+    riser, objectType, months,
+    total: tickets.length,
+    openNow,
+    rooms: [...byRoom.entries()].map(([room, n]) => ({ room, n }))
+      .sort((a, b) => b.n - a.n),
+    causes: [...byCause.entries()].map(([cause, n]) => ({ cause, n }))
+      .sort((a, b) => b.n - a.n),
+    months_: [...byMonth.entries()].map(([month, n]) => ({ month, n }))
+      .sort((a, b) => a.month.localeCompare(b.month)),
+    tickets: tickets.slice(0, 60),
+  });
+});
+
 route("GET", "/api/dashboard/month", async ({ env, p, url }) => {
   if (p.kind !== "operator") return bad("operator only", 403);
   const bucket = url.searchParams.get("bucket") || "";

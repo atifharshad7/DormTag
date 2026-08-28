@@ -799,7 +799,10 @@ export default function App() {
               <button className="lang" onClick={() => setScanning(true)} aria-label={t("scanOpen")}>
                 <Camera size={14} aria-hidden />
               </button>
-              {isStaffKind && (
+              {/* Caretakers only: an operator reaches stickers from the left
+                  panel, so having it here as well was one of two ways to do
+                  the same thing. */}
+              {kind === "staff" && (
                 <button className="lang" onClick={() => { setStickerBuilding(null); setScreen(screen === "stickers" ? "main" : "stickers"); }}
                   aria-label={t("stickers")}><QrCode size={14} aria-hidden /></button>
               )}
@@ -885,8 +888,15 @@ export default function App() {
           <StaffView key={homeKey + ":" + (openTicket ?? "")} l={l} t={t} tickets={tickets} reload={reload}
             rules={session.slotRules} initialTicket={openTicket} />
         ) : (
-          <OperatorView l={l} t={t}
-            onStickers={(code) => { setStickerBuilding(code); setScreen("stickers"); }} />
+          <OperatorView l={l} t={t} session={session}
+            onStickers={(code) => { setStickerBuilding(code || null); setScreen("stickers"); }}
+            onAccount={(sec) => {
+              // Staff and Organisations live in the account area; the panel just
+              // takes you there rather than duplicating the screens.
+              if (sec === "staff") setScreen("manage");
+              else if (sec === "orgs") setScreen("platform");
+              else setScreen("account");
+            }} />
         )}
       </main>
 

@@ -776,3 +776,100 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 @media (prefers-color-scheme: dark) {
   .pweye:hover { background: rgba(232,232,227,.09); }
 }
+
+/* --- operator sidebar ------------------------------------------------ */
+
+.opshell { display: flex; gap: 12px; align-items: flex-start; }
+.sidebar {
+  width: 158px; flex: none; position: sticky; top: 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 13px 8px; display: flex; flex-direction: column; gap: 1px;
+}
+.sbbrand {
+  display: flex; align-items: center; gap: 8px; padding: 2px 8px 13px;
+  font-size: 13.5px; font-weight: 500; letter-spacing: -.015em;
+}
+.sborg { padding: 0 8px 13px; }
+.sborgrole {
+  font-size: 9.5px; color: var(--muted); letter-spacing: .06em; margin: 0 0 2px;
+  text-transform: uppercase;
+}
+.sborgname { font-size: 11.5px; color: var(--ink); margin: 0; }
+
+.sbnav {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 9px 10px; border: 0; background: none; border-radius: 7px;
+  cursor: pointer; font: inherit; font-size: 12.5px; color: var(--muted);
+  text-align: left;
+}
+.sbnav:hover { color: var(--ink); background: rgba(22,25,27,.05); }
+.sbnav-on { background: var(--slate); color: #f2f2ee; font-weight: 500; }
+.sbnav-on:hover { background: var(--slate); color: #f2f2ee; }
+
+.sbsplit { margin-top: 8px; padding-top: 9px; border-top: 1px solid var(--line); }
+.sbfoot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
+.opmain { flex: 1; min-width: 0; }
+
+@media (prefers-color-scheme: dark) {
+  .sbnav:hover { background: rgba(232,232,227,.07); }
+}
+
+/* A phone still needs to get around, so the panel becomes a strip rather
+   than vanishing behind a hamburger. */
+@media (max-width: 720px) {
+  .opshell { flex-direction: column; gap: 10px; }
+  .sidebar {
+    width: 100%; position: static; flex-direction: row; overflow-x: auto;
+    padding: 8px; gap: 4px; align-items: center;
+  }
+  .sbbrand, .sborg { display: none; }
+  .sbnav { width: auto; white-space: nowrap; padding: 8px 11px; }
+  .sbsplit, .sbfoot {
+    margin: 0; padding: 0; border: 0; border-left: 1px solid var(--line);
+    padding-left: 4px;
+  }
+}
+
+/* --- dashboard header and metric extras ------------------------------ */
+
+.dashhead { flex-wrap: wrap; gap: 8px; }
+.dashctl { flex-wrap: wrap; gap: 6px; }
+.ctlnarrow { min-height: 38px; font-size: 13px; padding: 6px 9px; width: auto; }
+.btn-sm { min-height: 38px; padding: 6px 11px; font-size: 13px; }
+
+.metricdelta { font-size: 11px; }
+.deltagood { color: var(--green); }
+.deltabad { color: var(--red); }
+.metricwarn { color: var(--amber); }
+
+.chartrow { align-items: center; gap: 10px; }
+.chartname { flex: 1; font-size: 13px; }
+.tabs-sm .tab { min-height: 34px; font-size: 12px; padding: 5px 10px; }
+
+/* --- line chart ------------------------------------------------------ */
+
+.linechart { width: 100%; height: 120px; display: block; }
+.chartaxis { display: flex; margin-top: 2px; }
+.axtick {
+  flex: 1; border: 0; background: none; cursor: pointer; padding: 3px 0;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted);
+}
+.axtick[aria-pressed="true"] { color: var(--ink); font-weight: 500; }
+
+/* --- donut ----------------------------------------------------------- */
+
+.donutwrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.donut { width: 116px; height: 116px; flex: none; }
+.donuttotal { font-family: 'IBM Plex Mono', monospace; font-size: 19px; fill: var(--ink); font-weight: 500; }
+.donutcap { font-family: 'IBM Plex Mono', monospace; font-size: 8px; fill: var(--muted); }
+.donutkey { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 3px; }
+.keyrow { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.keyname { flex: 1; }
+
+/* --- repeat faults become links -------------------------------------- */
+
+.repeatlink {
+  width: 100%; text-align: left; cursor: pointer; font: inherit; color: var(--ink);
+  background: var(--card); border: 1px solid var(--line);
+}
+.repeatlink:hover { border-color: var(--slate); }
