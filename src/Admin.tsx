@@ -4,7 +4,7 @@ import {
   Pencil, AlertTriangle,
 } from "lucide-react";
 import { api, roomLabel, type Locale, type StrKey } from "./lib";
-import { BuildingEditForm, AddUnitForm } from "./BuildingEdit";
+import { BuildingEditForm, AddUnitForm, BulkUnitsForm } from "./BuildingEdit";
 
 type T = (k: StrKey) => string;
 
@@ -280,7 +280,7 @@ function Buildings({ l, t }: { l: Locale; t: T }) {
 function BuildingDetail({ l, t, building, onBack }: any) {
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
-  const [mode, setMode] = useState<"idle" | "edit" | "unit">("idle");
+  const [mode, setMode] = useState<"idle" | "edit" | "unit" | "bulk">("idle");
   const [editRoom, setEditRoom] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
 
@@ -303,8 +303,11 @@ function BuildingDetail({ l, t, building, onBack }: any) {
           <button className="btn" onClick={() => setMode("edit")}>
             <Pencil size={15} /> {t("editBuilding")}
           </button>
-          <button className="btn btn-primary" onClick={() => setMode("unit")}>
-            <Plus size={16} /> {t("addUnit")}
+          <button className="btn btn-primary" onClick={() => setMode("bulk")}>
+            <Plus size={16} /> {t("addManyUnits")}
+          </button>
+          <button className="btn" onClick={() => setMode("unit")}>
+            {t("addUnit")}
           </button>
         </div>
       )}
@@ -318,6 +321,12 @@ function BuildingDetail({ l, t, building, onBack }: any) {
       {mode === "unit" && (
         <div className="card">
           <AddUnitForm l={l} t={t} building={building}
+            onDone={() => { setMode("idle"); load(); }} onCancel={() => setMode("idle")} />
+        </div>
+      )}
+      {mode === "bulk" && (
+        <div className="card">
+          <BulkUnitsForm l={l} t={t} building={building}
             onDone={() => { setMode("idle"); load(); }} onCancel={() => setMode("idle")} />
         </div>
       )}

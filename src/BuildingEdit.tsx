@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Check, X, Pencil, AlertTriangle, Users, Printer, KeyRound } from "lucide-react";
+import { Plus, Check, X, Pencil, AlertTriangle, Users, Printer, KeyRound, Layers } from "lucide-react";
 import { api, roomLabel, type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -184,23 +184,30 @@ export function BuildingCard({ l, t, b, active, onFilter, onChanged, onStickers,
   onFilter: () => void; onChanged: () => void;
   onStickers?: () => void; onCodes?: () => void;
 }) {
-  const [mode, setMode] = useState<"idle" | "edit" | "unit">("idle");
+  const [mode, setMode] = useState<"idle" | "edit" | "unit" | "bulk">("idle");
   const load = Math.min(100, Math.round(((b.open_count ?? 0) / 20) * 100));
 
   if (mode !== "idle") {
     return (
       <div className="card cardediting">
         <div className="rowspread">
-          <p className="cardtitle">{mode === "edit" ? b.name : t("addUnit")}</p>
+            <p className="cardtitle">
+            {mode === "edit" ? b.name : mode === "bulk" ? t("addManyUnits") : t("addUnit")}
+          </p>
           <button className="iconbtn" onClick={() => setMode("idle")} aria-label={t("cancel")}>
             <X size={16} />
           </button>
         </div>
-        {mode === "edit"
-          ? <BuildingEditForm l={l} t={t} building={b}
-              onDone={() => { setMode("idle"); onChanged(); }} onCancel={() => setMode("idle")} />
-          : <AddUnitForm l={l} t={t} building={b}
-              onDone={() => { setMode("idle"); onChanged(); }} onCancel={() => setMode("idle")} />}
+        {mode === "edit" ? (
+          <BuildingEditForm l={l} t={t} building={b}
+            onDone={() => { setMode("idle"); onChanged(); }} onCancel={() => setMode("idle")} />
+        ) : mode === "bulk" ? (
+          <BulkUnitsForm l={l} t={t} building={b}
+            onDone={() => { setMode("idle"); onChanged(); }} onCancel={() => setMode("idle")} />
+        ) : (
+          <AddUnitForm l={l} t={t} building={b}
+            onDone={() => { setMode("idle"); onChanged(); }} onCancel={() => setMode("idle")} />
+        )}
       </div>
     );
   }
@@ -232,6 +239,9 @@ export function BuildingCard({ l, t, b, active, onFilter, onChanged, onStickers,
         <button className="linkmore" onClick={() => setMode("unit")}>
           <Plus size={13} aria-hidden /> {t("addUnit")}
         </button>
+        <button className="linkmore" onClick={() => setMode("bulk")}>
+          <Layers size={13} aria-hidden /> {t("addManyUnits")}
+        </button>
         {/* Printing stickers belongs next to creating units: you make the rooms,
             then you print their codes. Arriving from here skips the picker. */}
         {onStickers && (
@@ -247,6 +257,130 @@ export function BuildingCard({ l, t, b, active, onFilter, onChanged, onStickers,
         <button className="linkmore" onClick={onFilter} style={{ marginLeft: "auto" }}>
           {active ? t("clearFilter") : t("filterToThis")} →
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Create a whole building from its pattern.
+ *
+ * Student halls are usually built to a repeating plan, so the operator describes
+ * it once. A preview comes first, deliberately: getting the numbering wrong and
+ * creating forty wrong units is much worse than one wrong unit.
+ */
+export function BulkUnitsForm({ l, t, building, onDone, onCancel }: {
+  l: Locale; t: T; building: any; onDone: () => void; onCancel: () => void;
+}) {
+  const [floorFrom, setFloorFrom] = useState("1");
+  const [floorTo, setFloorTo] = useState("5");
+  const [perFloor, setPerFloor] = useState("8");
+  const [numbering, setNumbering] = useState<"floor" | "sequential">("floor");
+  const [layout, setLayout] = useState<"studio" | "wg">("studio");
+  const [bedrooms, setBedrooms] = useState("4");
+  const [commonPerFloor, setCommonPerFloor] = useState(true);
+
+  const [preview, setPreview] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const spec = () => ({
+    floorFrom: Number(floorFrom), floorTo: Number(floorTo),
+    unitsPerFloor: Number(perFloor), numbering, layout,
+    bedrooms: Number(bedrooms), commonPerFloor,
+  });
+
+  const look = async () => {
+    setBusy(true); setErr(""); setPreview(null);
+    try { setPreview(await api.bulkUnits(building.id, { ...spec(), dryRun: true })); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="col" style={{ gap: 8 }}>
+      <p className="muted">{t("bulkHint")}</p>
+      {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+
+      <div className="row">
+        <label className="field" style={{ flex: 1 }}><span>{t("floorsFrom")}</span>
+          <input className="in" type="number" value={floorFrom}
+            onChange={(e) => { setFloorFrom(e.target.value); setPreview(null); }} /></label>
+        <label className="field" style={{ flex: 1 }}><span>{t("floorsTo")}</span>
+          <input className="in" type="number" value={floorTo}
+            onChange={(e) => { setFloorTo(e.target.value); setPreview(null); }} /></label>
+        <label className="field" style={{ flex: 1 }}><span>{t("perFloor")}</span>
+          <input className="in" type="number" value={perFloor}
+            onChange={(e) => { setPerFloor(e.target.value); setPreview(null); }} /></label>
+      </div>
+
+      <p className="steplabel">{t("numbering")}</p>
+      <div className="tabs">
+        <button className={"tab" + (numbering === "floor" ? " tab-on" : "")}
+          onClick={() => { setNumbering("floor"); setPreview(null); }}>{t("numberByFloor")}</button>
+        <button className={"tab" + (numbering === "sequential" ? " tab-on" : "")}
+          onClick={() => { setNumbering("sequential"); setPreview(null); }}>{t("numberSeq")}</button>
+      </div>
+
+      <p className="steplabel">{t("layoutWord")}</p>
+      <div className="tabs">
+        <button className={"tab" + (layout === "studio" ? " tab-on" : "")}
+          onClick={() => { setLayout("studio"); setPreview(null); }}>{t("studio")}</button>
+        <button className={"tab" + (layout === "wg" ? " tab-on" : "")}
+          onClick={() => { setLayout("wg"); setPreview(null); }}>{t("wg")}</button>
+      </div>
+
+      {layout === "wg" && (
+        <label className="field"><span>{t("bedroomsWord")}</span>
+          <input className="in" type="number" value={bedrooms}
+            onChange={(e) => { setBedrooms(e.target.value); setPreview(null); }} /></label>
+      )}
+
+      <button className="consent" onClick={() => { setCommonPerFloor((v) => !v); setPreview(null); }}>
+        <span>{t("commonEachFloor")}</span>
+        <span className={"pill pill-" + (commonPerFloor ? "info" : "neutral")}>
+          {commonPerFloor ? t("yes") : t("no")}
+        </span>
+      </button>
+
+      {preview && (
+        <div className="card">
+          <p className="cardtitle">{t("previewWord")}</p>
+          <p className="mono">
+            {preview.first.join(", ")}
+            {preview.last.length > 0 && preview.totals.units > 6
+              ? ` … ${preview.last.join(", ")}` : ""}
+          </p>
+          <p className="muted mono">
+            {preview.totals.units} {t("unitsWillBe")} ·
+            {" "}{preview.totals.rooms} {t("roomsWillBe")} ·
+            {" "}{preview.totals.objects} {t("objectsWillBe")}
+          </p>
+          <p className="muted mono">{preview.roomCodes.join(" · ")}</p>
+          {preview.totals.skipped > 0 && (
+            <p className="muted warnline">
+              <AlertTriangle size={13} aria-hidden /> {preview.totals.skipped} {t("skippedExisting")}
+              {preview.skipped.length > 0 && `: ${preview.skipped.join(", ")}`}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="row">
+        <button className="btn" onClick={onCancel}>{t("cancel")}</button>
+        {preview ? (
+          <button className="btn btn-primary" disabled={busy || preview.totals.units === 0}
+            onClick={async () => {
+              setBusy(true); setErr("");
+              try { await api.bulkUnits(building.id, spec()); onDone(); }
+              catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+            }}>
+            {busy ? t("workingOnIt") : `${t("createThem")} (${preview.totals.units})`}
+          </button>
+        ) : (
+          <button className="btn btn-primary" disabled={busy} onClick={look}>
+            {t("previewWord")}
+          </button>
+        )}
       </div>
     </div>
   );

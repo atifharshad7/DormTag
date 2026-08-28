@@ -1131,3 +1131,192 @@ export async function listCodes({ env, p, params }: RouteCtx) {
     withoutCode: missing?.n ?? 0,
   });
 }
+
+/* ---------------------------------------------------------------- */
+/* bulk unit creation                                               */
+/* ---------------------------------------------------------------- */
+
+/**
+ * German student halls are usually built to a repeating plan: every floor the
+ * same, every flat the same, numbering following a rule. So the operator
+ * describes the pattern once instead of filling in a form 120 times.
+ */
+const MAX_BULK_UNITS = 400;
+
+type BulkSpec = {
+  floorFrom: number; floorTo: number; unitsPerFloor: number;
+  numbering: "floor" | "sequential";
+  layout: "studio" | "wg";
+  bedrooms: number;
+  commonPerFloor: boolean;
+};
+
+function readSpec(body: any): BulkSpec | string {
+  const floorFrom = Math.trunc(Number(body.floorFrom));
+  const floorTo = Math.trunc(Number(body.floorTo));
+  const unitsPerFloor = Math.trunc(Number(body.unitsPerFloor));
+
+  if (!Number.isFinite(floorFrom) || !Number.isFinite(floorTo)) return "floors required";
+  if (floorTo < floorFrom) return "the last floor is below the first";
+  if (floorTo - floorFrom > 40) return "at most 40 floors";
+  if (!Number.isFinite(unitsPerFloor) || unitsPerFloor < 1) return "units per floor required";
+  if (unitsPerFloor > 60) return "at most 60 units per floor";
+
+  const layout = body.layout === "wg" ? "wg" : "studio";
+  const bedrooms = layout === "wg"
+    ? Math.min(Math.max(Math.trunc(Number(body.bedrooms)) || 4, 2), 12)
+    : 1;
+
+  const total = (floorTo - floorFrom + 1) * unitsPerFloor;
+  if (total > MAX_BULK_UNITS) return `that's ${total} units; ${MAX_BULK_UNITS} at a time is the limit`;
+
+  return {
+    floorFrom, floorTo, unitsPerFloor,
+    numbering: body.numbering === "sequential" ? "sequential" : "floor",
+    layout, bedrooms,
+    commonPerFloor: !!body.commonPerFloor,
+  };
+}
+
+/** Rooms for a layout. Fixtures come from the room type, as everywhere else. */
+function roomsFor(spec: BulkSpec): { code: string; type: string; kind: string }[] {
+  if (spec.layout === "studio") {
+    return [
+      { code: "Z1", type: "BEDROOM", kind: "private" },
+      { code: "BA", type: "BATHROOM", kind: "private" },
+    ];
+  }
+  const rooms: { code: string; type: string; kind: string }[] = [];
+  for (let i = 1; i <= spec.bedrooms; i++) {
+    rooms.push({ code: `Z${i}`, type: "BEDROOM", kind: "private" });
+  }
+  // Shared inside a locked flat: still needs somebody to let the caretaker in.
+  rooms.push({ code: "KU", type: "KITCHEN", kind: "shared" });
+  rooms.push({ code: "BA", type: "BATHROOM", kind: "shared" });
+  rooms.push({ code: "FL", type: "HALLWAY", kind: "shared" });
+  return rooms;
+}
+
+/** What the pattern expands to, without touching the database. */
+function expand(spec: BulkSpec) {
+  const units: { code: string; floor: number; isCommon: boolean;
+                 rooms: { code: string; type: string; kind: string }[] }[] = [];
+  const rooms = roomsFor(spec);
+  let seq = 0;
+
+  for (let floor = spec.floorFrom; floor <= spec.floorTo; floor++) {
+    for (let i = 1; i <= spec.unitsPerFloor; i++) {
+      seq++;
+      const code = spec.numbering === "floor"
+        ? String(floor * 100 + i)
+        : String(seq);
+      units.push({ code, floor, isCommon: false, rooms });
+    }
+    if (spec.commonPerFloor) {
+      // A corridor belongs to a floor, not to a flat.
+      units.push({
+        code: `COM${floor}`, floor, isCommon: true,
+        rooms: [{ code: "FL", type: "HALLWAY", kind: "shared" }],
+      });
+    }
+  }
+  return units;
+}
+
+const OBJECT_COUNT = (type: string) => (OBJECTS_FOR[type] ?? []).length;
+
+/**
+ * Create many units at once.
+ *
+ * Runs as a preview first (`dryRun`), because getting the numbering wrong and
+ * creating 40 wrong units is much worse than one wrong unit. Existing unit codes
+ * are skipped and reported rather than failing the whole run, so a second press
+ * fills gaps instead of erroring.
+ */
+export async function bulkUnits({ env, req, p, params }: RouteCtx) {
+  requireOperator(p);
+  const org = myOrg(p);
+  const b = await env.DB.prepare(
+    `SELECT id, code, COALESCE(display_code, code) AS display FROM buildings
+      WHERE id = ?1 AND org_id = ?2`
+  ).bind(params.id, org).first<any>();
+  if (!b) return bad("unknown building", 404);
+
+  const body = (await req.json()) as any;
+  const spec = readSpec(body);
+  if (typeof spec === "string") return bad(spec);
+
+  const planned = expand(spec);
+
+  const existing = await env.DB.prepare(
+    `SELECT code FROM units WHERE building_id = ?1`
+  ).bind(b.id).all<any>();
+  const taken = new Set(existing.results.map((r: any) => String(r.code)));
+
+  const toCreate = planned.filter((u) => !taken.has(u.code));
+  const skipped = planned.filter((u) => taken.has(u.code)).map((u) => u.code);
+
+  const totals = {
+    units: toCreate.length,
+    rooms: toCreate.reduce((n, u) => n + u.rooms.length, 0),
+    objects: toCreate.reduce(
+      (n, u) => n + u.rooms.reduce((m, r) => m + OBJECT_COUNT(r.type), 0), 0),
+    skipped: skipped.length,
+  };
+
+  if (body.dryRun) {
+    return json({
+      preview: true, totals, skipped: skipped.slice(0, 20),
+      // First and last few, so the operator can check the numbering before
+      // committing to four hundred units.
+      first: toCreate.slice(0, 3).map((u) => u.code),
+      last: toCreate.slice(-3).map((u) => u.code),
+      roomCodes: roomsFor(spec).map((r) => r.code),
+    });
+  }
+
+  if (toCreate.length === 0) {
+    return json({ created: 0, totals, skipped: skipped.slice(0, 20) });
+  }
+
+  const prefixRow = await env.DB.prepare(`SELECT slug_prefix FROM orgs WHERE id = ?1`)
+    .bind(org).first<any>();
+  const prefix = slugPart(prefixRow?.slug_prefix ?? "");
+
+  // Chunked rather than one giant batch: a 400-unit building is a few thousand
+  // statements, and a single oversized batch is how this fails in production
+  // rather than in a test.
+  const stmts: any[] = [];
+  for (const u of toCreate) {
+    const unitId = uid();
+    stmts.push(env.DB.prepare(
+      `INSERT INTO units (id, building_id, code, floor, kind, is_common)
+       VALUES (?1,?2,?3,?4,?5,?6)`
+    ).bind(unitId, b.id, u.code, u.floor,
+           spec.layout === "wg" && !u.isCommon ? "wg" : "studio",
+           u.isCommon ? 1 : 0));
+
+    for (const r of u.rooms) {
+      const roomId = `${unitId}-${r.code}`;
+      const slug = `${slugPart(b.code)}${slugPart(u.code)}-${slugPart(r.code)}`;
+      stmts.push(env.DB.prepare(
+        `INSERT INTO rooms (id, unit_id, code, room_type, kind, qr_slug)
+         VALUES (?1,?2,?3,?4,?5,?6)`
+      ).bind(roomId, unitId, r.code, r.type, r.kind, slug));
+
+      for (const ot of OBJECTS_FOR[r.type] ?? []) {
+        stmts.push(env.DB.prepare(
+          `INSERT INTO objects (id, room_id, object_type, ordinal, qr_slug, riser)
+           VALUES (?1,?2,?3,1,?4,NULL)`
+        ).bind(`${roomId}-${ot}`, roomId, ot, `${slug}-${ot.toLowerCase()}`));
+      }
+    }
+  }
+
+  const CHUNK = 80;
+  for (let i = 0; i < stmts.length; i += CHUNK) {
+    await env.DB.batch(stmts.slice(i, i + CHUNK));
+  }
+
+  return json({ created: toCreate.length, totals, skipped: skipped.slice(0, 20) });
+}

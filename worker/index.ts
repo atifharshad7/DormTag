@@ -1397,6 +1397,7 @@ route("POST",  "/api/admin/buildings",          (c) => admin.createBuilding(c));
 route("PATCH", "/api/admin/buildings/:id",      (c) => admin.updateBuilding(c));
 route("GET",   "/api/admin/buildings/:id/units",(c) => admin.listUnits(c));
 route("POST",  "/api/admin/buildings/:id/units",(c) => admin.createUnit(c));
+route("POST",  "/api/admin/buildings/:id/units/bulk", (c) => admin.bulkUnits(c));
 
 route("PATCH", "/api/admin/rooms/:id",          (c) => admin.updateRoom(c));
 route("POST",  "/api/admin/rooms/:id/code",     (c) => admin.regenerateCode(c));

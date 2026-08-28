@@ -1005,6 +1005,95 @@ ok("a resident cannot label anything",
   (await req(`/api/admin/rooms/${bRoom.id}`, { method: "PATCH", cookie: tenant,
     body: { label: "Nope" } })).status === 403);
 
+section("bulk units: preview before writing")
+const bulkB = await req("/api/admin/buildings", { method: "POST", cookie: operator,
+  body: { code: "NP", name: "Wohnheim Nordpark", roomCount: 240 } });
+ok("a building to fill", bulkB.status === 200, JSON.stringify(bulkB.json));
+const NP = bulkB.json.id;
+
+const dry = await req(`/api/admin/buildings/${NP}/units/bulk`, { method: "POST", cookie: operator,
+  body: { floorFrom: 1, floorTo: 5, unitsPerFloor: 8, numbering: "floor",
+          layout: "studio", commonPerFloor: true, dryRun: true } });
+ok("the preview costs nothing", dry.status === 200 && dry.json.preview === true);
+ok("it counts units including a corridor per floor", dry.json.totals.units === 45,
+  `${dry.json.totals.units}`);
+ok("it counts rooms", dry.json.totals.rooms === 85, `${dry.json.totals.rooms}`);
+ok("it counts fixtures", dry.json.totals.objects > 200, `${dry.json.totals.objects}`);
+ok("it shows the numbering it would use",
+  dry.json.first[0] === "101" && dry.json.last.includes("COM5"),
+  JSON.stringify([dry.json.first, dry.json.last]));
+ok("the preview wrote nothing",
+  (await req(`/api/admin/buildings/${NP}/units`, { cookie: operator })).json.units.length === 0);
+
+const dryStraight = await req(`/api/admin/buildings/${NP}/units/bulk`, { method: "POST", cookie: operator,
+  body: { floorFrom: 1, floorTo: 2, unitsPerFloor: 3, numbering: "sequential",
+          layout: "studio", commonPerFloor: false, dryRun: true } });
+ok("straight-through numbering starts at 1",
+  dryStraight.json.first[0] === "1", JSON.stringify(dryStraight.json.first));
+
+const dryWg = await req(`/api/admin/buildings/${NP}/units/bulk`, { method: "POST", cookie: operator,
+  body: { floorFrom: 1, floorTo: 1, unitsPerFloor: 1, numbering: "floor",
+          layout: "wg", bedrooms: 4, commonPerFloor: false, dryRun: true } });
+ok("a WG gets four bedrooms plus kitchen, bath and hallway",
+  dryWg.json.totals.rooms === 7, `${dryWg.json.totals.rooms}`);
+ok("its room codes read as a flat",
+  JSON.stringify(dryWg.json.roomCodes) === JSON.stringify(["Z1","Z2","Z3","Z4","KU","BA","FL"]),
+  JSON.stringify(dryWg.json.roomCodes));
+
+section("bulk units: refusals")
+ok("an upside-down floor range is refused",
+  (await req(`/api/admin/buildings/${NP}/units/bulk`, { method: "POST", cookie: operator,
+    body: { floorFrom: 5, floorTo: 1, unitsPerFloor: 8, dryRun: true } })).status === 400);
+ok("too many units at once is refused",
+  (await req(`/api/admin/buildings/${NP}/units/bulk`, { method: "POST", cookie: operator,
+    body: { floorFrom: 1, floorTo: 20, unitsPerFloor: 40, dryRun: true } })).status === 400);
+ok("a caretaker cannot bulk-create",
+  (await req(`/api/admin/buildings/${NP}/units/bulk`, { method: "POST", cookie: staff,
+    body: { floorFrom: 1, floorTo: 1, unitsPerFloor: 1, dryRun: true } })).status === 403);
+ok("another organisation cannot fill our building",
+  (await req(`/api/admin/buildings/${NP}/units/bulk`, { method: "POST", cookie: staff,
+    body: { floorFrom: 1, floorTo: 1, unitsPerFloor: 1, dryRun: true } })).status !== 200);
+
+section("bulk units: creating")
+const bulkMade = await req(`/api/admin/buildings/${NP}/units/bulk`, { method: "POST", cookie: operator,
+  body: { floorFrom: 1, floorTo: 5, unitsPerFloor: 8, numbering: "floor",
+          layout: "studio", commonPerFloor: true } });
+ok("the building is filled in one call", bulkMade.status === 200 && bulkMade.json.created === 45,
+  JSON.stringify(bulkMade.json).slice(0, 120));
+
+const filled = (await req(`/api/admin/buildings/${NP}/units`, { cookie: operator })).json.units;
+ok("the units exist", filled.length === 45, `${filled.length}`);
+ok("floors are spread 1 to 5", new Set(filled.map((u) => u.floor)).size === 5);
+ok("corridors are marked common",
+  filled.filter((u) => u.code.startsWith("COM")).every((u) => u.is_common === 1));
+ok("every room got its fixtures",
+  filled.flatMap((u) => u.rooms).every((r) => r.objects > 0));
+ok("every room got a QR slug",
+  filled.flatMap((u) => u.rooms).every((r) => !!r.qr_slug));
+ok("slugs are unique across the building", await (async () => {
+  const slugs = filled.flatMap((u) => u.rooms).map((r) => r.qr_slug);
+  return new Set(slugs).size === slugs.length;
+})());
+ok("a generated sticker resolves", await (async () => {
+  const slug = filled.find((u) => u.code === "101").rooms[0].qr_slug;
+  return (await req(`/api/r/${slug}`)).status === 200;
+})());
+
+// Pressing it again should fill gaps, not fail.
+const twice = await req(`/api/admin/buildings/${NP}/units/bulk`, { method: "POST", cookie: operator,
+  body: { floorFrom: 1, floorTo: 6, unitsPerFloor: 8, numbering: "floor",
+          layout: "studio", commonPerFloor: true } });
+ok("a second run skips what exists and adds the rest",
+  twice.json.created === 9 && twice.json.totals.skipped === 45,
+  JSON.stringify(twice.json).slice(0, 130));
+
+ok("codes can then be generated for the whole building", await (async () => {
+  const g = await req(`/api/admin/buildings/${NP}/codes`, { method: "POST", cookie: operator,
+    body: { semester: "WS26" } });
+  // One bedroom per studio, 48 studios after the second run.
+  return g.status === 200 && g.json.issued === 48;
+})());
+
 section("access codes: generating")
 const codeB = (await req("/api/admin/buildings", { cookie: operator })).json.buildings
   .find((b) => b.code === "B");

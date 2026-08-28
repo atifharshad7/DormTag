@@ -128,6 +128,26 @@ organisation you meant.
 The demo lives in its own organisation with status `demo`, and the seed only ever
 touches that one, so nobody can wipe a real estate by finding the endpoint.
 
+## Filling a building in one go
+
+German student halls are usually built to a repeating plan, so the operator
+describes the pattern once rather than filling in a form 120 times: floors 1 to
+5, 8 units per floor, numbering as floor-plus-sequence or straight through,
+layout studio or WG with *n* bedrooms, and optionally a corridor per floor.
+
+**The preview runs first and writes nothing.** It reports the totals and the
+first and last unit codes, because getting the numbering wrong and creating forty
+wrong units is much worse than one wrong unit.
+
+Existing unit codes are **skipped and reported** rather than failing the run, so a
+second press fills gaps instead of erroring — the same property the code
+generator has, and for the same reason: an operator will press it again whenever
+they're unsure.
+
+Writes are **chunked into batches of 80** statements. A 400-unit building is a few
+thousand inserts, and a single oversized batch is the kind of thing that fails in
+production rather than in a test.
+
 ## Resident access codes
 
 An operator generates a code per bedroom, prints the sheet, and the
@@ -195,7 +215,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 427 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 451 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure
@@ -307,9 +327,6 @@ The site auto-builds on every push to `main` once you've connected the repo unde
 * **Photo upload.** Needs R2 and a `photo_key` column.
 * **Rate limiting** on the public report endpoint. An open endpoint is an open spam endpoint.
 * **Password reset and access-code recovery.** Both need an email sender.
-* **Bulk unit creation.** Adding 240 rooms one unit at a time is the obvious gap
-  in the admin screen: it should take a floor range, units per floor and a layout,
-  and generate from the pattern.
 * **Impressum and Datenschutzerklärung.** Legally required for a German online
   service and currently absent.
 * **Archiving a building.** There is currently no way to remove one.
