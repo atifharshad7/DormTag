@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+\import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   QrCode, Calendar, Clock, Check, ChevronLeft, Package, AlertTriangle, Key,
   Wrench, LayoutDashboard, Languages, User, Users, ArrowRight, Plus,
@@ -740,6 +740,21 @@ export default function App() {
    * homeKey remounts it — that's what takes a resident back to My reports and
    * a caretaker back to the queue, from wherever they were.
    */
+  // The sticky panel has to start below the header, and the header's height
+  // changes with the viewport (it wraps on narrow screens). Measured rather
+  // than hardcoded, so the panel never overlaps it or floats away from it.
+  const headerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const set = () =>
+      document.documentElement.style.setProperty("--hdr", `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+
   const signedIn = !!session && session.principal.kind !== "anonymous";
   useEffect(() => {
     // Landing screens only make sense signed out; drop back to the app.
@@ -789,7 +804,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
+      <header className="topbar" ref={headerRef}>
         <button className="brand brandbtn" onClick={goHome} aria-label={t("appName")}>
           <Logo size={22} /><span>{t("appName")}</span>
         </button>
