@@ -233,7 +233,10 @@ export function BuildingCard({ l, t, b, active, onFilter, onChanged, showUnits }
       </div>
 
       {b.caretakers?.length
-        ? <p className="muted"><Users size={13} aria-hidden /> {b.caretakers.map((c: any) => c.name).join(", ")}</p>
+        ? <p className="muted caretakerline">
+            <Users size={13} aria-hidden />
+            <span>{b.caretakers.map((c: any) => c.name).join(", ")}</span>
+          </p>
         : <p className="muted warnline"><AlertTriangle size={13} aria-hidden /> {t("noCaretaker")}</p>}
 
       {/* The card used to carry Add unit, Add many units, Print stickers and
