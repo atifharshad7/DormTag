@@ -1,7 +1,6 @@
 import React from "react";
 import { LayoutGrid, Building2, Users, QrCode, KeyRound, ShieldCheck, User } from "lucide-react";
 import { type StrKey } from "./lib";
-import { Logo } from "./Logo";
 
 type T = (k: StrKey) => string;
 
@@ -33,11 +32,8 @@ export function Sidebar({ t, section, onGo, isPlatformAdmin, orgName }: {
 
   return (
     <nav className="sidebar" aria-label={t("dashboardWord")}>
-      <div className="sbbrand">
-        <Logo size={20} />
-        <span>{t("appName")}</span>
-      </div>
-
+      {/* No logo or name here: the header two centimetres above already says
+          DormTag, and repeating it cost a whole block of vertical space. */}
       {orgName && (
         <div className="sborg">
           <p className="mono sborgrole">{t("operator")}</p>

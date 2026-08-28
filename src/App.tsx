@@ -797,6 +797,21 @@ export default function App() {
   const roleLabel = kind === "operator" ? t("operator") : kind === "staff" ? t("staff") : t("tenant");
   const RoleIcon = kind === "operator" ? LayoutDashboard : kind === "staff" ? Wrench : User;
   const isStaffKind = kind === "staff" || kind === "operator";
+  /*
+   * Which wrapper the page gets.
+   *
+   * `operatorOwnView` has to mean exactly "OperatorView is what's on screen",
+   * because that's the only view that brings its own left panel and manages its
+   * own width. The first version tested `screen === "main"`, which was wrong:
+   * OperatorView renders in the final else of a long branch chain, so it shows
+   * for several screen values. Two conditions that had to agree, and didn't —
+   * hence a centred column with a gap beside the panel.
+   */
+  const otherScreens = ["stickers", "manage", "account", "password", "about", "platform", "sent"];
+  const operatorOwnView =
+    kind === "operator" && route.kind === "app" && !otherScreens.includes(screen);
+  const wideView = kind === "operator" || screen === "stickers";
+
   const whoLabel =
     kind === "tenant" && session.home
       ? `${session.home.building_code}-${session.home.unit_code}`
@@ -838,7 +853,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className={(kind === "operator" && screen !== "manage") || screen === "stickers" ? "wide" : "narrow"}>
+      <main className={operatorOwnView ? "opview" : wideView ? "wide" : "narrow"}>
         {route.kind === "reset" ? (
           <ResetPassword t={t} token={route.token}
             onDone={async () => { goApp(); await loadSession(); }} />

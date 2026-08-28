@@ -68,6 +68,9 @@ body {
 main { padding: 20px 16px 64px; margin: 0 auto; }
 .narrow { max-width: 560px; }
 .wide { max-width: 1240px; }
+/* The operator view manages its own padding, because the panel must reach the
+   window edge and `main`'s centring would leave a gap beside it. */
+main.opview { max-width: none; padding: 0; margin: 0; }
 .col { display: flex; flex-direction: column; gap: 14px; }
 .row { display: flex; align-items: center; gap: 8px; }
 .rowspread { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -788,19 +791,25 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
  * to the bottom of the viewport rather than ending wherever its own content
  * does — which is what made it read as a floating box.
  */
-.opshell { display: flex; gap: 14px; align-items: flex-start; }
+/*
+ * The panel is flush to the left edge of the window, not a card floating inside
+ * a centred column. That's what made it read as a box with a gap beside it.
+ *
+ * So the operator view opts out of `main`'s max-width and centring: the panel
+ * hugs the edge, and the content beside it keeps its own padding and a readable
+ * maximum.
+ */
+.opshell { display: flex; gap: 0; align-items: flex-start; }
 .sidebar {
-  width: 194px; flex: none;
-  position: sticky; top: calc(var(--hdr) + 12px);
-  height: calc(100vh - var(--hdr) - 24px);
+  width: 206px; flex: none;
+  position: sticky; top: var(--hdr);
+  height: calc(100vh - var(--hdr));
   overflow-y: auto;
-  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-  padding: 15px 10px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--card);
+  border: 0; border-right: 1px solid var(--line); border-radius: 0;
+  padding: 16px 10px; display: flex; flex-direction: column; gap: 2px;
 }
-.sbbrand {
-  display: flex; align-items: center; gap: 8px; padding: 2px 8px 13px;
-  font-size: 13.5px; font-weight: 500; letter-spacing: -.015em;
-}
+.opmain { padding: 20px 20px 64px; max-width: 1180px; }
 .sborg { padding: 0 8px 13px; }
 .sborgrole {
   font-size: 9.5px; color: var(--muted); letter-spacing: .06em; margin: 0 0 2px;
@@ -834,8 +843,11 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
     width: 100%; position: static; height: auto; overflow-y: visible;
     flex-direction: row; overflow-x: auto;
     padding: 8px; gap: 4px; align-items: center;
+    border: 1px solid var(--line); border-radius: 10px;
   }
-  .sbbrand, .sborg { display: none; }
+  .opmain { padding: 0; }
+  main.opview { padding: 14px 14px 56px; }
+  .sborg { display: none; }
   .sbnav { width: auto; white-space: nowrap; padding: 8px 11px; }
   .sbsplit, .sbfoot {
     margin: 0; padding: 0; border: 0; border-left: 1px solid var(--line);
