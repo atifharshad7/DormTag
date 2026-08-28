@@ -3,6 +3,8 @@
    signals something (the sticker, the waiting state). Everything else quiet. */
 
 :root {
+  /* Header height, so a sticky panel can sit exactly below it. */
+  --hdr: 59px;
   --paper: #f5f5f1;
   --card: #ffffff;
   --ink: #16191b;
@@ -65,7 +67,7 @@ body {
 
 main { padding: 20px 16px 64px; margin: 0 auto; }
 .narrow { max-width: 560px; }
-.wide { max-width: 1000px; }
+.wide { max-width: 1240px; }
 .col { display: flex; flex-direction: column; gap: 14px; }
 .row { display: flex; align-items: center; gap: 8px; }
 .rowspread { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -779,11 +781,21 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 
 /* --- operator sidebar ------------------------------------------------ */
 
-.opshell { display: flex; gap: 12px; align-items: flex-start; }
+/*
+ * The panel is fixed and the content beside it scrolls.
+ *
+ * `--hdr` is the sticky header's height, so the panel starts below it and runs
+ * to the bottom of the viewport rather than ending wherever its own content
+ * does — which is what made it read as a floating box.
+ */
+.opshell { display: flex; gap: 14px; align-items: flex-start; }
 .sidebar {
-  width: 158px; flex: none; position: sticky; top: 12px;
+  width: 194px; flex: none;
+  position: sticky; top: calc(var(--hdr) + 12px);
+  height: calc(100vh - var(--hdr) - 24px);
+  overflow-y: auto;
   background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-  padding: 13px 8px; display: flex; flex-direction: column; gap: 1px;
+  padding: 15px 10px; display: flex; flex-direction: column; gap: 2px;
 }
 .sbbrand {
   display: flex; align-items: center; gap: 8px; padding: 2px 8px 13px;
@@ -819,7 +831,8 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 @media (max-width: 720px) {
   .opshell { flex-direction: column; gap: 10px; }
   .sidebar {
-    width: 100%; position: static; flex-direction: row; overflow-x: auto;
+    width: 100%; position: static; height: auto; overflow-y: visible;
+    flex-direction: row; overflow-x: auto;
     padding: 8px; gap: 4px; align-items: center;
   }
   .sbbrand, .sborg { display: none; }
@@ -873,3 +886,15 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   background: var(--card); border: 1px solid var(--line);
 }
 .repeatlink:hover { border-color: var(--slate); }
+
+/* The icon used to wrap onto its own line when the name list was long. */
+.caretakerline { display: flex; align-items: flex-start; gap: 6px; }
+.caretakerline svg { flex: none; margin-top: 3px; }
+
+/* At zero open the fill is zero-width and vanished, leaving that card a
+   different height from the others. The track stays either way. */
+.bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.barfill { height: 5px; border-radius: 3px; min-width: 0; }
+
+/* Four buildings fit one row rather than three-then-one. */
+.bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 9px; }
