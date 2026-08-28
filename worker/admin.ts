@@ -858,17 +858,20 @@ function requirePlatformAdmin(p: Principal) {
  * bundled them would be a bad answer to "who can see our tenants' reports?".
  */
 export async function listOrgs({ env, p }: RouteCtx) {
-  requirePlatformAdmin(p);
+  const me = requirePlatformAdmin(p);
   const rows = await env.DB.prepare(
     `SELECT o.id, o.name, o.status, o.signup_email, o.signup_domain,
             o.created_at, o.approved_at, o.note,
+            -- So the UI can hide actions the API would refuse anyway. You can't
+            -- suspend the organisation you're signed in to.
+            (o.id = ?1) AS is_self,
             (SELECT COUNT(*) FROM buildings b WHERE b.org_id = o.id) AS buildings,
             (SELECT COUNT(*) FROM staff s WHERE s.org_id = o.id AND s.disabled_at IS NULL) AS staff,
             (SELECT COUNT(*) FROM staff s
               WHERE s.org_id = o.id AND s.password_hash IS NOT NULL) AS signed_in_ever
        FROM orgs o
       ORDER BY CASE o.status WHEN 'pending' THEN 0 ELSE 1 END, o.created_at DESC`
-  ).all<any>();
+  ).bind(me.orgId).all<any>();
   return json({ orgs: rows.results });
 }
 
@@ -1332,4 +1335,92 @@ export async function bulkUnits({ env, req, p, params }: RouteCtx) {
   }
 
   return json({ created: toCreate.length, totals, skipped: skipped.slice(0, 20) });
+}
+
+/**
+ * Everything an organisation has, as one object.
+ *
+ * Before deleting anything, and because "can we have our data" is a question a
+ * customer is entitled to ask. Counts and structure and repair history — the
+ * thing that took a year to accumulate.
+ */
+export async function exportOrg({ env, p, params }: RouteCtx) {
+  requirePlatformAdmin(p);
+  const org = await env.DB.prepare(`SELECT * FROM orgs WHERE id = ?1`)
+    .bind(params.id).first<any>();
+  if (!org) return bad("unknown organisation", 404);
+
+  const q = (sql: string) => env.DB.prepare(sql).bind(params.id).all<any>();
+
+  const [buildings, units, rooms, objects, tickets, events] = await Promise.all([
+    q(`SELECT id, code, display_code, name, room_count FROM buildings WHERE org_id = ?1`),
+    q(`SELECT u.* FROM units u JOIN buildings b ON b.id = u.building_id WHERE b.org_id = ?1`),
+    q(`SELECT r.* FROM rooms r JOIN units u ON u.id = r.unit_id
+        JOIN buildings b ON b.id = u.building_id WHERE b.org_id = ?1`),
+    q(`SELECT o.* FROM objects o JOIN rooms r ON r.id = o.room_id
+        JOIN units u ON u.id = r.unit_id JOIN buildings b ON b.id = u.building_id
+       WHERE b.org_id = ?1`),
+    q(`SELECT t.* FROM tickets t JOIN v_ticket_location v ON v.ticket_id = t.id
+       WHERE v.org_id = ?1`),
+    q(`SELECT e.* FROM ticket_events e JOIN v_ticket_location v ON v.ticket_id = e.ticket_id
+       WHERE v.org_id = ?1`),
+  ]);
+
+  // Staff without password hashes, and no resident access codes: an export is
+  // for the customer's records, not a way to walk off with live credentials.
+  const staff = await q(
+    `SELECT id, email, display_name, locale, is_operator, disabled_at
+       FROM staff WHERE org_id = ?1`);
+
+  return json({
+    exportedAt: now(),
+    org: { id: org.id, name: org.name, status: org.status, created_at: org.created_at },
+    counts: {
+      buildings: buildings.results.length, units: units.results.length,
+      rooms: rooms.results.length, objects: objects.results.length,
+      tickets: tickets.results.length, staff: staff.results.length,
+    },
+    buildings: buildings.results, units: units.results, rooms: rooms.results,
+    objects: objects.results, tickets: tickets.results, events: events.results,
+    staff: staff.results,
+  });
+}
+
+/**
+ * Delete an organisation that has nothing in it.
+ *
+ * Only when empty, deliberately. A signup that turned out to be spam, or one of
+ * your own test organisations, is safe to remove because there is nothing to
+ * lose. An organisation with buildings holds every repair ever reported in them,
+ * and that is not a platform admin's to destroy on a whim — suspending already
+ * achieves everything a dispute needs.
+ */
+export async function deleteEmptyOrg({ env, p, params }: RouteCtx) {
+  const me = requirePlatformAdmin(p);
+  if (params.id === "org-demo") return bad("the demo organisation stays", 409);
+  if (params.id === me.orgId) return bad("you can't delete your own organisation", 409);
+
+  const counts = await env.DB.prepare(
+    `SELECT (SELECT COUNT(*) FROM buildings WHERE org_id = ?1) AS buildings,
+            (SELECT COUNT(*) FROM tenants WHERE org_id = ?1) AS tenants`
+  ).bind(params.id).first<any>();
+
+  if ((counts?.buildings ?? 0) > 0 || (counts?.tenants ?? 0) > 0) {
+    return bad("that organisation has data — suspend it, or export and ask again", 409);
+  }
+
+  // Order matters, and nothing here cascades: signup queues a notification
+  // carrying org_id (the setup-link email), so the organisation can't go while
+  // that row exists. Sessions are revoked before staff are removed so nobody
+  // stays signed in through the gap.
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE staff_sessions SET revoked_at = ?1
+        WHERE revoked_at IS NULL AND staff_id IN (SELECT id FROM staff WHERE org_id = ?2)`
+    ).bind(now(), params.id),
+    env.DB.prepare(`DELETE FROM notifications WHERE org_id = ?1`).bind(params.id),
+    env.DB.prepare(`DELETE FROM staff WHERE org_id = ?1`).bind(params.id),
+    env.DB.prepare(`DELETE FROM orgs WHERE id = ?1`).bind(params.id),
+  ]);
+  return json({ ok: true });
 }

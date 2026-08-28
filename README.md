@@ -118,6 +118,22 @@ console) approves them and deliberately gets **no** access to their tickets:
 approving an organisation and reading a few hundred students' repair histories
 are different powers.
 
+The console shows names, statuses, signup domains and counts, never contents. It
+can approve, suspend, reject, **export** and **delete when empty**.
+
+There is deliberately no way to delete an organisation that has data. Suspending
+already achieves everything a dispute needs — they can't get in, and nothing is
+lost — and a Studierendenwerk's repair history is not a platform admin's to
+destroy. Export exists so "can we have our data" has an answer, and it carries no
+password hashes and no resident access codes: it's for their records, not a way to
+walk off with live credentials. Deleting is limited to organisations with no
+buildings and no residents, which covers a spam signup or your own test
+organisations.
+
+Rows the API would refuse are not offered: the list marks the caller's own
+organisation, and a test asserts the API refuses to change it, so the button and
+the guard can't drift apart.
+
 Email addresses stay unique platform-wide rather than per organisation, because
 `staff.email` is an inline `UNIQUE` constraint and SQLite can't drop the implicit
 index without rebuilding the table. That means one person can't hold accounts at
@@ -215,6 +231,25 @@ personal is held until a resident volunteers an address themselves.
 live table, so generated rooms carry a placeholder on the reserved `.invalid`
 domain, which the mail sender and the UI both treat as "no address".
 
+## Passwords
+
+Every password field has a **show/hide toggle**. Masked inputs cause more
+lockouts than they prevent, especially on a phone where you can't see what
+autocorrect did — and the toggle is a real button whose label changes between
+"show" and "hide", so it's reachable by keyboard and announced properly rather
+than being an eye-shaped mystery.
+
+Setting a password asks for it **twice**, which is slightly redundant once you can
+read what you typed and kept anyway: not everyone presses the toggle, and a
+password manager filling both costs nothing. The mismatch shows as you type but
+only disables the button; a red error after the first character of the second
+field would be nagging.
+
+Both live in one component used by all four places a password is set — first-run
+setup, accepting an invite, resetting, and changing — so they can't drift apart.
+Sign-in gets the toggle but no second field, since you're not setting anything
+there.
+
 ## Retention
 
 Closed tickets are **never deleted**. The room-and-cause history is the entire reason the operator dashboard is worth anything, and once the reporter link is gone, "the drain in C-204 blocked twice" isn't personal data.
@@ -239,7 +274,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 453 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 466 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure
@@ -260,6 +295,7 @@ src/
   Landing.tsx        # front door, demo picker, signup, waiting-for-approval
   Platform.tsx       # the platform console: which organisations exist
   Codes.tsx          # resident access codes and the printable sheet
+  PasswordField.tsx  # password input with a show/hide toggle, and a typed-twice pair
   SlotPicker.tsx     # appointment time picker
   Scanner.tsx        # in-app QR scanner
   Logo.tsx           # the house-and-QR mark

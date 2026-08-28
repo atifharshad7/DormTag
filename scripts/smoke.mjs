@@ -1582,6 +1582,55 @@ ok("scanning their slug gives their room, not ours", await (async () => {
   return r.status === 200 && r.json.room.building_code === "A";
 })());
 
+section("the console never offers what the API refuses")
+const listed = (await req("/api/platform/orgs", { cookie: admin })).json.orgs;
+ok("the caller's own organisation is flagged",
+  listed.some((o) => o.is_self === 1), JSON.stringify(listed.map((o) => [o.name, o.is_self])));
+ok("exactly one row is the caller's", listed.filter((o) => o.is_self === 1).length === 1);
+// The UI hides actions on that row; this asserts the API agrees, so the two
+// can't drift into offering a button that always errors.
+ok("and the API refuses to change it", await (async () => {
+  const self = listed.find((o) => o.is_self === 1);
+  return (await req(`/api/platform/orgs/${self.id}/status`, { method: "POST", cookie: admin,
+    body: { status: "suspended" } })).status === 409;
+})());
+
+section("exporting and deleting an organisation")
+const exp = await req(`/api/platform/orgs/${su.json.orgId}/export`, { cookie: admin });
+ok("an organisation can be exported", exp.status === 200, JSON.stringify(exp.json?.counts));
+ok("the export carries structure and history",
+  typeof exp.json.counts.buildings === "number" && Array.isArray(exp.json.tickets));
+ok("it carries no password hashes",
+  exp.json.staff.every((x) => !("password_hash" in x)));
+ok("it carries no resident access codes",
+  !JSON.stringify(exp.json).includes("activation_code"));
+// Not `operator`: the demo operator was promoted to platform admin earlier in
+// this suite, so it isn't a plain operator any more.
+ok("a plain operator cannot export anyone",
+  (await req(`/api/platform/orgs/${su.json.orgId}/export`, { cookie: newOp })).status === 403);
+
+ok("an organisation with buildings cannot be deleted",
+  (await req(`/api/platform/orgs/${su.json.orgId}`, { method: "DELETE", cookie: admin })).status === 409,
+  "suspending is what a dispute needs; their repair history is not ours to destroy");
+ok("the demo organisation cannot be deleted",
+  (await req("/api/platform/orgs/org-demo", { method: "DELETE", cookie: admin })).status === 409);
+ok("the caller cannot delete their own",
+  (await req(`/api/platform/orgs/${listed.find((o) => o.is_self === 1).id}`,
+    { method: "DELETE", cookie: admin })).status === 409);
+
+ok("an empty organisation can be deleted", await (async () => {
+  const junk = await req("/api/orgs/signup", { method: "POST",
+    body: { orgName: "Spam Signup", name: "Nobody", email: "spam@nowhere.test" } });
+  if (junk.status !== 200) return false;
+  const del = await req(`/api/platform/orgs/${junk.json.orgId}`, { method: "DELETE", cookie: admin });
+  if (del.status !== 200) { console.log("      delete said:", del.status, JSON.stringify(del.json)); return false; }
+  const after = (await req("/api/platform/orgs", { cookie: admin })).json.orgs;
+  return !after.some((o) => o.id === junk.json.orgId);
+})());
+ok("its staff go with it",
+  (await req("/api/auth/staff", { method: "POST",
+    body: { email: "spam@nowhere.test", password: "anything-at-all" } })).status === 401);
+
 section("suspending an organisation")
 ok("suspending works",
   (await req(`/api/platform/orgs/${su.json.orgId}/status`, { method: "POST", cookie: admin,

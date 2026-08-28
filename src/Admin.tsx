@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { api, roomLabel, type Locale, type StrKey } from "./lib";
 import { BuildingEditForm, AddUnitForm, BulkUnitsForm } from "./BuildingEdit";
+import { PasswordField, NewPassword, passwordsOk } from "./PasswordField";
 
 type T = (k: StrKey) => string;
 
@@ -16,6 +17,7 @@ export function FirstRunSetup({ t, onDone }: { t: T; onDone: () => Promise<void>
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -35,11 +37,10 @@ export function FirstRunSetup({ t, onDone }: { t: T; onDone: () => Promise<void>
       <label className="field"><span>{t("emailLabel")}</span>
         <input className="in" type="email" autoComplete="username"
           value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-      <label className="field"><span>{t("passwordLabel")}</span>
-        <input className="in" type="password" autoComplete="new-password"
-          value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-      <p className="muted">{t("pwRule")}</p>
-      <button className="btn btn-primary btn-big" disabled={busy} onClick={go}>
+      <NewPassword t={t} value={password} confirm={confirm}
+        onChange={setPassword} onConfirm={setConfirm} />
+      <button className="btn btn-primary btn-big"
+        disabled={busy || !passwordsOk(password, confirm)} onClick={go}>
         {t("createOperator")}
       </button>
     </div>
@@ -52,6 +53,7 @@ export function FirstRunSetup({ t, onDone }: { t: T; onDone: () => Promise<void>
 
 export function AcceptInvite({ t, token, onDone }: { t: T; token: string; onDone: () => Promise<void> }) {
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -60,11 +62,10 @@ export function AcceptInvite({ t, token, onDone }: { t: T; token: string; onDone
       <h2>{t("setPassword")}</h2>
       <p className="muted">{t("setPasswordHint")}</p>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
-      <label className="field"><span>{t("passwordLabel")}</span>
-        <input className="in" type="password" autoComplete="new-password" value={password}
-          onChange={(e) => setPassword(e.target.value)} /></label>
-      <p className="muted">{t("pwRule")}</p>
-      <button className="btn btn-primary btn-big" disabled={busy}
+      <NewPassword t={t} value={password} confirm={confirm}
+        onChange={setPassword} onConfirm={setConfirm} />
+      <button className="btn btn-primary btn-big"
+        disabled={busy || !passwordsOk(password, confirm)}
         onClick={async () => {
           setBusy(true); setErr("");
           try { await api.acceptInvite(token, password); await onDone(); }
@@ -121,6 +122,7 @@ export function ResetPassword({ t, token, onDone }: {
   t: T; token: string; onDone: () => Promise<void>;
 }) {
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -129,11 +131,10 @@ export function ResetPassword({ t, token, onDone }: {
       <h2>{t("forgotTitle")}</h2>
       <p className="muted">{t("signedOutElse")}</p>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
-      <label className="field"><span>{t("newPassword")}</span>
-        <input className="in" type="password" autoComplete="new-password" value={password}
-          onChange={(e) => setPassword(e.target.value)} /></label>
-      <p className="muted">{t("pwRule")}</p>
-      <button className="btn btn-primary btn-big" disabled={busy}
+      <NewPassword t={t} value={password} confirm={confirm}
+        onChange={setPassword} onConfirm={setConfirm} />
+      <button className="btn btn-primary btn-big"
+        disabled={busy || !passwordsOk(password, confirm)}
         onClick={async () => {
           setBusy(true); setErr("");
           try { await api.resetPassword(token, password); await onDone(); }
@@ -149,6 +150,7 @@ export function ResetPassword({ t, token, onDone }: {
 export function ChangePassword({ t, onBack }: { t: T; onBack: () => void }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
@@ -159,19 +161,17 @@ export function ChangePassword({ t, onBack }: { t: T; onBack: () => void }) {
       <h2>{t("changePassword")}</h2>
       {done && <div className="flash">{t("passwordChanged")} · {t("signedOutElse")}</div>}
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
-      <label className="field"><span>{t("currentPassword")}</span>
-        <input className="in" type="password" autoComplete="current-password" value={current}
-          onChange={(e) => setCurrent(e.target.value)} /></label>
-      <label className="field"><span>{t("newPassword")}</span>
-        <input className="in" type="password" autoComplete="new-password" value={next}
-          onChange={(e) => setNext(e.target.value)} /></label>
-      <p className="muted">{t("pwRule")}</p>
-      <button className="btn btn-primary" disabled={busy || !current || !next}
+      <PasswordField t={t} label={t("currentPassword")} value={current}
+        onChange={setCurrent} autoComplete="current-password" />
+      <NewPassword t={t} value={next} confirm={confirm}
+        onChange={setNext} onConfirm={setConfirm} />
+      <button className="btn btn-primary"
+        disabled={busy || !current || !passwordsOk(next, confirm)}
         onClick={async () => {
           setBusy(true); setErr(""); setDone(false);
           try {
             await api.changePassword(current, next);
-            setCurrent(""); setNext(""); setDone(true);
+            setCurrent(""); setNext(""); setConfirm(""); setDone(true);
           } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
         }}>
         {t("changePassword")}

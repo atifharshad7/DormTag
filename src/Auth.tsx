@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import {
   User, Wrench, ArrowRight, Database, QrCode, Printer, ChevronLeft, Copy, Check,
-  LayoutDashboard, HelpCircle,
+  LayoutDashboard, HelpCircle, Eye, EyeOff,
 } from "lucide-react";
 import {
   api, roomLabel, objLabel, objIcon, symptomLabel, SYMPTOMS_FOR,
@@ -63,6 +63,7 @@ export function SignIn({ l, t, session, onDone, onForgot, onBack }: {
   onForgot?: () => void; onBack?: () => void;
 }) {
   const [showAbout, setShowAbout] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const [tab, setTab] = useState<"resident" | "staff">("resident");
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
@@ -128,9 +129,19 @@ export function SignIn({ l, t, session, onDone, onForgot, onBack }: {
           </label>
           <label className="field">
             <span>{t("passwordLabel")}</span>
-            <input className="in" type="password" value={password} autoComplete="current-password"
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()} />
+            {/* A toggle here too: this is where somebody typed it wrong and
+                can't tell why they're being refused. */}
+            <div className="pwwrap">
+              <input className="in pwin" type={showPw ? "text" : "password"} value={password}
+                autoComplete="current-password"
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()} />
+              <button type="button" className="pweye" onClick={() => setShowPw((v) => !v)}
+                aria-label={showPw ? t("hidePassword") : t("showPassword")}
+                aria-pressed={showPw}>
+                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </label>
         </>
       )}

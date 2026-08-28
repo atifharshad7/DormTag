@@ -756,3 +756,23 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   .codeval { font-size: 14px; }
 }
 .codewhen { font-size: 11px; }
+
+/* --- password fields ------------------------------------------------- */
+
+.pwwrap { position: relative; display: flex; }
+.pwin { flex: 1; padding-right: 44px; }
+.pweye {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; width: 36px; height: 36px;
+  background: none; border: 0; border-radius: 6px; cursor: pointer;
+  color: var(--muted); font: inherit;
+}
+.pweye:hover { color: var(--ink); background: rgba(22,25,27,.06); }
+.pwstate { font-size: 12.5px; margin: -2px 0 0; display: flex; align-items: center; gap: 5px; }
+.pwbad { color: var(--red); }
+.pwok { color: var(--green); }
+.pwhint { font-size: 12px; }
+
+@media (prefers-color-scheme: dark) {
+  .pweye:hover { background: rgba(232,232,227,.09); }
+}

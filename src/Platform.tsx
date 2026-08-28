@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, Check, Ban, X, Building2, Users } from "lucide-react";
+import { ChevronLeft, Check, Ban, X, Building2, Users, Download, Trash2 } from "lucide-react";
 import { api, fmtDay, type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -65,7 +65,13 @@ export function Platform({ l, t, onBack }: { l: Locale; t: T; onBack: () => void
           </p>
           {o.note && <p className="quote">{o.note}</p>}
 
-          {o.status !== "demo" && (
+          {o.is_self ? (
+            // No actions on your own organisation: locking yourself out of the
+            // console is unrecoverable without database access.
+            <p className="muted">{t("thisIsYou")}</p>
+          ) : o.status === "demo" ? (
+            <p className="muted">{t("demoPermanent")}</p>
+          ) : (
             <div className="row">
               {o.status !== "active" && (
                 <button className="btn btn-primary" disabled={busy === o.id}
@@ -83,6 +89,35 @@ export function Platform({ l, t, onBack }: { l: Locale; t: T; onBack: () => void
                 <button className="btn" disabled={busy === o.id}
                   onClick={() => act(o.id, "rejected")}>
                   <X size={15} /> {t("rejectWord")}
+                </button>
+              )}
+              <button className="btn" disabled={busy === o.id}
+                onClick={async () => {
+                  setErr("");
+                  try {
+                    const data = await api.exportOrg(o.id);
+                    // Straight to a file: the point is that they can keep it.
+                    const url = URL.createObjectURL(new Blob(
+                      [JSON.stringify(data, null, 2)], { type: "application/json" }));
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `dormtag-${o.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch (e: any) { setErr(e.message); }
+                }}>
+                <Download size={15} /> {t("exportWord")}
+              </button>
+              {o.buildings === 0 && (
+                <button className="btn btn-warn" disabled={busy === o.id}
+                  title={t("deleteOnlyEmpty")}
+                  onClick={async () => {
+                    setBusy(o.id); setErr("");
+                    try { await api.deleteOrg(o.id); load(); }
+                    catch (e: any) { setErr(e.message); }
+                    finally { setBusy(""); }
+                  }}>
+                  <Trash2 size={15} /> {t("deleteWord")}
                 </button>
               )}
             </div>
