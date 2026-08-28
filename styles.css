@@ -1,0 +1,912 @@
+/* DormTag — visual direction: German institutional signage.
+   Slate enamel plates, mono room codes, traffic yellow used only where it
+   signals something (the sticker, the waiting state). Everything else quiet. */
+
+:root {
+  /* Header height, so a sticky panel can sit exactly below it. */
+  --hdr: 59px;
+  --paper: #f5f5f1;
+  --card: #ffffff;
+  --ink: #16191b;
+  --slate: #232b2e;
+  --muted: #6e7478;
+  --line: rgba(22, 25, 27, 0.13);
+  --yellow: #f2b008;
+  --blue: #1f5aa8;
+  --green: #1c7a4b;
+  --amber: #a96a10;
+  --red: #a32d2d;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  font-family: Archivo, system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { min-height: 100%; }
+
+.mono {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
+}
+
+/* --- top bar ---------------------------------------------------- */
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  background: var(--slate); color: #f2f2ee;
+  position: sticky; top: 0; z-index: 5;
+}
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: -0.02em; }
+.who {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: rgba(242, 242, 238, 0.8);
+}
+.lang {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 10px; min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: none; color: #f2f2ee;
+  font: inherit; font-size: 12.5px; border-radius: 6px; cursor: pointer;
+}
+.lang:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* --- layout ----------------------------------------------------- */
+
+main { padding: 20px 16px 64px; margin: 0 auto; }
+.narrow { max-width: 560px; }
+.wide { max-width: 1240px; }
+/* The operator view manages its own padding, because the panel must reach the
+   window edge and `main`'s centring would leave a gap beside it. */
+main.opview { max-width: none; padding: 0; margin: 0; }
+.col { display: flex; flex-direction: column; gap: 14px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.rowspread { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.signin { max-width: 360px; margin: 24px auto 0; }
+
+h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+.muted { color: var(--muted); font-size: 13px; margin: 0; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--muted); margin: 8px 0 -4px;
+}
+.quote { margin: 0; padding: 10px 12px; border-left: 2px solid var(--line); color: #3a4043; font-size: 14px; }
+.hr { height: 1px; background: var(--line); margin: 4px 0; }
+.cta { margin: 0; font-size: 13px; color: var(--blue); font-weight: 500; }
+
+/* --- the signature element: enamel door plate -------------------- */
+
+.plate {
+  display: inline-flex; align-items: center; align-self: flex-start; gap: 6px;
+  background: var(--slate); color: #f2f2ee;
+  font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: 0.02em;
+  padding: 5px 9px; border-radius: 3px; white-space: nowrap;
+}
+.plate-sm { font-size: 11px; padding: 4px 7px; }
+
+/* --- status pills ----------------------------------------------- */
+
+.pill { font-size: 11px; padding: 3px 8px; border-radius: 99px; white-space: nowrap; font-weight: 500; }
+.pill-neutral { background: rgba(22, 25, 27, 0.07); color: #4a5053; }
+.pill-info { background: rgba(31, 90, 168, 0.11); color: var(--blue); }
+.pill-warn { background: rgba(242, 176, 8, 0.2); color: var(--amber); }
+.pill-ok { background: rgba(28, 122, 75, 0.12); color: var(--green); }
+
+/* --- cards ------------------------------------------------------ */
+
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px; display: flex; flex-direction: column; gap: 9px; text-align: left;
+}
+.cardlink { cursor: pointer; font: inherit; color: inherit; }
+.cardlink:hover { border-color: rgba(22, 25, 27, 0.28); }
+.cardtitle { font-size: 15px; font-weight: 500; margin: 0; display: flex; align-items: center; gap: 6px; }
+.empty { border: 1px dashed var(--line); border-radius: 10px; padding: 28px 16px; text-align: center; }
+.empty p { margin: 0 0 4px; }
+
+.flash, .err {
+  padding: 10px 12px; border-radius: 8px; font-size: 13.5px; cursor: pointer;
+}
+.flash { background: rgba(28, 122, 75, 0.1); color: var(--green); }
+.err { background: rgba(163, 45, 45, 0.09); color: var(--red); }
+
+/* --- tiles (the language-light picker) --------------------------- */
+
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 9px; }
+.tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  min-height: 84px; padding: 12px 8px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  cursor: pointer; font: inherit; font-size: 13px; color: #3a4043;
+}
+.tile:hover { border-color: rgba(22, 25, 27, 0.3); }
+.tile-on { border: 2px solid var(--slate); color: var(--ink); font-weight: 500; }
+.tile-text { min-height: 52px; }
+
+/* --- scan / stickers -------------------------------------------- */
+
+.scanbox {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  padding: 26px 16px; border: 1px dashed rgba(22, 25, 27, 0.24);
+  border-radius: 12px; background: var(--card);
+}
+.scanbox h2 { margin: 2px 0 0; }
+.stickers { display: flex; flex-direction: column; gap: 7px; }
+.sticker {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; background: var(--card);
+  border: 1px solid var(--line); border-left: 3px solid var(--yellow);
+  border-radius: 0 8px 8px 0; cursor: pointer; font: inherit; color: var(--muted);
+}
+.sticker:hover { border-color: rgba(22, 25, 27, 0.3); border-left-color: var(--yellow); }
+
+/* --- timeline (parcel-tracker mental model) ---------------------- */
+
+.timeline { display: flex; flex-direction: column; padding-left: 2px; }
+.tl { display: flex; gap: 12px; padding-bottom: 14px; position: relative; }
+.tl:not(:last-child)::before {
+  content: ""; position: absolute; left: 5px; top: 14px; bottom: 0;
+  width: 1px; background: var(--line);
+}
+.tldot { width: 11px; height: 11px; border-radius: 50%; background: var(--green); margin-top: 4px; flex: none; }
+.tldot-warn { background: var(--card); border: 2px solid var(--yellow); }
+.tl p { margin: 0; font-size: 14px; }
+
+/* --- slots ------------------------------------------------------ */
+
+.slot {
+  display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  cursor: pointer; font: inherit; font-size: 14px; text-align: left; min-height: 46px;
+  color: var(--ink);
+}
+.slot:hover { border-color: var(--slate); }
+.slot .mono { margin-left: auto; }
+
+/* --- buttons ---------------------------------------------------- */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 11px 14px; min-height: 46px;
+  border: 1px solid rgba(22, 25, 27, 0.22); background: var(--card);
+  border-radius: 8px; cursor: pointer; font: inherit; font-size: 14px; color: var(--ink);
+}
+.btn:hover { border-color: var(--slate); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-big { min-height: 54px; font-size: 15px; }
+.btn-primary { background: var(--slate); color: #f5f5f1; border-color: var(--slate); }
+.btn-warn { background: rgba(242, 176, 8, 0.13); border-color: rgba(169, 106, 16, 0.4); color: var(--amber); }
+.linkback {
+  align-self: flex-start; display: flex; align-items: center; gap: 3px;
+  background: none; border: 0; padding: 4px 0; font: inherit; font-size: 13px;
+  color: var(--muted); cursor: pointer;
+}
+.consent {
+  display: flex; align-items: center; gap: 9px; padding: 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  cursor: pointer; font: inherit; font-size: 14px; text-align: left; min-height: 48px;
+  color: var(--ink);
+}
+.consent span { flex: 1; }
+.consent:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* --- inputs ----------------------------------------------------- */
+
+.in, .ta {
+  width: 100%; padding: 11px; border: 1px solid var(--line); border-radius: 8px;
+  font: inherit; font-size: 14px; background: var(--card); color: var(--ink); resize: vertical;
+}
+.in:focus, .ta:focus { outline: 2px solid rgba(31, 90, 168, 0.35); outline-offset: -1px; border-color: var(--blue); }
+
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* --- caretaker queue -------------------------------------------- */
+
+.job {
+  display: flex; background: var(--card); border: 1px solid var(--line);
+  border-radius: 8px; overflow: hidden; cursor: pointer; font: inherit;
+  text-align: left; padding: 0;
+  /* `font: inherit` does not carry colour: without this the row falls back to
+     the browser's default button text, which is invisible in dark mode. */
+  color: var(--ink);
+}
+.job:hover { border-color: rgba(22, 25, 27, 0.3); }
+.jobbar { width: 4px; flex: none; background: rgba(22, 25, 27, 0.22); }
+.jobbar-info { background: var(--blue); }
+.jobbar-warn { background: var(--yellow); }
+.jobbar-ok { background: var(--green); }
+.jobmain { padding: 11px 13px; display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+
+/* --- dashboard -------------------------------------------------- */
+
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.metric { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 13px; }
+.metric .big { font-size: 26px; font-weight: 500; margin: 3px 0 0; letter-spacing: -0.02em; }
+
+.repeat {
+  padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.repeat-flag { background: rgba(242, 176, 8, 0.1); border-color: rgba(169, 106, 16, 0.4); }
+.repeat-flag .mono, .repeat-flag .muted { color: var(--amber); }
+
+.bgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.bar { height: 6px; background: rgba(22, 25, 27, 0.09); border-radius: 3px; overflow: hidden; }
+.barfill { height: 100%; background: var(--green); }
+.barfill-warn { background: var(--yellow); }
+
+/* --- responsive ------------------------------------------------- */
+
+@media (min-width: 640px) {
+  main { padding: 26px 24px 72px; }
+  h2 { font-size: 22px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .card, .tile, .btn, .job, .slot { transition: border-color 0.12s ease; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #15181a; --card: #1d2124; --ink: #e8e8e3; --muted: #9aa0a4;
+    --line: rgba(232, 232, 227, 0.14); --slate: #2c3639;
+    --blue: #6ba4ea; --green: #5cbd8a; --amber: #e0a544; --red: #e08484;
+  }
+  .plate { background: #3a4548; }
+  .btn-primary { background: #3a4548; color: #f0f0eb; border-color: #3a4548; }
+}
+
+/* --- sign in ------------------------------------------------------ */
+
+.tabs { display: flex; gap: 6px; background: rgba(22,25,27,.06); padding: 3px; border-radius: 10px; }
+.tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px; min-height: 42px; border: 0; background: none; border-radius: 8px;
+  font: inherit; font-size: 14px; color: var(--muted); cursor: pointer;
+}
+.tab-on { background: var(--card); color: var(--ink); font-weight: 500; }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > span { font-size: 13px; color: var(--muted); }
+
+.demo { background: rgba(22,25,27,.03); }
+.demorow {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px;
+  color: var(--ink); text-align: left; min-height: 42px;
+}
+.demorow:hover { border-color: var(--slate); }
+.demorow .mono { color: var(--muted); }
+
+/* --- scanned sticker landing -------------------------------------- */
+
+.scanned {
+  display: flex; align-items: center; gap: 10px; padding: 12px;
+  background: rgba(242,176,8,.12); border-left: 3px solid var(--yellow);
+  border-radius: 0 8px 8px 0; color: var(--amber);
+}
+.scanned .plate { background: var(--slate); color: #f2f2ee; }
+.breakall { overflow-wrap: anywhere; }
+
+/* --- printable sticker sheet -------------------------------------- */
+
+.sheet {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px;
+}
+.stickercard {
+  display: flex; gap: 10px; align-items: center; padding: 10px;
+  border: 1px dashed rgba(22,25,27,.35); border-radius: 6px; background: #fff;
+}
+.qr { width: 66px; height: 66px; display: block; }
+.stickermeta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stickerplate {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; color: #16191b;
+}
+.stickerobj { font-size: 14px; font-weight: 500; color: #16191b; }
+.stickerhint { font-size: 9px; color: #55595c; text-transform: uppercase; letter-spacing: .05em; }
+.stickerslug { font-size: 8px; color: #85898c; overflow-wrap: anywhere; }
+
+@media print {
+  .topbar, .noprint { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  .app { background: #fff !important; }
+  .sheet { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .stickercard { break-inside: avoid; page-break-inside: avoid; }
+}
+
+/* --- in-app scanner ----------------------------------------------- */
+
+.modal {
+  position: absolute; inset: 0; z-index: 20;
+  background: rgba(10,12,13,.72);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 5vh 16px;
+}
+.sheetcard {
+  width: 100%; max-width: 420px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.iconbtn {
+  border: 0; background: none; padding: 6px; cursor: pointer;
+  color: var(--muted); border-radius: 6px; min-height: 32px;
+}
+.iconbtn:hover { background: rgba(22,25,27,.07); }
+
+.viewport {
+  position: relative; aspect-ratio: 1 / 1; width: 100%;
+  background: #101315; border-radius: 10px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.vid { width: 100%; height: 100%; object-fit: cover; }
+.hide { display: none; }
+.viewportmsg {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center; padding: 20px; color: #c9cdd0;
+}
+.viewportmsg p { margin: 0; font-size: 13px; }
+.reticle {
+  position: absolute; width: 62%; aspect-ratio: 1;
+  border: 2px solid rgba(242,176,8,.9); border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.28);
+}
+
+/* --- resident report entry: scan card + room rows ------------------ */
+
+.scancard {
+  background: rgba(242,176,8,.11); border: 1px solid rgba(169,106,16,.35);
+  border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.scanhead { display: flex; align-items: center; gap: 10px; color: var(--amber); }
+.scanheadtitle { font-size: 14px; font-weight: 500; margin: 0; }
+.scanheadsub { font-size: 12px; margin: 0; opacity: .85; }
+.btn-scan {
+  background: var(--yellow); border-color: var(--yellow); color: #2a1f02; font-weight: 500;
+}
+.btn-scan:hover { border-color: var(--amber); }
+
+.divider { display: flex; align-items: center; gap: 10px; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.divider span { font-size: 12px; color: var(--muted); }
+
+.roomrow {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 12px; min-height: 48px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  cursor: pointer; font: inherit; text-align: left; color: var(--ink);
+}
+.roomrow:hover { border-color: var(--slate); }
+.roomname { display: inline-flex; align-items: center; gap: 9px; font-size: 14px; }
+
+/* --- caretaker slot picker ----------------------------------------- */
+
+.daystrip {
+  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.daystrip::-webkit-scrollbar { display: none; }
+.daychip {
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 46px; padding: 7px 6px; border: 1px solid var(--line);
+  background: var(--card); border-radius: 8px; cursor: pointer; font: inherit;
+  color: var(--muted);
+}
+.daychip-on { border: 2px solid var(--slate); color: var(--ink); }
+.dayname { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.daynum { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; }
+
+.hourgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(66px, 1fr)); gap: 6px; }
+.hourchip {
+  padding: 11px 4px; min-height: 44px; border: 1px solid var(--line);
+  background: var(--card); border-radius: 8px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink);
+}
+.hourchip:hover:not(:disabled) { border-color: var(--slate); }
+.hourchip-on { background: var(--slate); color: #f5f5f1; border-color: var(--slate); }
+.hourchip:disabled { opacity: .3; cursor: not-allowed; }
+
+.pickedlist { display: flex; flex-wrap: wrap; gap: 6px; }
+.pickedchip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px;
+  background: rgba(31,90,168,.1); border: 1px solid rgba(31,90,168,.3);
+  color: var(--blue); border-radius: 99px; cursor: pointer; font: inherit; font-size: 12px;
+}
+
+.brandbtn {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  color: inherit; font: inherit; font-weight: 600; letter-spacing: -.02em;
+}
+.brandbtn:hover { opacity: .85; }
+
+/* --- free-form time entry ------------------------------------------ */
+
+.timerow { display: flex; gap: 6px; align-items: stretch; flex-wrap: wrap; }
+.timein { flex: 1 1 110px; min-width: 100px; font-family: 'IBM Plex Mono', monospace; }
+.durin { flex: 0 1 104px; }
+.timerow .btn { flex: 0 0 auto; }
+
+
+/* --- slot picker: legible two-step ---------------------------------- */
+
+.steplabel {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 13px; font-weight: 500; margin: 2px 0 0; color: var(--ink);
+}
+.stepnote { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+.hourchip {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  padding: 10px 4px; min-height: 46px; border: 1px solid var(--line);
+  background: var(--card); border-radius: 8px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink);
+}
+.hourchip-busy { opacity: 1; background: rgba(22,25,27,.05); color: var(--muted); }
+.chipnote {
+  font-family: Archivo, sans-serif; font-size: 9px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted);
+}
+
+.offerline {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  background: rgba(28,122,75,.08); border-radius: 8px; font-size: 13.5px;
+  color: var(--ink);
+}
+.offerline > .mono { margin-left: auto; }
+.offerx {
+  border: 0; background: none; cursor: pointer; color: var(--muted);
+  font-size: 18px; line-height: 1; padding: 0 2px;
+}
+.offerx:hover { color: var(--ink); }
+
+/* --- operator: controls, chart, drill-down -------------------------- */
+
+.controls { display: flex; gap: 10px; flex-wrap: wrap; }
+.ctl { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; }
+.ctl > span { font-size: 12px; color: var(--muted); }
+.ctl .in { min-height: 42px; }
+
+.metriclink {
+  cursor: pointer; text-align: left; font: inherit; color: inherit;
+  border: 1px solid var(--line);
+}
+.metriclink:hover { border-color: var(--slate); }
+.metrichint {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11.5px; color: var(--muted); margin: 6px 0 0;
+}
+.metriclink:hover .metrichint { color: var(--blue); }
+.cardactive { border: 2px solid var(--slate); }
+
+.chart {
+  display: flex; align-items: flex-end; gap: 2px;
+  height: 150px; margin: 4px 0 6px;
+}
+.chartcol {
+  display: flex; flex-direction: column; align-items: center; height: 100%;
+  border: 0; background: none; padding: 0 0 2px; cursor: pointer; font: inherit;
+  border-radius: 6px; color: var(--ink);
+}
+.chartcol:hover { background: rgba(22,25,27,.05); }
+.chartcol:hover .barreported { background: rgba(22,25,27,.22); }
+.chartcol-on { background: rgba(31,90,168,.1); }
+.chartcol-on .chartvalue { color: var(--blue); font-weight: 600; }
+.chartcol-on .chartlabel { color: var(--ink); font-weight: 500; }
+.chartvalue {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted);
+  padding-bottom: 3px;
+}
+.barstack { flex: 1; width: 100%; display: flex; align-items: flex-end; padding: 0 2px; }
+.barreported {
+  width: 100%; background: rgba(22,25,27,.14); border-radius: 3px 3px 0 0;
+  display: flex; align-items: flex-end; min-height: 2px;
+}
+.barfixed { width: 100%; background: var(--green); border-radius: 3px 3px 0 0; }
+.chartlabel { font-size: 10px; color: var(--muted); padding-top: 5px; }
+
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.swatch-fixed { background: var(--green); }
+.swatch-open { background: rgba(22,25,27,.14); }
+
+.typerow { display: flex; align-items: center; gap: 10px; }
+.typename { font-size: 13px; flex: 0 0 108px; }
+.typebar { flex: 1; height: 8px; background: rgba(22,25,27,.07); border-radius: 4px; overflow: hidden; }
+.typebar > div { height: 100%; background: var(--blue); border-radius: 4px; }
+.typecount { flex: 0 0 28px; text-align: right; color: var(--muted); }
+
+@media (prefers-color-scheme: dark) {
+  .barreported, .swatch-open { background: rgba(232,232,227,.16); }
+  .typebar { background: rgba(232,232,227,.1); }
+}
+
+/* --- escalation to an external trade -------------------------------- */
+
+.extcard {
+  background: rgba(31,90,168,.07);
+  border-color: rgba(31,90,168,.28);
+}
+.extcard .cardtitle { color: var(--blue); }
+
+
+/* --- month detail panel -------------------------------------------- */
+
+.legendhint { margin-left: auto; font-style: italic; }
+.monthpanel { border-color: rgba(31,90,168,.3); }
+
+.monthstats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); gap: 8px;
+}
+.monthstats > div { display: flex; flex-direction: column; gap: 1px; }
+.big2 { font-size: 20px; font-weight: 500; letter-spacing: -.02em; }
+.monthstats .muted { font-size: 11.5px; }
+
+.monthrow {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 10px; border-bottom: 0.5px solid var(--line);
+}
+.monthobj { font-size: 13px; }
+.monthrow > .pill { margin-left: auto; }
+
+@media (prefers-color-scheme: dark) {
+  .chartcol:hover { background: rgba(232,232,227,.06); }
+  .chartcol:hover .barreported { background: rgba(232,232,227,.26); }
+  .chartcol-on { background: rgba(107,164,234,.14); }
+}
+
+/* --- about ---------------------------------------------------------- */
+
+.aboutlink {
+  align-self: center; display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 0; padding: 6px 4px; cursor: pointer;
+  font: inherit; font-size: 13px; color: var(--muted);
+}
+.aboutlink:hover { color: var(--ink); }
+
+.about { max-width: 520px; margin: 0 auto; text-align: center; }
+.about .linkback { align-self: flex-start; text-align: left; }
+
+.aboutmark {
+  align-self: center; display: grid; place-items: center;
+  width: 62px; height: 62px; color: var(--ink);
+}
+.abouttitle { font-size: 26px; letter-spacing: -.03em; margin: 0; }
+.aboutlead { font-size: 15px; line-height: 1.6; margin: 0; color: #33383b; }
+
+.aboutcard {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px; text-align: left; display: flex; flex-direction: column; gap: 6px;
+}
+.aboutcardtitle {
+  display: flex; align-items: center; gap: 7px; margin: 0;
+  font-size: 14.5px; font-weight: 600; color: var(--amber);
+}
+.aboutcard .muted { font-size: 13.5px; line-height: 1.55; }
+
+.aboutfooter { font-size: 12.5px; color: var(--muted); margin: 4px 0 0; }
+.abouttag {
+  font-size: 19px; font-weight: 600; letter-spacing: -.02em;
+  color: var(--amber); line-height: 1.35; margin: 8px 0 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .aboutlead { color: #c9cdd0; }
+}
+
+/* --- grouped report list -------------------------------------------- */
+
+.grpcount {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  background: rgba(22,25,27,.09); color: var(--muted);
+  padding: 1px 6px; border-radius: 99px; margin-left: 4px; letter-spacing: 0;
+}
+.linkmore {
+  align-self: flex-start; background: none; border: 0; padding: 6px 0;
+  font: inherit; font-size: 13px; color: var(--blue); cursor: pointer;
+}
+@media (prefers-color-scheme: dark) {
+  .grpcount { background: rgba(232,232,227,.12); }
+}
+
+
+/* --- brand mark ----------------------------------------------------- */
+
+.brand svg { flex: none; }
+.brandbtn { display: flex; align-items: center; gap: 8px; }
+
+/* --- admin ---------------------------------------------------------- */
+
+.warnline { color: var(--amber); }
+.cardmuted { opacity: .6; }
+.roomrowedit { gap: 6px; align-items: stretch; }
+.roomcodein { flex: 0 0 74px; }
+.roomrowedit .in { min-height: 42px; }
+.unitroom {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-top: 0.5px solid var(--line); font-size: 13.5px;
+}
+.unitroom > .muted { margin-left: auto; }
+
+/* --- bell and notifications ----------------------------------------- */
+
+.bellbtn { position: relative; }
+.bellcount {
+  position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px;
+  display: grid; place-items: center; padding: 0 3px;
+  background: var(--yellow); color: #2a1f02; border-radius: 99px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 500;
+}
+
+.notifrow {
+  display: flex; align-items: flex-start; gap: 9px; width: 100%;
+  padding: 11px 12px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 8px; cursor: pointer; font: inherit; text-align: left; color: var(--ink);
+}
+.notifrow:hover { border-color: var(--slate); }
+.notifread { opacity: .62; }
+.notifdot {
+  flex: none; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--yellow); margin-top: 6px;
+}
+.notifread .notifdot { display: none; }
+.notifbody { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.notiftext { margin: 0; font-size: 14px; }
+.notifwhen { font-size: 11px; }
+
+/* --- account page --------------------------------------------------- */
+
+.whobtn {
+  border: 1px solid rgba(255,255,255,.22); border-radius: 6px;
+  padding: 7px 10px; min-height: 34px; background: none; cursor: pointer;
+  font: inherit; font-size: 13px; color: rgba(242,242,238,.85);
+}
+.whobtn:hover { background: rgba(255,255,255,.08); color: #f2f2ee; }
+
+.accountrow {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 13px 14px; min-height: 50px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  cursor: pointer; font: inherit; font-size: 14.5px; color: var(--ink); text-align: left;
+}
+.accountrow:hover { border-color: var(--slate); }
+.accountrow > span:first-of-type { flex: 1; }
+.accountrow .mono { color: var(--muted); }
+.accountout { color: var(--red); }
+
+/* --- editable building cards ---------------------------------------- */
+
+.cardnamebtn {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: 15px; font-weight: 500; color: var(--ink); text-align: left;
+}
+.cardnamebtn:hover { color: var(--blue); }
+.cardediting { border: 2px solid var(--slate); }
+
+.cardactions { flex-wrap: wrap; gap: 12px; }
+
+
+/* --- safety net -----------------------------------------------------
+   Every button in the app inherits the page font. `font: inherit` does not
+   carry colour, so any button that forgets an explicit one falls back to the
+   browser default and disappears on a dark background. This catches the next
+   one before it ships. */
+.app button:not([class*="btn-"]):not(.lang):not(.whobtn) { color: inherit; }
+
+/* --- selecting stickers to print ------------------------------------ */
+
+.stickercard { cursor: pointer; font: inherit; color: inherit; text-align: left; }
+.stickerpicked { border: 2px solid var(--blue); border-style: solid; }
+
+@media print {
+  .stickerpicked { border: 1px dashed rgba(22,25,27,.35); }
+}
+
+/* --- queue filters -------------------------------------------------- */
+
+.queuefilters { display: flex; flex-wrap: wrap; gap: 6px; }
+.queuesearch { flex: 1 1 100%; min-height: 44px; }
+.queuesel { flex: 1 1 120px; min-width: 110px; min-height: 42px; font-size: 13.5px; }
+
+/* Native selects default to a light palette in some browsers, which makes the
+   option list unreadable on a dark page. */
+.in, select.in { color-scheme: light dark; }
+
+/* --- landing --------------------------------------------------------- */
+
+.landing { max-width: 380px; margin: 0 auto; text-align: center; padding-top: 6vh; }
+.landingmark { align-self: center; }
+.landingtitle { font-size: 27px; letter-spacing: -.03em; margin: 0; }
+.landingtag {
+  font-size: 15px; font-weight: 500; color: var(--amber);
+  margin: 0 0 6px; letter-spacing: -.01em;
+}
+.landingfoot {
+  display: flex; flex-direction: column; gap: 2px; margin-top: 10px;
+}
+.landingfoot a { text-decoration: none; }
+
+/* --- access codes ---------------------------------------------------- */
+
+.codesheet { display: flex; flex-direction: column; }
+.coderow {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 9px 0; border-bottom: 0.5px solid var(--line);
+}
+.codeplate {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  background: var(--slate); color: #f2f2ee;
+  padding: 3px 8px; border-radius: 4px;
+}
+.codeval {
+  font-size: 15px; font-weight: 500; letter-spacing: .04em; margin-left: auto;
+}
+.coderow .linkmore { flex: 0 0 auto; }
+
+@media print {
+  .noprint { display: none !important; }
+  .coderow { break-inside: avoid; border-bottom: 0.5px solid #999; }
+  .codeval { font-size: 14px; }
+}
+.codewhen { font-size: 11px; }
+
+/* --- password fields ------------------------------------------------- */
+
+.pwwrap { position: relative; display: flex; }
+.pwin { flex: 1; padding-right: 44px; }
+.pweye {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; width: 36px; height: 36px;
+  background: none; border: 0; border-radius: 6px; cursor: pointer;
+  color: var(--muted); font: inherit;
+}
+.pweye:hover { color: var(--ink); background: rgba(22,25,27,.06); }
+.pwstate { font-size: 12.5px; margin: -2px 0 0; display: flex; align-items: center; gap: 5px; }
+.pwbad { color: var(--red); }
+.pwok { color: var(--green); }
+.pwhint { font-size: 12px; }
+
+@media (prefers-color-scheme: dark) {
+  .pweye:hover { background: rgba(232,232,227,.09); }
+}
+
+/* --- operator sidebar ------------------------------------------------ */
+
+/*
+ * The panel is fixed and the content beside it scrolls.
+ *
+ * `--hdr` is the sticky header's height, so the panel starts below it and runs
+ * to the bottom of the viewport rather than ending wherever its own content
+ * does — which is what made it read as a floating box.
+ */
+/*
+ * The panel is flush to the left edge of the window, not a card floating inside
+ * a centred column. That's what made it read as a box with a gap beside it.
+ *
+ * So the operator view opts out of `main`'s max-width and centring: the panel
+ * hugs the edge, and the content beside it keeps its own padding and a readable
+ * maximum.
+ */
+.opshell { display: flex; gap: 0; align-items: flex-start; }
+.sidebar {
+  width: 206px; flex: none;
+  position: sticky; top: var(--hdr);
+  height: calc(100vh - var(--hdr));
+  overflow-y: auto;
+  background: var(--card);
+  border: 0; border-right: 1px solid var(--line); border-radius: 0;
+  padding: 16px 10px; display: flex; flex-direction: column; gap: 2px;
+}
+.opmain { padding: 20px 20px 64px; max-width: 1180px; }
+.sborg { padding: 0 8px 13px; }
+.sborgrole {
+  font-size: 9.5px; color: var(--muted); letter-spacing: .06em; margin: 0 0 2px;
+  text-transform: uppercase;
+}
+.sborgname { font-size: 11.5px; color: var(--ink); margin: 0; }
+
+.sbnav {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 9px 10px; border: 0; background: none; border-radius: 7px;
+  cursor: pointer; font: inherit; font-size: 12.5px; color: var(--muted);
+  text-align: left;
+}
+.sbnav:hover { color: var(--ink); background: rgba(22,25,27,.05); }
+.sbnav-on { background: var(--slate); color: #f2f2ee; font-weight: 500; }
+.sbnav-on:hover { background: var(--slate); color: #f2f2ee; }
+
+.sbsplit { margin-top: 8px; padding-top: 9px; border-top: 1px solid var(--line); }
+.sbfoot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
+.opmain { flex: 1; min-width: 0; }
+
+@media (prefers-color-scheme: dark) {
+  .sbnav:hover { background: rgba(232,232,227,.07); }
+}
+
+/* A phone still needs to get around, so the panel becomes a strip rather
+   than vanishing behind a hamburger. */
+@media (max-width: 720px) {
+  .opshell { flex-direction: column; gap: 10px; }
+  .sidebar {
+    width: 100%; position: static; height: auto; overflow-y: visible;
+    flex-direction: row; overflow-x: auto;
+    padding: 8px; gap: 4px; align-items: center;
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  .opmain { padding: 0; }
+  main.opview { padding: 14px 14px 56px; }
+  .sborg { display: none; }
+  .sbnav { width: auto; white-space: nowrap; padding: 8px 11px; }
+  .sbsplit, .sbfoot {
+    margin: 0; padding: 0; border: 0; border-left: 1px solid var(--line);
+    padding-left: 4px;
+  }
+}
+
+/* --- dashboard header and metric extras ------------------------------ */
+
+.dashhead { flex-wrap: wrap; gap: 8px; }
+.dashctl { flex-wrap: wrap; gap: 6px; }
+.ctlnarrow { min-height: 38px; font-size: 13px; padding: 6px 9px; width: auto; }
+.btn-sm { min-height: 38px; padding: 6px 11px; font-size: 13px; }
+
+.metricdelta { font-size: 11px; }
+.deltagood { color: var(--green); }
+.deltabad { color: var(--red); }
+.metricwarn { color: var(--amber); }
+
+.chartrow { align-items: center; gap: 10px; }
+.chartname { flex: 1; font-size: 13px; }
+.tabs-sm .tab { min-height: 34px; font-size: 12px; padding: 5px 10px; }
+
+/* --- line chart ------------------------------------------------------ */
+
+.linechart { width: 100%; height: 120px; display: block; }
+.chartaxis { display: flex; margin-top: 2px; }
+.axtick {
+  flex: 1; border: 0; background: none; cursor: pointer; padding: 3px 0;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted);
+}
+.axtick[aria-pressed="true"] { color: var(--ink); font-weight: 500; }
+
+/* --- donut ----------------------------------------------------------- */
+
+.donutwrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.donut { width: 116px; height: 116px; flex: none; }
+.donuttotal { font-family: 'IBM Plex Mono', monospace; font-size: 19px; fill: var(--ink); font-weight: 500; }
+.donutcap { font-family: 'IBM Plex Mono', monospace; font-size: 8px; fill: var(--muted); }
+.donutkey { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 3px; }
+.keyrow { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.keyname { flex: 1; }
+
+/* --- repeat faults become links -------------------------------------- */
+
+.repeatlink {
+  width: 100%; text-align: left; cursor: pointer; font: inherit; color: var(--ink);
+  background: var(--card); border: 1px solid var(--line);
+}
+.repeatlink:hover { border-color: var(--slate); }
+
+/* The icon used to wrap onto its own line when the name list was long. */
+.caretakerline { display: flex; align-items: flex-start; gap: 6px; }
+.caretakerline svg { flex: none; margin-top: 3px; }
+
+/* At zero open the fill is zero-width and vanished, leaving that card a
+   different height from the others. The track stays either way. */
+.bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.barfill { height: 5px; border-radius: 3px; min-width: 0; }
+
+/* Four buildings fit one row rather than three-then-one. */
+.bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 9px; }
