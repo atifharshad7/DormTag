@@ -1399,6 +1399,10 @@ route("GET",   "/api/admin/buildings/:id/units",(c) => admin.listUnits(c));
 route("POST",  "/api/admin/buildings/:id/units",(c) => admin.createUnit(c));
 
 route("PATCH", "/api/admin/rooms/:id",          (c) => admin.updateRoom(c));
+route("POST",  "/api/admin/rooms/:id/code",     (c) => admin.regenerateCode(c));
+route("GET",   "/api/admin/buildings/:id/codes",         (c) => admin.listCodes(c));
+route("POST",  "/api/admin/buildings/:id/codes",         (c) => admin.generateCodes(c));
+route("POST",  "/api/admin/buildings/:id/codes/rotate",  (c) => admin.rotateCodes(c));
 route("POST",  "/api/admin/rooms/:id/objects",  (c) => admin.addObjects(c));
 route("DELETE","/api/admin/objects/:id",        (c) => admin.deleteObject(c));
 
@@ -1499,7 +1503,8 @@ route("GET", "/api/session", async ({ p, env }) => {
   if (p.kind === "tenant") {
     const me = await env.DB.prepare(`SELECT email, wants_email FROM tenants WHERE id = ?1`)
       .bind(p.tenantId).first<any>();
-    email = me?.email ?? null;
+    // Placeholder addresses from the code generator are not the resident's.
+    email = me?.email && !String(me.email).endsWith(".invalid") ? me.email : null;
     wantsEmail = me?.wants_email !== 0;
   }
   if (p.kind === "tenant") {

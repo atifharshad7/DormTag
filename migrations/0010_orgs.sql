@@ -64,24 +64,7 @@ ALTER TABLE staff ADD COLUMN is_platform_admin INTEGER NOT NULL DEFAULT 0;
 -- meant. Resident access codes are likewise globally unique, for the same
 -- reason: the code is the whole credential.
 
--- Rebuild the location view with org_id, so scoping a ticket query stays a
--- single condition instead of a join every caller has to remember.
-DROP VIEW IF EXISTS v_ticket_location;
-CREATE VIEW v_ticket_location AS
-SELECT
-  t.id AS ticket_id, t.state, t.reported_at, t.closed_at, t.cause,
-  o.id AS object_id, o.object_type, o.riser, o.ordinal,
-  r.id AS room_id, r.code AS room_code, r.room_type, r.kind AS room_kind, r.label AS room_label,
-  u.id AS unit_id, u.code AS unit_code, u.floor, u.kind AS unit_kind, u.is_common,
-  b.id AS building_id,
-  COALESCE(b.display_code, b.code) AS building_code,
-  b.name AS building_name,
-  b.org_id AS org_id
-FROM tickets t
-JOIN objects   o ON o.id = t.object_id
-JOIN rooms     r ON r.id = o.room_id
-JOIN units     u ON u.id = r.unit_id
-JOIN buildings b ON b.id = u.building_id;
+
 
 -- Notifications need the organisation too. Without it an operator's bell would
 -- show escalations from every organisation, since the only condition on that
@@ -106,3 +89,22 @@ UPDATE orgs SET slug_prefix = '' WHERE id = 'org-demo';
 
 ALTER TABLE buildings ADD COLUMN display_code TEXT;
 UPDATE buildings SET display_code = code WHERE display_code IS NULL;
+
+-- Rebuild the location view with org_id, so scoping a ticket query stays a
+-- single condition instead of a join every caller has to remember.
+DROP VIEW IF EXISTS v_ticket_location;
+CREATE VIEW v_ticket_location AS
+SELECT
+  t.id AS ticket_id, t.state, t.reported_at, t.closed_at, t.cause,
+  o.id AS object_id, o.object_type, o.riser, o.ordinal,
+  r.id AS room_id, r.code AS room_code, r.room_type, r.kind AS room_kind, r.label AS room_label,
+  u.id AS unit_id, u.code AS unit_code, u.floor, u.kind AS unit_kind, u.is_common,
+  b.id AS building_id,
+  COALESCE(b.display_code, b.code) AS building_code,
+  b.name AS building_name,
+  b.org_id AS org_id
+FROM tickets t
+JOIN objects   o ON o.id = t.object_id
+JOIN rooms     r ON r.id = o.room_id
+JOIN units     u ON u.id = r.unit_id
+JOIN buildings b ON b.id = u.building_id;

@@ -226,7 +226,12 @@ export async function tenantEmail(env: Env, tenantId: string): Promise<string | 
     `SELECT email, wants_email FROM tenants WHERE id = ?1`
   ).bind(tenantId).first<any>();
   if (!r || !r.wants_email) return null;
-  return r.email && String(r.email).includes("@") ? r.email : null;
+  const addr = String(r.email ?? "");
+  // Rooms created by the code generator carry a placeholder on the reserved
+  // .invalid domain, because tenants.email is NOT NULL UNIQUE and can't be
+  // relaxed without rebuilding a live table. It is never a real inbox.
+  if (addr.endsWith(".invalid")) return null;
+  return addr.includes("@") ? addr : null;
 }
 
 /** Who a signed-in principal is, for read-state purposes. */

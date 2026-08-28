@@ -5,6 +5,7 @@ import {
   type Locale, type StrKey,
 } from "./lib";
 import { BuildingCard } from "./BuildingEdit";
+import { BuildingCodes } from "./Codes";
 
 type T = (k: StrKey) => string;
 
@@ -258,6 +259,7 @@ function TicketList({ l, t, which, months, building, onBack }: {
 export function OperatorView({ l, t, onStickers }: {
   l: Locale; t: T; onStickers?: (code: string) => void;
 }) {
+  const [codesFor, setCodesFor] = useState<any | null>(null);
   const [months, setMonths] = useState(12);
   const [building, setBuilding] = useState<string | null>(null);
   const [d, setD] = useState<any>(null);
@@ -272,6 +274,11 @@ export function OperatorView({ l, t, onStickers }: {
   }, [months, building]);
 
   useEffect(() => { load(); }, [load]);
+
+  if (codesFor) {
+    return <BuildingCodes l={l} t={t} building={codesFor}
+      onBack={() => { setCodesFor(null); load(); }} />;
+  }
 
   if (drill) {
     return <TicketList l={l} t={t} which={drill} months={months} building={building}
@@ -346,7 +353,8 @@ export function OperatorView({ l, t, onStickers }: {
                 active={building === b.code}
                 onFilter={() => setBuilding(building === b.code ? null : b.code)}
                 onChanged={load}
-                onStickers={onStickers ? () => onStickers(b.code) : undefined} />
+                onStickers={onStickers ? () => onStickers(b.code) : undefined}
+                onCodes={() => setCodesFor(b)} />
             ))}
           </div>
 

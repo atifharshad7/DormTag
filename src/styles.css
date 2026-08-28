@@ -732,3 +732,26 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   display: flex; flex-direction: column; gap: 2px; margin-top: 10px;
 }
 .landingfoot a { text-decoration: none; }
+
+/* --- access codes ---------------------------------------------------- */
+
+.codesheet { display: flex; flex-direction: column; }
+.coderow {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 9px 0; border-bottom: 0.5px solid var(--line);
+}
+.codeplate {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  background: var(--slate); color: #f2f2ee;
+  padding: 3px 8px; border-radius: 4px;
+}
+.codeval {
+  font-size: 15px; font-weight: 500; letter-spacing: .04em; margin-left: auto;
+}
+.coderow .linkmore { flex: 0 0 auto; }
+
+@media print {
+  .noprint { display: none !important; }
+  .coderow { break-inside: avoid; border-bottom: 0.5px solid #999; }
+  .codeval { font-size: 14px; }
+}

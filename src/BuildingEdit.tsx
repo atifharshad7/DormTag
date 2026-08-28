@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Check, X, Pencil, AlertTriangle, Users, Printer } from "lucide-react";
+import { Plus, Check, X, Pencil, AlertTriangle, Users, Printer, KeyRound } from "lucide-react";
 import { api, roomLabel, type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -179,9 +179,10 @@ export function AddUnitForm({ l, t, building, onDone, onCancel }: {
  * Tapping the card filters the dashboard, as before. Editing is behind a pencil
  * so a mis-tap while reading the numbers can't rename a building.
  */
-export function BuildingCard({ l, t, b, active, onFilter, onChanged, onStickers }: {
+export function BuildingCard({ l, t, b, active, onFilter, onChanged, onStickers, onCodes }: {
   l: Locale; t: T; b: any; active: boolean;
-  onFilter: () => void; onChanged: () => void; onStickers?: () => void;
+  onFilter: () => void; onChanged: () => void;
+  onStickers?: () => void; onCodes?: () => void;
 }) {
   const [mode, setMode] = useState<"idle" | "edit" | "unit">("idle");
   const load = Math.min(100, Math.round(((b.open_count ?? 0) / 20) * 100));
@@ -236,6 +237,11 @@ export function BuildingCard({ l, t, b, active, onFilter, onChanged, onStickers 
         {onStickers && (
           <button className="linkmore" onClick={onStickers}>
             <Printer size={13} aria-hidden /> {t("printStickers")}
+          </button>
+        )}
+        {onCodes && (
+          <button className="linkmore" onClick={onCodes}>
+            <KeyRound size={13} aria-hidden /> {t("accessCodes")}
           </button>
         )}
         <button className="linkmore" onClick={onFilter} style={{ marginLeft: "auto" }}>

@@ -159,7 +159,7 @@ export const T = {
   sendLink:        { de: "Link senden",              en: "Send the link" },
   backToSignIn:    { de: "Zurück zur Anmeldung",     en: "Back to sign in" },
   landingTry:      { de: "Demo ausprobieren",        en: "Try the demo" },
-  landingRegister: { de: "Wohnheim registrieren",  en: "Register your dorms" },
+  landingRegister: { de: "Wohnheim registrieren",     en: "Register your halls" },
   landingSignIn:   { de: "Anmelden",                  en: "Sign in" },
   landingAsk:      { de: "Fragen? Schreib uns",       en: "Questions? Get in touch" },
   demoPick:        { de: "Als wen möchtest du schauen?", en: "Who would you like to look as?" },
@@ -312,6 +312,20 @@ export const T = {
   stickers:       { de: "QR-Aufkleber",              en: "QR stickers" },
   printSheet:     { de: "Bogen drucken",             en: "Print sheet" },
   printStickers:   { de: "Aufkleber drucken",        en: "Print stickers" },
+  accessCodes:     { de: "Zugangscodes",             en: "Access codes" },
+  codesFor:        { de: "Codes für",                en: "Codes for" },
+  generateCodes:   { de: "Codes erzeugen",           en: "Generate codes" },
+  rotateCodes:     { de: "Semesterwechsel",          en: "New semester" },
+  rotateWarn:      { de: "Alle bisherigen Codes werden ungültig.", en: "Every existing code stops working." },
+  semesterLabel:   { de: "Semester",                 en: "Semester" },
+  codesIssued:     { de: "Codes erzeugt",            en: "codes issued" },
+  noneMissing:     { de: "Jedes Zimmer hat schon einen Code.", en: "Every room already has a code." },
+  withoutCode:     { de: "ohne Code",                en: "without a code" },
+  printCodes:      { de: "Liste drucken",            en: "Print the list" },
+  newCodeFor:      { de: "Neuer Code",               en: "New code" },
+  codeWarn:        { de: "Das ist eine Liste gültiger Zugänge. Nur ausgedruckt weitergeben.", en: "This is a list of working credentials. Hand it out on paper only." },
+  roomWord:        { de: "Zimmer",                   en: "Room" },
+  codeWord:        { de: "Code",                     en: "Code" },
   allFloors:       { de: "Alle Etagen",              en: "All floors" },
   allRooms:        { de: "Alle Räume",               en: "All rooms" },
   findUnit:        { de: "Wohnung suchen",           en: "Find a unit" },
@@ -660,6 +674,13 @@ export const api = {
   createUnit:       (id: string, unit: unknown) => post(`/admin/buildings/${id}/units`, unit),
   setRoomLabel:     (id: string, label: string) =>
                       call(`/admin/rooms/${id}`, { method: "PATCH", body: JSON.stringify({ label }) }),
+  buildingCodes:    (id: string) => call(`/admin/buildings/${id}/codes`),
+  generateCodes:    (id: string, semester?: string) =>
+                      post(`/admin/buildings/${id}/codes`, semester ? { semester } : {}),
+  rotateCodes:      (id: string, semester: string) =>
+                      post(`/admin/buildings/${id}/codes/rotate`, { semester }),
+  regenerateCode:   (roomId: string) => post(`/admin/rooms/${roomId}/code`),
+
   addObjects:       (roomId: string, objectType: string, count: number) =>
                       post(`/admin/rooms/${roomId}/objects`, { objectType, count }),
 

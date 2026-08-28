@@ -128,6 +128,49 @@ organisation you meant.
 The demo lives in its own organisation with status `demo`, and the seed only ever
 touches that one, so nobody can wipe a real estate by finding the endpoint.
 
+## Resident access codes
+
+An operator generates a code per bedroom, prints the sheet, and the
+Studierendenwerk hands them out with the keys. Format:
+
+```
+B312-Z2-WS26-K7M2
+```
+
+Room so whoever distributes can match code to door, semester so a stale sheet is
+obvious at a glance, random tail as the actual secret. The tail's alphabet
+excludes `O`, `0`, `I`, `1` and `L`, because somebody reads this off paper and
+types it on a phone.
+
+A code belongs to a **tenancy**, not a person: "whoever holds Z2 this semester".
+Otherwise last year's occupant keeps access to this year's occupant's room. The
+semester in the string is a **label, never authorisation** — an old code stops
+working because its tenancy ended, not because it says 25.
+
+**Bedrooms only.** "Private" would have been the obvious filter and is wrong: a
+studio's own bathroom is private to that flat and still has no resident. A test
+caught that.
+
+**Generate is safe to press repeatedly**, deliberately, because an operator will
+press it whenever they're unsure. It issues codes only for bedrooms with no live
+tenancy, so after adding rooms it covers exactly the new ones and leaves every
+existing resident alone. **Rotate** ends every tenancy in a building and issues a
+fresh set; the old codes die the same day. **Regenerate** does one room, for the
+resident who lost theirs.
+
+Two decisions worth naming. Codes are stored in **plain text**, so a sheet can be
+reprinted — the same reasoning as a hotel key card, where recoverable beats
+unrecoverable-if-stolen and revoking is one click. The cost is that a database
+dump exposes live codes. And the sheet is **re-viewable** behind a deliberate
+click with a warning, because the alternative pushes people to screenshot it.
+
+**No names, no email addresses at creation.** The account is a room, so nothing
+personal is held until a resident volunteers an address themselves. That's a far
+easier ask of a Studierendenwerk than importing five hundred students.
+`tenants.email` is `NOT NULL UNIQUE` and can't be relaxed without rebuilding a
+live table, so generated rooms carry a placeholder on the reserved `.invalid`
+domain, which the mail sender and the UI both treat as "no address".
+
 ## Retention
 
 Closed tickets are **never deleted**. The room-and-cause history is the entire reason the operator dashboard is worth anything, and once the reporter link is gone, "the drain in C-204 blocked twice" isn't personal data.
@@ -152,7 +195,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 392 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 427 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure
@@ -172,6 +215,7 @@ src/
   Notifications.tsx  # the bell and its panel
   Landing.tsx        # front door, demo picker, signup, waiting-for-approval
   Platform.tsx       # the platform console: which organisations exist
+  Codes.tsx          # resident access codes and the printable sheet
   SlotPicker.tsx     # appointment time picker
   Scanner.tsx        # in-app QR scanner
   Logo.tsx           # the house-and-QR mark
@@ -263,10 +307,12 @@ The site auto-builds on every push to `main` once you've connected the repo unde
 * **Photo upload.** Needs R2 and a `photo_key` column.
 * **Rate limiting** on the public report endpoint. An open endpoint is an open spam endpoint.
 * **Password reset and access-code recovery.** Both need an email sender.
-* **Bulk unit creation.** Adding 240 rooms one unit at a time is the obvious gap in the admin screen.
+* **Bulk unit creation.** Adding 240 rooms one unit at a time is the obvious gap
+  in the admin screen: it should take a floor range, units per floor and a layout,
+  and generate from the pattern.
+* **Impressum and Datenschutzerklärung.** Legally required for a German online
+  service and currently absent.
 * **Archiving a building.** There is currently no way to remove one.
-* **Resident accounts at scale.** Codes still come only from the seed; generating
-  and rotating them per tenancy is the last gap before a pilot.
 * **A contractor portal.** Commissioning is recorded, but the firm has no login.
 * **Scheduling with an external firm.** `slot_offers.staff_id` points at staff, so the caretaker still offers the times. In practice he often attends to let them in, so it half works, but it's a modelling gap rather than a decision.
 
