@@ -114,6 +114,8 @@ export const T = {
   toCommission:    { de: "zu beauftragen",           en: "to commission" },
   giveBack:        { de: "Zurück an Hausmeister",    en: "Return to caretaker" },
   externalNote:    { de: "Ein Fachbetrieb übernimmt das.", en: "An external firm is taking this on." },
+  firmWillConfirm: { de: "Sobald der Betrieb einen Termin bestätigt, kannst du ihn hier wählen.", en: "Once the firm confirms a time, you'll be able to choose it here." },
+  awaitingCommission: { de: "Die Verwaltung beauftragt gerade einen Betrieb.", en: "The operator is commissioning a firm." },
   period:          { de: "Zeitraum",                 en: "Period" },
   range1:          { de: "Letzter Monat",            en: "Last month" },
   range3:          { de: "Letzte 3 Monate",          en: "Last 3 months" },

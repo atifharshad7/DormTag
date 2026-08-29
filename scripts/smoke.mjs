@@ -622,6 +622,15 @@ ok("the firm and reference are recorded",
 ok("commissioning is in the audit trail",
   escDetail.events.some((e) => e.reason === "commissioned"));
 
+ok("an escalated ticket offers the resident no times to pick", await (async () => {
+  // The picker used to render empty here, which reads as broken: escalating
+  // cancels the caretaker's appointment and withdraws its slot.
+  const d = (await req(`/api/tickets/${escT}`, { cookie: tenant })).json;
+  return d.escalation !== null && d.slots.length === 0;
+})());
+ok("the resident can tell whether a firm has been commissioned yet",
+  "commissioned_at" in ((await req(`/api/tickets/${escT}`, { cookie: tenant })).json.escalation ?? {}));
+
 section("escalation on the dashboard");
 const escDash = (await req("/api/dashboard?months=12", { cookie: operator })).json;
 ok("the external metric counts it", escDash.metrics.external >= 1, `${escDash.metrics.external}`);
@@ -1803,6 +1812,22 @@ ok("guessing many different codes gets locked out", await (async () => {
 ok("a valid code is refused too while the caller is locked out",
   [401, 429].includes((await req("/api/auth/resident", { method: "POST",
     body: { code: over.json.code } })).status));
+
+section("every page has a URL")
+// Deep links have to serve the app shell rather than 404, or a refresh on
+// /dashboard/open drops the person on an error page.
+for (const path of ["/dashboard", "/dashboard/open", "/dashboard/repeat/C-S2/DRAIN",
+                    "/buildings", "/buildings/B/codes", "/staff", "/orgs",
+                    "/account", "/account/password", "/stickers/B",
+                    "/ticket/abc", "/signin", "/signup", "/demo", "/about"]) {
+  const r = await req(path);
+  ok(`${path} serves the app`, r.status === 200);
+}
+ok("an unknown path still serves the app rather than erroring",
+  (await req("/nonsense/deep/path")).status === 200);
+// API paths must not be swallowed by the single-page fallback.
+ok("an unknown API path is still a 404",
+  (await req("/api/nothing-here")).status === 404);
 
 section("static assets");
 const page = await fetch(BASE + "/");

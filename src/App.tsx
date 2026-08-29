@@ -15,6 +15,7 @@ import { ScannerModal } from "./Scanner";
 import { SlotPicker, type SlotRules } from "./SlotPicker";
 import { OperatorView } from "./Operator";
 import { Logo } from "./Logo";
+import { parse, href, readQuery, queryString, type Route } from "./router";
 import { StaffPage, BuildingsPage, FirstRunSetup, AcceptInvite, ForgotPassword, ResetPassword, ChangePassword } from "./Admin";
 import { Account } from "./Account";
 import { Landing, DemoPicker, SignUpOrg, OrgWaiting } from "./Landing";
@@ -53,9 +54,11 @@ function Err({ msg, onClose }: any) {
 /* resident                                                         */
 /* ---------------------------------------------------------------- */
 
-function TenantView({ l, t, tickets, reload, home, onScan, recentDays, initialTicket }: {
+function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicket, onOpenTicket }: {
   l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>;
-  home: any; onScan: () => void; recentDays: number; initialTicket?: string | null;
+  home: any; onScan: () => void; recentDays: number;
+  /* The open ticket comes from the URL, so back closes it and a link opens it. */
+  openTicket: string | null; onOpenTicket: (id: string | null) => void;
 }) {
   const [screen, setScreen] = useState<"list" | "scan" | "object" | "symptom">("list");
   const [rows, setRows] = useState<any[]>([]);
@@ -63,7 +66,8 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, initialTi
   const [objectId, setObjectId] = useState<string | null>(null);
   const [symptom, setSymptom] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [openId, setOpenId] = useState<string | null>(initialTicket ?? null);
+  const openId = openTicket;
+  const setOpenId = onOpenTicket;
   const [flash, setFlash] = useState("");
   const [showOlder, setShowOlder] = useState(false);
   const [err, setErr] = useState("");
@@ -287,18 +291,27 @@ function TenantTicket({ l, t, id, onBack }: any) {
         )}
       </div>
 
-      {d.escalation ? (
-        <div className="card extcard">
-          <p className="cardtitle">{t("externalNote")}</p>
-          <p className="muted">{tradeLabel(d.escalation.trade, l)}</p>
-        </div>
-      ) : d.ticket.state === "accepted" && d.events.length > 2 && (
+      {!d.escalation && d.ticket.state === "accepted" && d.events.length > 2 && (
         <div className="card">
           <p className="cardtitle">{t("awaitingTimes")}</p>
         </div>
       )}
 
-      {d.ticket.state === "slots_offered" && (
+      {/* Escalating cancels the caretaker's appointment and withdraws its slot,
+          so the picker rendered with nothing in it — which reads as broken. The
+          two states are worth distinguishing: waiting on the operator to
+          commission a firm is different news from waiting on the firm. */}
+      {d.escalation && (
+        <div className="card extcard">
+          <p className="cardtitle">{t("externalNote")}</p>
+          <p className="muted">{tradeLabel(d.escalation.trade, l)}</p>
+          <p className="muted">
+            {d.escalation.commissioned_at ? t("firmWillConfirm") : t("awaitingCommission")}
+          </p>
+        </div>
+      )}
+
+      {!d.escalation && d.ticket.state === "slots_offered" && (
         <div className="card">
           <p className="cardtitle">{t("pickSlot")}</p>
           <p className="muted">{d.canBook ? t("pickSlotHint") : t("onlyPrimary")}</p>
@@ -312,7 +325,7 @@ function TenantTicket({ l, t, id, onBack }: any) {
         </div>
       )}
 
-      {appt && (
+      {appt && !d.escalation && (
         <div className="card">
           <p className="cardtitle"><Calendar size={15} aria-hidden /> {fmtDT(appt.starts_at, l)}</p>
           {d.canBook && (
@@ -341,11 +354,13 @@ function TenantTicket({ l, t, id, onBack }: any) {
 /* caretaker                                                        */
 /* ---------------------------------------------------------------- */
 
-function StaffView({ l, t, tickets, reload, rules, initialTicket }: {
+function StaffView({ l, t, tickets, reload, rules, openTicket, onOpenTicket }: {
   l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>;
-  rules: SlotRules; initialTicket?: string | null;
+  rules: SlotRules;
+  openTicket: string | null; onOpenTicket: (id: string | null) => void;
 }) {
-  const [openId, setOpenId] = useState<string | null>(initialTicket ?? null);
+  const openId = openTicket;
+  const setOpenId = onOpenTicket;
   const [q, setQ] = useState("");
   const [buildingF, setBuildingF] = useState("");
   const [stateF, setStateF] = useState("");
@@ -703,25 +718,33 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
 /* ---------------------------------------------------------------- */
 
 /** Minimal path router: /r/:slug is a scanned sticker, /t/:token a report link. */
-function readRoute() {
-  const m = location.pathname.match(/^\/(r|t|setup|reset)\/([A-Za-z0-9_-]+)\/?$/);
-  if (!m) return { kind: "app" as const };
-  if (m[1] === "r") return { kind: "scan" as const, slug: m[2] };
-  if (m[1] === "setup") return { kind: "invite" as const, token: m[2] };
-  if (m[1] === "reset") return { kind: "reset" as const, token: m[2] };
-  return { kind: "token" as const, token: m[2] };
-}
-
 export default function App() {
   const [l, setL] = useState<Locale>(() => (navigator.language.startsWith("de") ? "de" : "en"));
   const [session, setSession] = useState<any>(null);
   const [tickets, setTickets] = useState<any[]>([]);
-  const [route, setRoute] = useState(readRoute);
-  const [screen, setScreen] =
-    useState<
-    "main" | "stickers" | "sent" | "account" | "about" | "password" | "forgot" |
-    "landing" | "demo" | "signup" | "platform" | "staff" | "buildings"
-  >("landing");
+  const [route, setRoute] = useState<Route>(() => parse());
+  const [query, setQuery] = useState(readQuery);
+
+  /**
+   * The only way to change where you are.
+   *
+   * pushState plus a state update, with a popstate listener so the browser's
+   * back and forward buttons work. Everything used to be React state, so back
+   * left the app entirely and a refresh lost your place.
+   */
+  const navigate = useCallback((to: Route, q?: string, replace = false) => {
+    const url = href(to) + (q ?? "");
+    if (replace) history.replaceState({}, "", url);
+    else history.pushState({}, "", url);
+    setRoute(to);
+    setQuery(readQuery());
+  }, []);
+
+  useEffect(() => {
+    const onPop = () => { setRoute(parse()); setQuery(readQuery()); };
+    addEventListener("popstate", onPop);
+    return () => removeEventListener("popstate", onPop);
+  }, []);
   const [bellOpen, setBellOpen] = useState(false);
   const [openTicket, setOpenTicket] = useState<string | null>(null);
   const [stickerBuilding, setStickerBuilding] = useState<string | null>(null);
@@ -729,11 +752,7 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [homeKey, setHomeKey] = useState(0);
 
-  const goScan = useCallback((slug: string) => {
-    history.pushState({}, "", `/r/${slug}`);
-    setRoute({ kind: "scan", slug });
-    setScreen("main");
-  }, []);
+  const goScan = useCallback((slug: string) => navigate({ kind: "scan", slug }), [navigate]);
 
   /**
    * The logo is "home". Each role view keeps its own screen state, so bumping
@@ -756,10 +775,15 @@ export default function App() {
   });
 
   const signedIn = !!session && session.principal.kind !== "anonymous";
+
   useEffect(() => {
-    // Landing screens only make sense signed out; drop back to the app.
-    if (signedIn && ["landing", "demo", "signup", "forgot"].includes(screen)) setScreen("main");
-  }, [signedIn, screen]);
+    // Signing in on /signin or /demo should leave you at your own home rather
+    // than on a page that no longer applies. Replace rather than push, so back
+    // doesn't return to the sign-in form you just used.
+    if (signedIn && ["signin", "demo", "signup", "forgot", "about"].includes(route.kind)) {
+      navigate({ kind: "home" }, "", true);
+    }
+  }, [signedIn, route.kind, navigate]);
   const { items: notifItems, unread, reload: reloadNotifs } = useNotifications(signedIn);
 
   // Bumped by goHome and used as OperatorView's key. The operator view holds its
@@ -770,21 +794,13 @@ export default function App() {
   const [opKey, setOpKey] = useState(0);
 
   const goHome = useCallback(() => {
-    history.pushState({}, "", "/");
-    setRoute({ kind: "app" });
-    setScreen("main");
+    navigate({ kind: "home" });
     setSent(null);
     setHomeKey((n) => n + 1);
     setOpKey((n) => n + 1);
-    setStickerBuilding(null);
-    setOpenTicket(null);
-  }, []);
+  }, [navigate]);
 
-  const goApp = useCallback(() => {
-    history.pushState({}, "", "/");
-    setRoute({ kind: "app" });
-    setScreen("main");
-  }, []);
+  const goApp = useCallback(() => navigate({ kind: "home" }), [navigate]);
   const t = (k: StrKey) => (T[k] as any)?.[l] ?? k;
 
   const loadSession = useCallback(async () => {
@@ -817,11 +833,12 @@ export default function App() {
    * for several screen values. Two conditions that had to agree, and didn't —
    * hence a centred column with a gap beside the panel.
    */
-  const otherScreens = ["stickers", "account", "password", "about", "platform", "sent",
-                        "staff", "buildings"];
-  const operatorOwnView =
-    kind === "operator" && route.kind === "app" && !otherScreens.includes(screen);
-  const wideView = kind === "operator" || screen === "stickers";
+  // Exactly the routes OperatorView renders for, which is the only view that
+  // brings its own left panel and manages its own width.
+  const OPERATOR_OWN: Route["kind"][] =
+    ["home", "dashboard", "drill", "month", "repeat", "codes", "ticket"];
+  const operatorOwnView = kind === "operator" && OPERATOR_OWN.includes(route.kind);
+  const wideView = kind === "operator" || route.kind === "stickers";
 
   const whoLabel =
     kind === "tenant" && session.home
@@ -844,7 +861,8 @@ export default function App() {
                   panel, so having it here as well was one of two ways to do
                   the same thing. */}
               {kind === "staff" && (
-                <button className="lang" onClick={() => { setStickerBuilding(null); setScreen(screen === "stickers" ? "main" : "stickers"); }}
+                <button className="lang"
+                  onClick={() => navigate(route.kind === "stickers" ? { kind: "home" } : { kind: "stickers" })}
                   aria-label={t("stickers")}><QrCode size={14} aria-hidden /></button>
               )}
               <BellButton t={t} unread={unread} onClick={() => setBellOpen(true)} />
@@ -852,7 +870,7 @@ export default function App() {
                   the organisation and the person. Keeping it here as well meant
                   the same name twice on one screen. */}
               {kind !== "operator" && (
-                <button className="who whobtn" onClick={() => setScreen("account")}
+                <button className="who whobtn" onClick={() => navigate({ kind: "account" })}
                   aria-label={t("account")}>
                   <RoleIcon size={14} strokeWidth={1.75} aria-hidden /> {whoLabel}
                 </button>
@@ -870,81 +888,105 @@ export default function App() {
       </header>
 
       <main className={operatorOwnView ? "opview" : wideView ? "wide" : "narrow"}>
-        {route.kind === "reset" ? (
-          <ResetPassword t={t} token={route.token}
-            onDone={async () => { goApp(); await loadSession(); }} />
-        ) : route.kind === "invite" ? (
-          <AcceptInvite t={t} token={route.token} onDone={async () => { goApp(); await loadSession(); }} />
-        ) : kind === "anonymous" && session.needsSetup ? (
-          <FirstRunSetup t={t} onDone={loadSession} />
-        ) : kind === "anonymous" && screen === "forgot" ? (
-          <ForgotPassword t={t} onBack={() => setScreen("main")} />
-        ) : kind === "anonymous" && screen === "landing" ? (
-          <Landing l={l} t={t}
-            onDemo={() => setScreen("demo")}
-            onSignUp={() => setScreen("signup")}
-            onSignIn={() => setScreen("main")}
-            onAbout={() => setScreen("about")} />
-        ) : kind === "anonymous" && screen === "demo" ? (
-          <DemoPicker t={t} onBack={() => setScreen("landing")} onDone={loadSession} />
-        ) : kind === "anonymous" && screen === "signup" ? (
-          <SignUpOrg t={t} onBack={() => setScreen("landing")} />
-        ) : kind === "anonymous" && screen === "about" ? (
-          <About t={t} onBack={() => setScreen("landing")} />
-        ) : session.orgBlocked ? (
-          // Signed in, but the organisation isn't switched on yet.
-          <OrgWaiting t={t} status={session.org?.status ?? "pending"}
-            onSignOut={async () => { await api.logout(); setScreen("landing"); await loadSession(); }} />
-        ) : screen === "platform" ? (
-          <Platform l={l} t={t} onBack={() => setScreen("account")} />
-        ) : screen === "account" ? (
-          <Account l={l} t={t} session={session}
-            onBack={() => setScreen("main")}
-            onLanguage={() => setL(l === "de" ? "en" : "de")}
-            onPassword={() => setScreen("password")}
-            onPlatform={session.principal.isPlatformAdmin ? () => setScreen("platform") : undefined}
-            onAbout={() => setScreen("about")}
-            onSignOut={async () => { await api.logout(); setScreen("landing"); await loadSession(); }} />
-        ) : screen === "password" ? (
-          <ChangePassword t={t} onBack={() => setScreen("account")} />
-        ) : screen === "about" ? (
-          <About t={t} onBack={() => setScreen("account")} />
-        ) : screen === "staff" && kind === "operator" ? (
-          <StaffPage l={l} t={t} me={session.principal.staffId}
-            onBack={() => setScreen("main")} />
-        ) : screen === "buildings" && kind === "operator" ? (
-          <BuildingsPage l={l} t={t} onBack={() => setScreen("main")} />
-        ) : screen === "sent" ? (
-          <ReportDone t={t} token={sent?.token} onHome={goApp} />
-        ) : route.kind === "scan" ? (
-          <ScanLanding
-            l={l} t={t} slug={route.slug} principal={session.principal}
-            onSignIn={goApp}
-            onDone={(id, token) => { setSent({ id, token }); setScreen("sent"); reload(); }}
-          />
-        ) : screen === "stickers" && isStaffKind ? (
-          <StickerSheet l={l} t={t} buildings={session.buildings} initialBuilding={stickerBuilding}
-            onBack={() => { setStickerBuilding(null); setScreen("main"); }} />
-        ) : kind === "anonymous" ? (
-          <SignIn l={l} t={t} session={session} onDone={loadSession}
-            onForgot={() => setScreen("forgot")} onBack={() => setScreen("landing")} />
-        ) : kind === "tenant" ? (
-          <TenantView key={homeKey + ":" + (openTicket ?? "")} l={l} t={t} tickets={tickets} reload={reload}
-            home={session.home} onScan={() => setScanning(true)}
-            recentDays={session.retention?.residentRecentDays ?? 90} initialTicket={openTicket} />
-        ) : kind === "staff" ? (
-          <StaffView key={homeKey + ":" + (openTicket ?? "")} l={l} t={t} tickets={tickets} reload={reload}
-            rules={session.slotRules} initialTicket={openTicket} />
-        ) : (
-          <OperatorView key={opKey} l={l} t={t} session={session}
-            onStickers={(code) => { setStickerBuilding(code || null); setScreen("stickers"); }}
-            onAccount={(sec) => {
-              if (sec === "staff") setScreen("staff");
-              else if (sec === "buildings") setScreen("buildings");
-              else if (sec === "orgs") setScreen("platform");
-              else setScreen("account");
-            }} />
-        )}
+        {/*
+          One switch on the route, rather than a chain testing two overlapping
+          pieces of state. Every screen has a URL now, so back, forward and
+          refresh all behave, and a view can be linked to.
+        */}
+        {(() => {
+          const r = route;
+
+          /* Link paths first: they work whoever is holding them. */
+          if (r.kind === "reset") {
+            return <ResetPassword t={t} token={r.token}
+              onDone={async () => { goApp(); await loadSession(); }} />;
+          }
+          if (r.kind === "invite") {
+            return <AcceptInvite t={t} token={r.token}
+              onDone={async () => { goApp(); await loadSession(); }} />;
+          }
+          if (r.kind === "scan") {
+            return <ScanLanding l={l} t={t} slug={r.slug} principal={session.principal}
+              onSignIn={goApp}
+              onDone={(id, token) => { setSent({ id, token }); navigate({ kind: "sent" }); reload(); }} />;
+          }
+
+          /* An empty database has nobody to sign in as. */
+          if (kind === "anonymous" && session.needsSetup) {
+            return <FirstRunSetup t={t} onDone={loadSession} />;
+          }
+
+          if (kind === "anonymous") {
+            if (r.kind === "forgot") return <ForgotPassword t={t} onBack={() => navigate({ kind: "home" })} />;
+            if (r.kind === "demo") return <DemoPicker t={t} onBack={() => navigate({ kind: "home" })} onDone={loadSession} />;
+            if (r.kind === "signup") return <SignUpOrg t={t} onBack={() => navigate({ kind: "home" })} />;
+            if (r.kind === "about") return <About t={t} onBack={() => navigate({ kind: "home" })} />;
+            if (r.kind === "signin") {
+              return <SignIn l={l} t={t} session={session} onDone={loadSession}
+                onForgot={() => navigate({ kind: "forgot" })}
+                onBack={() => navigate({ kind: "home" })} />;
+            }
+            return <Landing l={l} t={t}
+              onDemo={() => navigate({ kind: "demo" })}
+              onSignUp={() => navigate({ kind: "signup" })}
+              onSignIn={() => navigate({ kind: "signin" })}
+              onAbout={() => navigate({ kind: "about" })} />;
+          }
+
+          /* Signed in, but the organisation isn't switched on yet. */
+          if (session.orgBlocked) {
+            return <OrgWaiting t={t} status={session.org?.status ?? "pending"}
+              onSignOut={async () => { await api.logout(); navigate({ kind: "home" }); await loadSession(); }} />;
+          }
+
+          if (r.kind === "sent") return <ReportDone t={t} token={sent?.token} onHome={goApp} />;
+
+          if (r.kind === "account") {
+            return <Account l={l} t={t} session={session}
+              onBack={goApp}
+              onLanguage={() => setL(l === "de" ? "en" : "de")}
+              onPassword={() => navigate({ kind: "password" })}
+              onPlatform={session.principal.isPlatformAdmin ? () => navigate({ kind: "orgs" }) : undefined}
+              onAbout={() => navigate({ kind: "about" })}
+              onSignOut={async () => { await api.logout(); navigate({ kind: "home" }); await loadSession(); }} />;
+          }
+          if (r.kind === "password") return <ChangePassword t={t} onBack={() => navigate({ kind: "account" })} />;
+          if (r.kind === "about") return <About t={t} onBack={() => navigate({ kind: "account" })} />;
+
+          if (r.kind === "stickers" && isStaffKind) {
+            return <StickerSheet l={l} t={t} buildings={session.buildings}
+              initialBuilding={r.code ?? null}
+              onBack={() => navigate(kind === "operator" ? { kind: "dashboard" } : { kind: "home" })} />;
+          }
+
+          if (kind === "operator") {
+            if (r.kind === "orgs" && session.principal.isPlatformAdmin) {
+              return <Platform l={l} t={t} onBack={() => navigate({ kind: "dashboard" })} />;
+            }
+            if (r.kind === "staff") {
+              return <StaffPage l={l} t={t} me={session.principal.staffId}
+                onBack={() => navigate({ kind: "dashboard" })} />;
+            }
+            if (r.kind === "buildings" || r.kind === "building") {
+              return <BuildingsPage l={l} t={t} onBack={() => navigate({ kind: "dashboard" })} />;
+            }
+            return <OperatorView key={opKey} l={l} t={t} session={session} route={r} query={query}
+              navigate={navigate} />;
+          }
+
+          if (kind === "tenant") {
+            return <TenantView key={homeKey} l={l} t={t} tickets={tickets} reload={reload}
+              home={session.home} onScan={() => setScanning(true)}
+              recentDays={session.retention?.residentRecentDays ?? 90}
+              openTicket={r.kind === "ticket" ? r.id : null}
+              onOpenTicket={(id) => navigate(id ? { kind: "ticket", id } : { kind: "home" })} />;
+          }
+
+          return <StaffView key={homeKey} l={l} t={t} tickets={tickets} reload={reload}
+            rules={session.slotRules}
+            openTicket={r.kind === "ticket" ? r.id : null}
+            onOpenTicket={(id) => navigate(id ? { kind: "ticket", id } : { kind: "home" })} />;
+        })()}
       </main>
 
       {bellOpen && (
@@ -956,7 +998,7 @@ export default function App() {
             try { await api.markRead(notifId); } catch { /* ignore */ }
             await reloadNotifs();
             setBellOpen(false);
-            if (n?.ticket_id) { setScreen("main"); setOpenTicket(n.ticket_id); }
+            if (n?.ticket_id) navigate({ kind: "ticket", id: n.ticket_id });
           }} />
       )}
 

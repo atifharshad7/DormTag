@@ -7,6 +7,7 @@ import {
 } from "./lib";
 import { BuildingCard } from "./BuildingEdit";
 import { Sidebar, type OpSection } from "./Sidebar";
+import { type Route, queryString } from "./router";
 import { BuildingCodes } from "./Codes";
 
 type T = (k: StrKey) => string;
@@ -550,27 +551,37 @@ function RepeatDetail({ l, t, riser, object, months, onBack }: {
   );
 }
 
-export function OperatorView({ l, t, session, onStickers, onAccount }: {
+export function OperatorView({ l, t, session, route, query, navigate }: {
   l: Locale; t: T; session: any;
-  onStickers?: (code: string) => void;
-  onAccount?: (section: OpSection) => void;
+  route: Route;
+  query: { months: number; building: string | null; rooms: string | null };
+  navigate: (to: Route, q?: string, replace?: boolean) => void;
 }) {
-  const [section, setSection] = useState<OpSection>("dashboard");
-  const [codesFor, setCodesFor] = useState<any | null>(null);
-  const [months, setMonths] = useState(12);
-  const [building, setBuilding] = useState<string | null>(null);
-  const [rooms, setRooms] = useState<string | null>(null);
+  /*
+   * No screen state of its own any more.
+   *
+   * Which section, which drill-down, which building's codes — all of it used to
+   * live here, so the browser's back button did nothing and a refresh dropped
+   * you on the dashboard. It's all in the URL now, which means back works,
+   * refresh keeps your place, and a view can be linked to.
+   */
+  const { months, building, rooms } = query;
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
-  const [drill, setDrill] = useState<string | null>(null);
-  const [month, setMonth] = useState<string | null>(null);
-  const [repeat, setRepeat] = useState<{ riser: string; object: string } | null>(null);
   const [customising, setCustomising] = useState(false);
   const [choices, setChoices] = useState<any>(null);
 
+  const section: OpSection = route.kind === "codes" ? "codes" : "dashboard";
+  const [pickingCodes, setPickingCodes] = useState(false);
+  const month = route.kind === "month" ? route.bucket : null;
+
+  /** Keeps the filters in the query string wherever you are. */
+  const go = (to: Route) => navigate(to, queryString({ months, building, rooms }));
+  const setFilter = (next: Partial<{ months: number; building: string | null; rooms: string | null }>) =>
+    navigate({ kind: "dashboard" }, queryString({ months, building, rooms, ...next }));
+
   const load = useCallback(() => {
     setD(null); setErr("");
-    setMonth(null);   // a new period or building invalidates the open month
     api.dashboard(months, building, rooms).then(setD).catch((e) => setErr(e.message));
   }, [months, building, rooms]);
 
@@ -585,28 +596,35 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
 
   /** Everything that isn't the dashboard, rendered inside the same shell. */
   const inner = () => {
-    if (codesFor) {
-      return <BuildingCodes l={l} t={t} building={codesFor}
-        onBack={() => { setCodesFor(null); setSection("dashboard"); load(); }} />;
+    if (route.kind === "codes") {
+      const b = (d?.buildings ?? []).find((x: any) => x.code === route.code);
+      if (!d) return <p className="muted">…</p>;
+      if (!b) return <div className="err">{t("noData")}</div>;
+      return <BuildingCodes l={l} t={t} building={b}
+        onBack={() => go({ kind: "dashboard" })} />;
     }
-    if (repeat) {
-      return <RepeatDetail l={l} t={t} riser={repeat.riser} object={repeat.object}
-        months={months} onBack={() => setRepeat(null)} />;
+    if (route.kind === "repeat") {
+      return <RepeatDetail l={l} t={t} riser={route.riser} object={route.object}
+        months={months} onBack={() => go({ kind: "dashboard" })} />;
     }
-    if (drill) {
-      return <TicketList l={l} t={t} which={drill} months={months} building={building}
-        onBack={() => { setDrill(null); load(); }} />;
+    if (route.kind === "drill") {
+      return <TicketList l={l} t={t} which={route.which} months={months} building={building}
+        onBack={() => go({ kind: "dashboard" })} />;
     }
     if (err) return <div className="err">{err}</div>;
     if (!d) return <p className="muted">…</p>;
 
-    if (section === "codes") {
+    if (pickingCodes) {
       return (
         <div className="col">
           <h2>{t("accessCodes")}</h2>
+          <button className="linkback" onClick={() => setPickingCodes(false)}>
+            <ChevronLeft size={16} /> {t("backToDash")}
+          </button>
           <p className="muted">{t("pickBuilding")}</p>
           {d.buildings.map((b: any) => (
-            <button className="card cardlink" key={b.id} onClick={() => setCodesFor(b)}>
+            <button className="card cardlink" key={b.id}
+              onClick={() => { setPickingCodes(false); go({ kind: "codes", code: b.code }); }}>
               <div className="rowspread">
                 <span className="cardtitle">{b.name}</span>
                 <span className="plate plate-sm">{b.code}</span>
@@ -626,11 +644,11 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
         <h2>{t("dashboardWord")}</h2>
         <div className="row dashctl">
           <select className="in ctlnarrow" value={months} aria-label={t("period")}
-            onChange={(e) => setMonths(Number(e.target.value))}>
+            onChange={(e) => setFilter({ months: Number(e.target.value) })}>
             {[1, 3, 6, 12].map((m) => <option key={m} value={m}>{rangeLabel(m)}</option>)}
           </select>
           <select className="in ctlnarrow" value={building ?? ""} aria-label={t("buildingLabel")}
-            onChange={(e) => setBuilding(e.target.value || null)}>
+            onChange={(e) => setFilter({ building: e.target.value || null })}>
             <option value="">{t("allBuildings")}</option>
             {(d.buildings ?? []).map((b: any) => (
               <option key={b.code} value={b.code}>{b.name}</option>
@@ -655,7 +673,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
       <div className="metrics">
         {/* Always shown: what the screen is for, and the one number that
             surfaces a ticket everybody stopped seeing. */}
-        <button className="metric metriclink" onClick={() => setDrill("open")}>
+        <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "open" })}>
           <p className="muted">{t("openTickets")}</p>
           <p className="big mono">{d.metrics.open}</p>
           <p className="metrichint">
@@ -664,7 +682,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
           </p>
         </button>
 
-        <button className="metric metriclink" onClick={() => setDrill("open")}>
+        <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "open" })}>
           <p className="muted">{t("oldestOpen")}</p>
           <p className={"big mono" + ((d.oldestDays ?? 0) >= 14 ? " metricwarn" : "")}>
             {d.oldestDays ?? "–"}{d.oldestDays !== null ? " d" : ""}
@@ -677,7 +695,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
         </button>
 
         {shows("failedPct") && (
-          <button className="metric metriclink" onClick={() => setDrill("failed")}>
+          <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "failed" })}>
             <p className="muted">{t("failedVisits")}</p>
             <p className="big mono">{d.metrics.failedPct}%</p>
             <p className="metrichint">{d.metrics.failedCount} {t("visits")} →</p>
@@ -685,7 +703,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
         )}
 
         {shows("waitingParts") && (
-          <button className="metric metriclink" onClick={() => setDrill("parts")}>
+          <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "parts" })}>
             <p className="muted">{t("waitingParts")}</p>
             <p className="big mono">{d.metrics.waitingParts}</p>
             <p className="metrichint">{t("seeList")} →</p>
@@ -693,7 +711,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
         )}
 
         {shows("external") && (
-          <button className="metric metriclink" onClick={() => setDrill("trade")}>
+          <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "trade" })}>
             <p className="muted">{t("awaitingTrade")}</p>
             <p className="big mono">{d.metrics.external}</p>
             <p className="metrichint">{d.metrics.awaitingCommission} {t("toCommission")} →</p>
@@ -735,7 +753,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
         {d.buildings.map((b: any) => (
           <BuildingCard key={b.id} l={l} t={t} b={b}
             active={building === b.code}
-            onFilter={() => setBuilding(building === b.code ? null : b.code)}
+            onFilter={() => setFilter({ building: building === b.code ? null : b.code })}
             onChanged={load} />
         ))}
       </div>
@@ -748,7 +766,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
             <p className="cardtitle">{t("reportedVsFixed")}</p>
             <span className="muted mono">{d.metrics.closedCount} {t("closedInPeriod")}</span>
           </div>
-          <TrendChart l={l} t={t} data={d.trend} selected={month} onSelect={setMonth}
+          <TrendChart l={l} t={t} data={d.trend} selected={month} onSelect={(b) => go(b ? { kind: "month", bucket: b } : { kind: "dashboard" })}
             mode={chartFor("trend")} />
         </div>
 
@@ -759,7 +777,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
       </div>
 
       {month && (
-        <MonthPanel l={l} t={t} bucket={month} building={building} onClose={() => setMonth(null)} />
+        <MonthPanel l={l} t={t} bucket={month} building={building} onClose={() => go({ kind: "dashboard" })} />
       )}
 
       <div className="card">
@@ -768,7 +786,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
           {/* Panel-local, not a third global filter: "where do faults happen"
               is a question about this panel alone. */}
           <select className="in ctlnarrow" value={rooms ?? ""} aria-label={t("byObject")}
-            onChange={(e) => setRooms(e.target.value || null)}>
+            onChange={(e) => setFilter({ rooms: e.target.value || null })}>
             <option value="">{t("allRooms2")}</option>
             {(d.filter.roomOptions ?? []).map((r: string) => (
               <option key={r} value={r}>
@@ -801,7 +819,7 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
           const flagged = g.systemic >= 3;
           return (
             <button key={i} className={"repeat repeatlink" + (flagged ? " repeat-flag" : "")}
-              onClick={() => setRepeat({ riser: g.riser, object: g.object_type })}>
+              onClick={() => go({ kind: "repeat", riser: g.riser, object: g.object_type })}>
               <div className="rowspread">
                 <span className="mono">
                   {g.building_code} · {g.riser} · {objLabel(g.object_type, l)}
@@ -829,14 +847,18 @@ export function OperatorView({ l, t, session, onStickers, onAccount }: {
         personName={session?.principal?.name}
         isPlatformAdmin={session?.principal?.isPlatformAdmin}
         onGo={(next) => {
-          setCodesFor(null); setRepeat(null); setDrill(null);
-          if (next === "account" || next === "staff" || next === "orgs"
-              || next === "buildings") {
-            onAccount?.(next);
-            return;
-          }
-          if (next === "stickers") { onStickers?.(""); return; }
-          setSection(next);
+          // Access codes are per building, so the panel offers a picker rather
+          // than guessing which one you meant.
+          if (next === "codes") { setPickingCodes(true); go({ kind: "dashboard" }); return; }
+          navigate(
+            next === "account" ? { kind: "account" }
+            : next === "staff" ? { kind: "staff" }
+            : next === "orgs" ? { kind: "orgs" }
+            : next === "buildings" ? { kind: "buildings" }
+            : next === "stickers" ? { kind: "stickers" }
+            : { kind: "dashboard" },
+            next === "dashboard" ? queryString({ months, building, rooms }) : "",
+          );
         }} />
       <div className="opmain">{inner()}</div>
     </div>

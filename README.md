@@ -43,6 +43,11 @@ Every repair is logged to the exact room and fixture, so after a year the operat
 * **Customise** picks which numbers appear and how each panel is drawn, stored per
   organisation rather than per person, because two operators discussing different
   figures is a bad outcome.
+* An escalated ticket no longer shows the resident an empty time picker.
+  Escalating cancels the caretaker's appointment and withdraws its slot, so the
+  panel rendered with nothing in it. It now says whether the wait is on the
+  operator commissioning a firm or on the firm confirming a time — different
+  news, and the data is already there.
 * Reported-versus-fixed by month, as bars or lines. Tap a bar for that month's
   counts, median fix time, and splits by building, fixture and cause.
 * **By trade** — electrical, plumbing, heating, openings, appliances. Grouping by
@@ -281,6 +286,29 @@ setup, accepting an invite, resetting, and changing — so they can't drift apar
 Sign-in gets the toggle but no second field, since you're not setting anything
 there.
 
+## Every page has a URL
+
+The app used to live at `/`, with four link paths and everything else in React
+state. So the browser's back button either did nothing or left the app, and a
+refresh dropped you back at the start. People reach for back without thinking; an
+app that ignores it feels broken in a way that's hard to name.
+
+Now `/dashboard/open`, `/buildings/B/codes`, `/dashboard/repeat/C-S2/DRAIN`,
+`/ticket/:id` and the rest are real paths. Back and forward work, a refresh keeps
+your place, and a view can be linked to. Filters ride in the query string —
+`/dashboard?months=3&building=B` — because they shape a view rather than identify
+one, and defaults are omitted so a plain dashboard link stays clean.
+
+No routing library: about fifteen screens parse in a hundred lines, which is
+cheaper than a dependency and easier to read than a config tree. `parse` and
+`href` are inverses, and a test asserts every path round-trips — including a
+riser code containing a slash.
+
+Signing in **replaces** rather than pushes, so back doesn't return you to the
+form you just used. Unknown paths fall back to home rather than an error page,
+and `not_found_handling` is already `single-page-application`, so a deep link
+survives a hard refresh.
+
 ## Retention
 
 Closed tickets are **never deleted**. The room-and-cause history is the entire reason the operator dashboard is worth anything, and once the reporter link is gone, "the drain in C-204 blocked twice" isn't personal data.
@@ -305,7 +333,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 508 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 527 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure
