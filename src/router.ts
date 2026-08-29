@@ -25,7 +25,12 @@ export type Route =
   | { kind: "scan"; slug: string }
   | { kind: "token"; token: string }
   | { kind: "ticket"; id: string }
+  /* The report wizard, one URL per step: back should move up the wizard rather
+     than out of the app, which is where it went when the steps were local
+     state — taking whatever note had been typed with it. */
   | { kind: "report" }
+  | { kind: "reportRoom"; roomId: string }
+  | { kind: "reportObject"; roomId: string; objectId: string }
   | { kind: "sent" }
   /* operator */
   | { kind: "dashboard" }
@@ -34,7 +39,7 @@ export type Route =
   | { kind: "repeat"; riser: string; object: string }
   | { kind: "buildings" }
   | { kind: "building"; code: string }
-  | { kind: "codes"; code: string }
+  | { kind: "codes"; code?: string }
   | { kind: "stickers"; code?: string }
   | { kind: "staff" }
   | { kind: "orgs" }
@@ -56,7 +61,9 @@ export function href(r: Route): string {
     case "scan":      return `/r/${r.slug}`;
     case "token":     return `/t/${r.token}`;
     case "ticket":    return `/ticket/${r.id}`;
-    case "report":    return "/report";
+    case "report":       return "/report";
+    case "reportRoom":   return `/report/${r.roomId}`;
+    case "reportObject": return `/report/${r.roomId}/${r.objectId}`;
     case "sent":      return "/sent";
     case "dashboard": return "/dashboard";
     case "drill":     return `/dashboard/${r.which}`;
@@ -64,7 +71,7 @@ export function href(r: Route): string {
     case "repeat":    return `/dashboard/repeat/${encodeURIComponent(r.riser)}/${r.object}`;
     case "buildings": return "/buildings";
     case "building":  return `/buildings/${r.code}`;
-    case "codes":     return `/buildings/${r.code}/codes`;
+    case "codes":     return r.code ? `/buildings/${r.code}/codes` : "/codes";
     case "stickers":  return r.code ? `/stickers/${r.code}` : "/stickers";
     case "staff":     return "/staff";
     case "orgs":      return "/orgs";
@@ -89,9 +96,15 @@ export function parse(pathname = location.pathname): Route {
     case "about":   return { kind: "about" };
     case "forgot":  return { kind: "forgot" };
     case "sent":    return { kind: "sent" };
-    case "report":  return { kind: "report" };
+
+    case "report":
+      if (!seg[1]) return { kind: "report" };
+      if (!seg[2]) return { kind: "reportRoom", roomId: seg[1] };
+      return { kind: "reportObject", roomId: seg[1], objectId: seg[2] };
+
     case "staff":   return { kind: "staff" };
     case "orgs":    return { kind: "orgs" };
+    case "codes":   return { kind: "codes" };
 
     case "reset":   return seg[1] ? { kind: "reset", token: seg[1] } : { kind: "home" };
     case "setup":   return seg[1] ? { kind: "invite", token: seg[1] } : { kind: "home" };
@@ -108,6 +121,8 @@ export function parse(pathname = location.pathname): Route {
     case "buildings":
       if (!seg[1]) return { kind: "buildings" };
       if (seg[2] === "codes") return { kind: "codes", code: seg[1] };
+      // No per-unit page: the units are listed on the building page, and a
+      // route that parses but renders nothing looks supported and isn't.
       return { kind: "building", code: seg[1] };
 
     case "dashboard":

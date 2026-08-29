@@ -293,8 +293,13 @@ state. So the browser's back button either did nothing or left the app, and a
 refresh dropped you back at the start. People reach for back without thinking; an
 app that ignores it feels broken in a way that's hard to name.
 
-Now `/dashboard/open`, `/buildings/B/codes`, `/dashboard/repeat/C-S2/DRAIN`,
-`/ticket/:id` and the rest are real paths. Back and forward work, a refresh keeps
+Now `/dashboard/open`, `/buildings/B`, `/buildings/B/codes`,
+`/dashboard/repeat/C-S2/DRAIN`, `/ticket/:id`, `/stickers/B` and the rest are real
+paths, including the resident's report wizard: `/report`, `/report/:room`,
+`/report/:room/:object`. That last one matters most — someone mid-report pressing
+back used to leave the app entirely, taking the note they had typed with them.
+The note itself stays in component state, so stepping back and forward keeps what
+was written. Back and forward work, a refresh keeps
 your place, and a view can be linked to. Filters ride in the query string —
 `/dashboard?months=3&building=B` — because they shape a view rather than identify
 one, and defaults are omitted so a plain dashboard link stays clean.
@@ -305,7 +310,12 @@ cheaper than a dependency and easier to read than a config tree. `parse` and
 riser code containing a slash.
 
 Signing in **replaces** rather than pushes, so back doesn't return you to the
-form you just used. Unknown paths fall back to home rather than an error page,
+form you just used, and an operator's `/` replaces to `/dashboard` so the URL
+always names where you are.
+
+There is deliberately no `/buildings/:code/units/:unit`: the units are listed on
+the building page, and a route that parses but renders nothing looks supported
+and isn't. Unknown paths fall back to home rather than an error page,
 and `not_found_handling` is already `single-page-application`, so a deep link
 survives a hard refresh.
 
@@ -333,7 +343,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 527 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 532 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure

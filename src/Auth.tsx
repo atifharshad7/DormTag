@@ -331,12 +331,16 @@ function Qr({ text, size = 132 }: { text: string; size?: number }) {
   return <canvas ref={ref} width={size} height={size} className="qr" />;
 }
 
-export function StickerSheet({ l, t, buildings, onBack, initialBuilding }: {
+export function StickerSheet({ l, t, buildings, onBack, initialBuilding, onPick }: {
   l: Locale; t: T; buildings: any[]; onBack: () => void;
-  /** Set when arriving from a building card: skip the picker entirely. */
+  /** Set when arriving from a building card, or from /stickers/A. */
   initialBuilding?: string | null;
+  /* Picking changes the URL, so /stickers/A is linkable and back returns to the
+     picker rather than leaving the sheet entirely. */
+  onPick?: (code: string | null) => void;
 }) {
-  const [code, setCode] = useState<string | null>(initialBuilding ?? null);
+  const code = initialBuilding ?? null;
+  const setCode = (c: string | null) => onPick?.(c);
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
 
@@ -404,7 +408,7 @@ export function StickerSheet({ l, t, buildings, onBack, initialBuilding }: {
         {/* Arriving from a building card means there is no picker behind this,
             so Back must leave the sheet rather than drop into one. */}
         <button className="linkback"
-          onClick={() => (initialBuilding ? onBack() : setCode(null))}>
+          onClick={() => setCode(null)}>
           <ChevronLeft size={16} /> {initialBuilding ? t("backToApp") : t("pickBuilding")}
         </button>
         <div className="row">

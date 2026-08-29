@@ -201,8 +201,12 @@ function CopyLink({ t, token }: { t: T; token: string }) {
   );
 }
 
-export function BuildingsPage({ l, t, onBack }: {
+export function BuildingsPage({ l, t, onBack, openCode, onOpen }: {
   l: Locale; t: T; onBack?: () => void;
+  /* Which building is open comes from the URL, so /buildings/A is its own page
+     and back collapses it rather than leaving the app. */
+  openCode?: string | null;
+  onOpen?: (code: string | null) => void;
 }) {
   const [rows, setRows] = useState<any[] | null>(null);
   const [err, setErr] = useState("");
@@ -210,16 +214,18 @@ export function BuildingsPage({ l, t, onBack }: {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [count, setCount] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
+
 
   const load = useCallback(() => {
     api.adminBuildings().then((d) => setRows(d.buildings)).catch((e) => setErr(e.message));
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (openId) {
-    const b = rows?.find((x) => x.id === openId);
-    return <BuildingDetail l={l} t={t} building={b} onBack={() => { setOpenId(null); load(); }} />;
+  if (openCode) {
+    const b = rows?.find((x) => x.code === openCode);
+    if (!rows) return <p className="muted">…</p>;
+    if (!b) return <div className="err">{t("noData")}</div>;
+    return <BuildingDetail l={l} t={t} building={b} onBack={() => onOpen?.(null)} />;
   }
 
   return (
@@ -268,7 +274,7 @@ export function BuildingsPage({ l, t, onBack }: {
       {rows?.length === 0 && <div className="empty"><p className="muted">{t("noBuildings")}</p></div>}
 
       {rows?.map((b) => (
-        <button className="card cardlink" key={b.id} onClick={() => setOpenId(b.id)}>
+        <button className="card cardlink" key={b.id} onClick={() => onOpen?.(b.code)}>
           <div className="rowspread">
             <p className="cardtitle">{b.name}</p>
             <span className="plate plate-sm">{b.code}</span>

@@ -54,16 +54,20 @@ function Err({ msg, onClose }: any) {
 /* resident                                                         */
 /* ---------------------------------------------------------------- */
 
-function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicket, onOpenTicket }: {
+function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicket, onOpenTicket,
+  wizard, onWizard }: {
   l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>;
   home: any; onScan: () => void; recentDays: number;
   /* The open ticket comes from the URL, so back closes it and a link opens it. */
   openTicket: string | null; onOpenTicket: (id: string | null) => void;
+  /* The wizard's step lives in the URL too, so back moves up the wizard rather
+     than out of the app — which is where it went before, taking the note with
+     it. The note itself stays in state here, so stepping back and forward keeps
+     what was typed. */
+  wizard: { step: "none" | "rooms" | "objects" | "symptom"; roomId?: string; objectId?: string };
+  onWizard: (roomId?: string, objectId?: string) => void;
 }) {
-  const [screen, setScreen] = useState<"list" | "scan" | "object" | "symptom">("list");
   const [rows, setRows] = useState<any[]>([]);
-  const [roomId, setRoomId] = useState<string | null>(null);
-  const [objectId, setObjectId] = useState<string | null>(null);
   const [symptom, setSymptom] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const openId = openTicket;
@@ -73,6 +77,12 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
   const [err, setErr] = useState("");
 
   useEffect(() => { api.myRooms().then((d) => setRows(d.rows)).catch(() => {}); }, []);
+
+  const screen = wizard.step === "none" ? "list"
+    : wizard.step === "rooms" ? "scan"
+    : wizard.step === "objects" ? "object" : "symptom";
+  const roomId = wizard.roomId ?? null;
+  const objectId = wizard.objectId ?? null;
 
   const rooms = Array.from(new Map(rows.map((r) => [r.room_id, r])).values());
   const objects = rows.filter((r) => r.room_id === roomId);
@@ -89,7 +99,7 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
 
     return (
       <div className="col">
-        <button className="linkback" onClick={() => setScreen("list")}><ChevronLeft size={16} /> {t("back")}</button>
+        <button className="linkback" onClick={() => onWizard()}><ChevronLeft size={16} /> {t("back")}</button>
 
         <div>
           <h2>{t("reportProblem")}</h2>
@@ -116,7 +126,7 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
             const Icon = roomIcon(r.room_type);
             return (
               <button key={r.room_id} className="roomrow"
-                onClick={() => { setRoomId(r.room_id); setObjectId(null); setSymptom(null); setScreen("object"); }}>
+                onClick={() => { setSymptom(null); onWizard(r.room_id); }}>
                 <span className="roomname">
                   <Icon size={18} strokeWidth={1.5} aria-hidden />
                   {roomLabel(r.room_type, l)}
@@ -138,14 +148,14 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
     const room = rooms.find((r) => r.room_id === roomId);
     return (
       <div className="col">
-        <button className="linkback" onClick={() => setScreen("scan")}><ChevronLeft size={16} /> {t("back")}</button>
+        <button className="linkback" onClick={() => onWizard()}><ChevronLeft size={16} /> {t("back")}</button>
         <Plate>{roomLabel(room?.room_type ?? "", l)}</Plate>
         <h2>{t("whatBroken")}</h2>
         <div className="grid2">
           {objects.map((o) => (
             <Tile key={o.object_id} icon={objIcon(o.object_type)}
               label={objLabel(o.object_type, l)}
-              onClick={() => { setObjectId(o.object_id); setScreen("symptom"); }} />
+              onClick={() => onWizard(roomId ?? undefined, o.object_id)} />
           ))}
         </div>
       </div>
@@ -156,7 +166,7 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
     const syms = SYMPTOMS_FOR[currentObj.object_type] ?? ["BROKEN"];
     return (
       <div className="col">
-        <button className="linkback" onClick={() => setScreen("object")}><ChevronLeft size={16} /> {t("back")}</button>
+        <button className="linkback" onClick={() => onWizard(roomId ?? undefined)}><ChevronLeft size={16} /> {t("back")}</button>
         <Plate>{roomLabel(currentObj.room_type, l)} · {objLabel(currentObj.object_type, l)}</Plate>
         <h2>{t("whatWrong")}</h2>
         <Err msg={err} onClose={() => setErr("")} />
@@ -173,7 +183,7 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
           onClick={async () => {
             try {
               const r = await api.report(objectId!, symptom!, note);
-              setNote(""); setSymptom(null); setScreen("list");
+              setNote(""); setSymptom(null); onWizard();
               setFlash(r.merged ? t("merged") : "");
               await reload();
               setOpenId(r.id);
@@ -219,7 +229,7 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
     <div className="col">
       <div className="rowspread">
         <h2>{t("myReports")}</h2>
-        <button className="btn btn-primary" onClick={() => setScreen("scan")}><Plus size={16} /> {t("newReport")}</button>
+        <button className="btn btn-primary" onClick={() => onWizard("")}><Plus size={16} /> {t("newReport")}</button>
       </div>
       {flash && <div className="flash" onClick={() => setFlash("")}>{flash}</div>}
 
@@ -777,6 +787,15 @@ export default function App() {
   const signedIn = !!session && session.principal.kind !== "anonymous";
 
   useEffect(() => {
+    // An operator's home is the dashboard, so the URL should say so. Replace
+    // rather than push, or back would bounce between / and /dashboard.
+    if (signedIn && session?.principal?.kind === "operator" && route.kind === "home"
+        && !session.orgBlocked) {
+      navigate({ kind: "dashboard" }, "", true);
+    }
+  }, [signedIn, session, route.kind, navigate]);
+
+  useEffect(() => {
     // Signing in on /signin or /demo should leave you at your own home rather
     // than on a page that no longer applies. Replace rather than push, so back
     // doesn't return to the sign-in form you just used.
@@ -956,6 +975,7 @@ export default function App() {
           if (r.kind === "stickers" && isStaffKind) {
             return <StickerSheet l={l} t={t} buildings={session.buildings}
               initialBuilding={r.code ?? null}
+              onPick={(code) => navigate({ kind: "stickers", code: code ?? undefined })}
               onBack={() => navigate(kind === "operator" ? { kind: "dashboard" } : { kind: "home" })} />;
           }
 
@@ -968,7 +988,10 @@ export default function App() {
                 onBack={() => navigate({ kind: "dashboard" })} />;
             }
             if (r.kind === "buildings" || r.kind === "building") {
-              return <BuildingsPage l={l} t={t} onBack={() => navigate({ kind: "dashboard" })} />;
+              return <BuildingsPage l={l} t={t}
+                onBack={() => navigate({ kind: "dashboard" })}
+                openCode={r.kind === "building" ? r.code : null}
+                onOpen={(code) => navigate(code ? { kind: "building", code } : { kind: "buildings" })} />;
             }
             return <OperatorView key={opKey} l={l} t={t} session={session} route={r} query={query}
               navigate={navigate} />;
@@ -979,7 +1002,21 @@ export default function App() {
               home={session.home} onScan={() => setScanning(true)}
               recentDays={session.retention?.residentRecentDays ?? 90}
               openTicket={r.kind === "ticket" ? r.id : null}
-              onOpenTicket={(id) => navigate(id ? { kind: "ticket", id } : { kind: "home" })} />;
+              onOpenTicket={(id) => navigate(id ? { kind: "ticket", id } : { kind: "home" })}
+              wizard={
+                r.kind === "reportObject" ? { step: "symptom", roomId: r.roomId, objectId: r.objectId }
+                : r.kind === "reportRoom" ? { step: "objects", roomId: r.roomId }
+                : r.kind === "report" ? { step: "rooms" }
+                : { step: "none" }
+              }
+              onWizard={(roomId, objectId) =>
+                navigate(
+                  objectId && roomId ? { kind: "reportObject", roomId, objectId }
+                  : roomId ? { kind: "reportRoom", roomId }
+                  : roomId === "" ? { kind: "report" }
+                  : { kind: "home" },
+                )
+              } />;
           }
 
           return <StaffView key={homeKey} l={l} t={t} tickets={tickets} reload={reload}

@@ -572,7 +572,6 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
   const [choices, setChoices] = useState<any>(null);
 
   const section: OpSection = route.kind === "codes" ? "codes" : "dashboard";
-  const [pickingCodes, setPickingCodes] = useState(false);
   const month = route.kind === "month" ? route.bucket : null;
 
   /** Keeps the filters in the query string wherever you are. */
@@ -596,7 +595,7 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
 
   /** Everything that isn't the dashboard, rendered inside the same shell. */
   const inner = () => {
-    if (route.kind === "codes") {
+    if (route.kind === "codes" && route.code) {
       const b = (d?.buildings ?? []).find((x: any) => x.code === route.code);
       if (!d) return <p className="muted">…</p>;
       if (!b) return <div className="err">{t("noData")}</div>;
@@ -614,17 +613,17 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
     if (err) return <div className="err">{err}</div>;
     if (!d) return <p className="muted">…</p>;
 
-    if (pickingCodes) {
+    if (route.kind === "codes") {
       return (
         <div className="col">
           <h2>{t("accessCodes")}</h2>
-          <button className="linkback" onClick={() => setPickingCodes(false)}>
+          <button className="linkback" onClick={() => go({ kind: "dashboard" })}>
             <ChevronLeft size={16} /> {t("backToDash")}
           </button>
           <p className="muted">{t("pickBuilding")}</p>
           {d.buildings.map((b: any) => (
             <button className="card cardlink" key={b.id}
-              onClick={() => { setPickingCodes(false); go({ kind: "codes", code: b.code }); }}>
+              onClick={() => go({ kind: "codes", code: b.code })}>
               <div className="rowspread">
                 <span className="cardtitle">{b.name}</span>
                 <span className="plate plate-sm">{b.code}</span>
@@ -847,9 +846,7 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
         personName={session?.principal?.name}
         isPlatformAdmin={session?.principal?.isPlatformAdmin}
         onGo={(next) => {
-          // Access codes are per building, so the panel offers a picker rather
-          // than guessing which one you meant.
-          if (next === "codes") { setPickingCodes(true); go({ kind: "dashboard" }); return; }
+          if (next === "codes") { go({ kind: "codes" }); return; }
           navigate(
             next === "account" ? { kind: "account" }
             : next === "staff" ? { kind: "staff" }

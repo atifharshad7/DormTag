@@ -1817,9 +1817,11 @@ section("every page has a URL")
 // Deep links have to serve the app shell rather than 404, or a refresh on
 // /dashboard/open drops the person on an error page.
 for (const path of ["/dashboard", "/dashboard/open", "/dashboard/repeat/C-S2/DRAIN",
-                    "/buildings", "/buildings/B/codes", "/staff", "/orgs",
-                    "/account", "/account/password", "/stickers/B",
-                    "/ticket/abc", "/signin", "/signup", "/demo", "/about"]) {
+                    "/buildings", "/buildings/B",
+                    "/buildings/B/codes", "/codes", "/staff", "/orgs",
+                    "/account", "/account/password", "/stickers", "/stickers/B",
+                    "/ticket/abc", "/report", "/report/rm/ob",
+                    "/signin", "/signup", "/demo", "/about"]) {
   const r = await req(path);
   ok(`${path} serves the app`, r.status === 200);
 }
