@@ -226,11 +226,8 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
   const older = tickets.filter((x: any) => x.state === "done" && (x.closed_at ?? 0) < recentCut);
 
   return (
-    <div className="col">
-      <div className="rowspread">
-        <h2>{t("myReports")}</h2>
-        <button className="btn btn-primary" onClick={() => onWizard("")}><Plus size={16} /> {t("newReport")}</button>
-      </div>
+    <div className="col tenantlist">
+      <h2>{t("myReports")}</h2>
       {flash && <div className="flash" onClick={() => setFlash("")}>{flash}</div>}
 
       {tickets.length === 0 && (
@@ -252,6 +249,24 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
           {showOlder && older.map((x: any) => <Card key={x.ticket_id} x={x} />)}
         </>
       )}
+
+      {/*
+        Fixed, so the one thing a resident came to do is always in reach — they
+        arrive to report something, not to read a list. The list scrolls behind
+        it, with padding at the end so the last card isn't hidden underneath.
+
+        Two controls, deliberately different shapes: a wide pill for reporting,
+        a round button for scanning. They do different jobs and looked
+        interchangeable when both were icons in the header.
+      */}
+      <div className="actionbar">
+        <button className="btn btn-primary actionmain" onClick={() => onWizard("")}>
+          <Plus size={17} aria-hidden /> {t("newReport")}
+        </button>
+        <button className="actionscan" onClick={onScan} aria-label={t("scanQrTitle")}>
+          <QrCode size={19} strokeWidth={1.75} aria-hidden />
+        </button>
+      </div>
     </div>
   );
 }
@@ -873,9 +888,14 @@ export default function App() {
         <div className="row">
           {kind !== "anonymous" && (
             <>
-              <button className="lang" onClick={() => setScanning(true)} aria-label={t("scanOpen")}>
-                <Camera size={14} aria-hidden />
-              </button>
+              {/* Residents scan from the action bar at the bottom, where the
+                  thumb already is. Keeping it here too was two ways to do one
+                  thing, and the header one was the harder to reach. */}
+              {kind !== "tenant" && (
+                <button className="lang" onClick={() => setScanning(true)} aria-label={t("scanOpen")}>
+                  <Camera size={14} aria-hidden />
+                </button>
+              )}
               {/* Caretakers only: an operator reaches stickers from the left
                   panel, so having it here as well was one of two ways to do
                   the same thing. */}
