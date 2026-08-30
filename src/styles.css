@@ -962,3 +962,46 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 @media (min-width: 1500px) {
   .dashpair { display: grid; }
 }
+
+/* --- the resident's action bar --------------------------------------- */
+
+/*
+ * Fixed to the bottom, because a resident opens the app to report something
+ * rather than to read a list. The list scrolls behind it.
+ *
+ * Two shapes on purpose: a wide pill for the thing they came to do, a round
+ * button for scanning. As two icons in the header they looked interchangeable
+ * and weren't — one starts a report, the other opens a camera.
+ */
+.actionbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+}
+.actionmain {
+  flex: 1; min-height: 52px; border-radius: 999px;
+  font-size: 15.5px; font-weight: 500;
+  background: var(--yellow); color: #16191b; border-color: var(--yellow);
+}
+.actionmain:hover { background: #dfa207; border-color: #dfa207; }
+.actionscan {
+  flex: none; width: 52px; height: 52px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer;
+  background: var(--card); color: var(--ink);
+  border: 1px solid var(--line); font: inherit;
+}
+.actionscan:hover { border-color: var(--slate); }
+
+/* So the last card isn't hidden under the bar. */
+.tenantlist { padding-bottom: 84px; }
+
+@media (min-width: 721px) {
+  /* On a wide screen the bar sits inside the column rather than spanning the
+     whole window, which would look adrift. */
+  .actionbar {
+    left: 50%; transform: translateX(-50%);
+    width: min(560px, 100%); border-radius: 0;
+  }
+}
