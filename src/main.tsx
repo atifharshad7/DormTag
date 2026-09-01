@@ -5,6 +5,7 @@ import "./styles.css";
 import "./resident.css";
 import "./signin.css";
 import "./gallery.css";
+import "./laptop-narrow.css";
 import "./printblock.css";
 /* The operator screens, one stylesheet each as the design exports them. Each
    repeats its own tokens on purpose, so none depends on another's :root. */

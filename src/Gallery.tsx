@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { Logo } from "./Logo";
+import { LaptopNarrow } from "./LaptopNarrow";
 import { type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -748,6 +749,29 @@ export function Gallery({ l, t }: { l: Locale; t: T }) {
   const touch = useRef<number | null>(null);
   const slide = slides[i];
 
+  /*
+   * The operator's laptop has its own narrow build, isolated in .dln- classes.
+   * Below 700px the dashboard stops being readable and becomes something you
+   * recognise, which is a different drawing rather than the same one shrunk —
+   * so it's a separate component rather than a media query on this one.
+   */
+  const [narrow, setNarrow] = useState(
+    typeof matchMedia === "function" && matchMedia("(max-width: 700px)").matches);
+  useEffect(() => {
+    const q = matchMedia("(max-width: 700px)");
+    const on = () => setNarrow(q.matches);
+    q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, []);
+
+  /*
+   * One screen rather than a deck.
+   *
+   * The export draws a single dashboard at this width, so the paging controls
+   * and the caption are hidden — they'd promise four screens that don't exist.
+   */
+  const oneScreen = role === "operator" && narrow;
+
   const TABS: [Role, StrKey][] = [
     ["resident", "tenant"], ["caretaker", "staff"], ["operator", "operator"],
   ];
@@ -775,14 +799,26 @@ export function Gallery({ l, t }: { l: Locale; t: T }) {
           if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
           touch.current = null;
         }}>
-        <div className="dp-track dp-track-on"
-          style={{ transform: `translateX(${-100 * i}%)` }}>
-          {slides.map((s, n) => (
-            <React.Fragment key={`${role}-${n}`}>{s.body(l)}</React.Fragment>
-          ))}
-        </div>
+        {oneScreen ? (
+          <LaptopNarrow l={l} />
+        ) : (
+          <div className="dp-track dp-track-on"
+            style={{ transform: `translateX(${-100 * i}%)` }}>
+            {slides.map((s, n) => (
+              <React.Fragment key={`${role}-${n}`}>{s.body(l)}</React.Fragment>
+            ))}
+          </div>
+        )}
       </div>
 
+      {/*
+        No paging controls for the narrow laptop.
+        
+        The export draws one dashboard at this width — recognisable rather than
+        readable — where the desktop tab has five slides. Leaving the dots and
+        arrows would promise four screens that aren't there.
+      */}
+      {!oneScreen && (
       <div className="dp-nav">
         <button className="dp-arrow" aria-label="←"
           onClick={() => { setPaused(true); go(i - 1); }}>‹</button>
@@ -796,8 +832,11 @@ export function Gallery({ l, t }: { l: Locale; t: T }) {
         <button className="dp-arrow" aria-label="→"
           onClick={() => { setPaused(true); go(i + 1); }}>›</button>
       </div>
+      )}
 
-      <p className="dp-caption dp-caption-on">{l === "de" ? slide.de : slide.en}</p>
+      {!oneScreen && (
+        <p className="dp-caption dp-caption-on">{l === "de" ? slide.de : slide.en}</p>
+      )}
     </div>
   );
 }
