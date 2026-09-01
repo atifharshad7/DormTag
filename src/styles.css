@@ -305,19 +305,28 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 /* --- printable sticker sheet -------------------------------------- */
 
 .sheet {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px;
 }
+/* A grid item's min-width is auto, so a card could be forced wider than its
+   track by its own contents rather than wrapping them. */
+.sheet > * { min-width: 0; }
 .stickercard {
   display: flex; gap: 10px; align-items: center; padding: 10px;
   border: 1px dashed rgba(22,25,27,.35); border-radius: 6px; background: #fff;
 }
-.qr { width: 66px; height: 66px; display: block; }
+.qr {
+  width: 66px; height: 66px; display: block;
+  flex: 0 0 66px;   /* never shrink or grow: the label column takes the slack */
+}
 .stickermeta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .stickerplate {
   font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; color: #16191b;
 }
-.stickerobj { font-size: 14px; font-weight: 500; color: #16191b; }
-.stickerhint { font-size: 9px; color: #55595c; text-transform: uppercase; letter-spacing: .05em; }
+.stickerobj { font-size: 14px; font-weight: 500; color: #16191b; overflow-wrap: anywhere; }
+.stickerhint {
+  font-size: 9px; color: #55595c; text-transform: uppercase; letter-spacing: .05em;
+  overflow-wrap: anywhere;
+}
 .stickerslug { font-size: 8px; color: #85898c; overflow-wrap: anywhere; }
 
 @media print {
@@ -347,23 +356,7 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 }
 .iconbtn:hover { background: rgba(22,25,27,.07); }
 
-.viewport {
-  position: relative; aspect-ratio: 1 / 1; width: 100%;
-  background: #101315; border-radius: 10px; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
-}
-.vid { width: 100%; height: 100%; object-fit: cover; }
 .hide { display: none; }
-.viewportmsg {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  text-align: center; padding: 20px; color: #c9cdd0;
-}
-.viewportmsg p { margin: 0; font-size: 13px; }
-.reticle {
-  position: absolute; width: 62%; aspect-ratio: 1;
-  border: 2px solid rgba(242,176,8,.9); border-radius: 12px;
-  box-shadow: 0 0 0 9999px rgba(0,0,0,.28);
-}
 
 /* --- resident report entry: scan card + room rows ------------------ */
 
@@ -961,47 +954,4 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 
 @media (min-width: 1500px) {
   .dashpair { display: grid; }
-}
-
-/* --- the resident's action bar --------------------------------------- */
-
-/*
- * Fixed to the bottom, because a resident opens the app to report something
- * rather than to read a list. The list scrolls behind it.
- *
- * Two shapes on purpose: a wide pill for the thing they came to do, a round
- * button for scanning. As two icons in the header they looked interchangeable
- * and weren't — one starts a report, the other opens a camera.
- */
-.actionbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-  background: var(--paper);
-  border-top: 1px solid var(--line);
-}
-.actionmain {
-  flex: 1; min-height: 52px; border-radius: 999px;
-  font-size: 15.5px; font-weight: 500;
-  background: var(--yellow); color: #16191b; border-color: var(--yellow);
-}
-.actionmain:hover { background: #dfa207; border-color: #dfa207; }
-.actionscan {
-  flex: none; width: 52px; height: 52px; border-radius: 50%;
-  display: grid; place-items: center; cursor: pointer;
-  background: var(--card); color: var(--ink);
-  border: 1px solid var(--line); font: inherit;
-}
-.actionscan:hover { border-color: var(--slate); }
-
-/* So the last card isn't hidden under the bar. */
-.tenantlist { padding-bottom: 84px; }
-
-@media (min-width: 721px) {
-  /* On a wide screen the bar sits inside the column rather than spanning the
-     whole window, which would look adrift. */
-  .actionbar {
-    left: 50%; transform: translateX(-50%);
-    width: min(560px, 100%); border-radius: 0;
-  }
 }
