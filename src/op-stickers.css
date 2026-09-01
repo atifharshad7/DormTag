@@ -1,0 +1,211 @@
+/* =============================================================================
+   TOKENS — real values, self-contained.
+   Every file in this export repeats this block on purpose: do NOT rely on a
+   :root from another file. All type is written as LONGHAND (font-weight /
+   font-size / line-height / font-family) — never the `font:` shorthand, because
+   one invalid part drops the whole declaration and silently loses size+weight.
+   Palettes: LIGHT is the default, DARK follows the system theme.
+   ========================================================================== */
+:root {
+  --op-font-sans: Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --op-font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --op-brand-blue: #2026B0;
+  --op-primary: #4A4AD8;
+  --op-primary-100: #DEDEF8;
+  --op-primary-300: #9E9EE8;
+  --op-primary-400: #7373DF;
+  --op-primary-700: #2E2EA6;
+  --op-on-primary: #FFFFFF;
+
+  --op-fg-1: #1F3F4F;
+  --op-fg-2: #51616C;
+  --op-fg-3: #8A929B;
+
+  --op-surface: #FFFFFF;
+  --op-surface-2: #F5F7F9;
+  --op-surface-3: #EEF1F4;
+  --op-field: #EBEDF0;
+  --op-border: #E4E8ED;
+  --op-border-strong: #D3D9E0;
+
+  --op-success: #1FA971;
+  --op-success-bg: #E6F6EF;
+  --op-warning: #E89A2B;
+  --op-warning-bg: #FCF1DF;
+  --op-warning-fg: #7A4A08;
+  --op-danger: #E8403A;
+  --op-danger-bg: #FCE9E8;
+  --op-info-bg: #EEEEFC;
+
+  --op-r-xs: 6px;
+  --op-r-sm: 10px;
+  --op-r-md: 14px;
+  --op-r-lg: 18px;
+  --op-r-pill: 999px;
+
+  --op-shadow-sm: 0 1px 2px rgba(31,63,79,.06);
+  --op-shadow-md: 0 6px 18px rgba(31,63,79,.08);
+  --op-shadow-lg: 0 16px 40px rgba(31,63,79,.12);
+  --op-shadow-cta: 0 10px 24px rgba(74,74,216,.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --op-brand-blue: #5A60E8;
+    --op-primary: #7B7BE6;
+    --op-primary-100: #2A2A5C;
+    --op-primary-300: #5F5FD1;
+    --op-primary-400: #6E6EDA;
+    --op-primary-700: #B4B4F2;
+    --op-on-primary: #0E1216;
+
+    --op-fg-1: #E8EDF1;
+    --op-fg-2: #A9B4BD;
+    --op-fg-3: #78848D;
+
+    --op-surface: #171C21;
+    --op-surface-2: #101418;
+    --op-surface-3: #222A31;
+    --op-field: #222A31;
+    --op-border: #2A333B;
+    --op-border-strong: #3A454E;
+
+    --op-success: #46C48D;
+    --op-success-bg: #12301F;
+    --op-warning: #E8A94A;
+    --op-warning-bg: #33260F;
+    --op-warning-fg: #E8C98A;
+    --op-danger: #F1655F;
+    --op-danger-bg: #3A1A18;
+    --op-info-bg: #1E2140;
+
+    --op-shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    --op-shadow-md: 0 6px 18px rgba(0,0,0,.45);
+    --op-shadow-lg: 0 16px 40px rgba(0,0,0,.55);
+    --op-shadow-cta: 0 10px 24px rgba(123,123,230,.28);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   QR STICKERS — dormtag-op-stickers.css
+   Content area only — mounts right of the persistent 240px panel.
+   Flat classes (.opq-*), no descendant selectors anywhere.
+   box-sizing: border-box wherever padding meets a percentage/fr width.
+   Type is longhand only — never the `font:` shorthand.
+   -------------------------------------------------------------------------- */
+
+.opq-preview { margin: 0; padding: 28px; background: var(--op-surface-2); }
+
+.opq-root { box-sizing: border-box; width: 100%; max-width: 1180px; padding: 26px 28px 48px; display: flex; flex-direction: column; gap: 34px; background: var(--op-surface-2); font-family: var(--op-font-sans); color: var(--op-fg-1); }
+
+.opq-state-pick { display: flex; flex-direction: column; gap: 16px; }
+.opq-state-sheet { display: flex; flex-direction: column; gap: 16px; }
+
+.opq-head { display: flex; flex-direction: column; gap: 6px; }
+.opq-title { margin: 0; font-family: var(--op-font-sans); font-weight: 700; font-size: 28px; line-height: 1.2; letter-spacing: -.02em; color: var(--op-fg-1); }
+.opq-sub { margin: 0; font-family: var(--op-font-sans); font-weight: 400; font-size: 15px; line-height: 1.55; color: var(--op-fg-2); }
+
+.opq-picklist { display: flex; flex-direction: column; gap: 12px; }
+.opq-pickrow { box-sizing: border-box; width: 100%; border: 0; cursor: pointer; text-align: left; padding: 18px 20px; border-radius: var(--op-r-lg); background: var(--op-surface); box-shadow: var(--op-shadow-sm); display: flex; align-items: center; justify-content: space-between; gap: 14px; transition: box-shadow .16s ease; }
+.opq-pickrow:hover { box-shadow: var(--op-shadow-md); }
+.opq-pick-name { font-family: var(--op-font-sans); font-weight: 600; font-size: 16px; line-height: 1.35; color: var(--op-fg-1); min-width: 0; overflow-wrap: break-word; text-wrap: pretty; }
+.opq-pick-code { box-sizing: border-box; flex: 0 0 auto; padding: 5px 10px; border-radius: var(--op-r-xs); background: var(--op-surface-2); font-family: var(--op-font-mono); font-weight: 500; font-size: 12px; line-height: 1.3; letter-spacing: .06em; color: var(--op-fg-2); white-space: nowrap; }
+
+.opq-sheethead { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.opq-sheethead-right { display: flex; align-items: center; gap: 12px; }
+.opq-back { border: 0; cursor: pointer; background: transparent; padding: 0; font-family: var(--op-font-sans); font-weight: 500; font-size: 13px; line-height: 1.45; color: var(--op-primary); }
+.opq-count { font-family: var(--op-font-mono); font-weight: 400; font-size: 12px; line-height: 1.4; color: var(--op-fg-3); }
+.opq-cta { box-sizing: border-box; border: 0; cursor: pointer; padding: 11px 18px; border-radius: var(--op-r-pill); background: var(--op-primary); color: var(--op-on-primary); box-shadow: var(--op-shadow-cta); font-family: var(--op-font-sans); font-weight: 600; font-size: 13px; line-height: 1.2; white-space: nowrap; }
+
+.opq-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.opq-field { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.opq-label { font-family: var(--op-font-sans); font-weight: 600; font-size: 11px; line-height: 1.3; letter-spacing: .08em; text-transform: uppercase; color: var(--op-fg-3); }
+.opq-select { box-sizing: border-box; width: 100%; border: 0; box-shadow: inset 0 0 0 1.5px var(--op-border); border-radius: var(--op-r-sm); padding: 12px 14px; background: var(--op-surface-2); color: var(--op-fg-1); font-family: var(--op-font-sans); font-weight: 400; font-size: 15px; line-height: 1.55; }
+.opq-input { box-sizing: border-box; width: 100%; border: 0; box-shadow: inset 0 0 0 1.5px var(--op-border); border-radius: var(--op-r-sm); padding: 12px 14px; background: var(--op-surface-2); color: var(--op-fg-1); font-family: var(--op-font-sans); font-weight: 400; font-size: 15px; line-height: 1.55; }
+.opq-input:focus { outline: 0; box-shadow: inset 0 0 0 2px var(--op-primary), 0 0 0 4px var(--op-info-bg); }
+
+/* The grid wraps as many stickers as the API returns — 4 or 40, no cap,
+   no horizontal scroll. */
+.opq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+
+.opq-sticker { box-sizing: border-box; padding: 14px; border-radius: var(--op-r-md); background: #FFFFFF; box-shadow: var(--op-shadow-sm); display: flex; align-items: flex-start; gap: 12px; }
+/* Stickers are always printed on white paper, so this card stays #FFFFFF in the
+   dark palette too — that is deliberate, not a missed token. */
+
+.opq-qr { box-sizing: border-box; flex: 0 0 62px; width: 62px; height: 62px; border-radius: var(--op-r-xs); background-color: #EEF1F4; background-image: repeating-linear-gradient(90deg, #1F3F4F 0 3px, transparent 3px 6px), repeating-linear-gradient(0deg, #1F3F4F 0 3px, transparent 3px 6px); background-size: 100% 100%; display: block; }
+.opq-qr-none { background-image: none; background-color: transparent; box-shadow: inset 0 0 0 1.5px var(--op-border-strong); }
+
+.opq-st-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.opq-st-head { font-family: var(--op-font-mono); font-weight: 400; font-size: 11px; line-height: 1.35; letter-spacing: .04em; color: #51616C; }
+.opq-st-room { font-family: var(--op-font-sans); font-weight: 600; font-size: 15px; line-height: 1.35; color: #1F3F4F; }
+.opq-st-line { font-family: var(--op-font-sans); font-weight: 600; font-size: 9px; line-height: 1.35; letter-spacing: .07em; text-transform: uppercase; color: #8A929B; text-wrap: pretty; }
+.opq-st-slug { font-family: var(--op-font-mono); font-weight: 400; font-size: 10px; line-height: 1.35; color: #8A929B; }
+.opq-st-slug-none { color: #B06A0A; }
+
+.opq-empty { margin: 0; padding: 30px 0; text-align: center; font-family: var(--op-font-sans); font-weight: 500; font-size: 13px; line-height: 1.45; color: var(--op-fg-3); }
+
+/*
+ * Choosing which stickers to print.
+ *
+ * Not in the export, which shows the sheet as a printable grid rather than a
+ * selection. Here a caretaker usually wants one replacement sticker out of two
+ * hundred, so a card can be picked and only the picked ones print.
+ */
+.opq-sticker {
+  appearance: none; -webkit-appearance: none;
+  border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.opq-sticker-on {
+  box-shadow: inset 0 0 0 2px var(--op-primary);
+}
+.opq-sticker:focus-visible { outline: 2px solid var(--op-primary); outline-offset: 2px; }
+
+@media print {
+  /* Only what was chosen, and never the chrome. */
+  .noprint { display: none !important; }
+  .opq-sticker-on { box-shadow: none; }
+}
+
+/*
+ * The page's primary action — the same button on every operator page.
+ *
+ * Print sheet, Print the list and Add building all sit top-right and all do the
+ * one thing the page is for. The exports drew them independently and they
+ * drifted: 12px/20px here, 11px/18px there, and one page had none at all. These
+ * values are the buildings export's, chosen because Add building is the longest
+ * label and sets the comfortable size.
+ */
+.opq-cta, .opc-cta, .opb-cta {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  appearance: none; -webkit-appearance: none;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: var(--op-r-pill);
+  background: var(--op-primary);
+  color: var(--op-on-primary);
+  box-shadow: var(--op-shadow-cta);
+  font-family: var(--op-font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: background .14s ease, transform .12s ease;
+}
+.opq-cta:hover, .opc-cta:hover, .opb-cta:hover { background: var(--op-primary-700); }
+.opq-cta:active, .opc-cta:active, .opb-cta:active { transform: scale(.975); }
+.opq-cta:disabled, .opc-cta:disabled, .opb-cta:disabled {
+  background: var(--op-surface-3);
+  color: var(--op-fg-3);
+  box-shadow: none;
+  cursor: default;
+  transform: none;
+}
+.opq-cta:focus-visible, .opc-cta:focus-visible, .opb-cta:focus-visible {
+  outline: 2px solid var(--op-primary); outline-offset: 2px;
+}

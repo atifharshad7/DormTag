@@ -16,7 +16,9 @@ type T = (k: StrKey) => string;
  * their keys, the operator issues one new code and prints one slip.
  */
 export function BuildingCodes({ l, t, building, onBack }: {
-  l: Locale; t: T; building: any; onBack: () => void;
+  l: Locale; t: T; building: any;
+  /* Absent where the left panel is present: two ways back is one too many. */
+  onBack?: () => void;
 }) {
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
@@ -41,9 +43,11 @@ export function BuildingCodes({ l, t, building, onBack }: {
 
   return (
     <div className="col">
-      <button className="linkback noprint" onClick={onBack}>
-        <ChevronLeft size={16} /> {t("backToDash")}
-      </button>
+      {onBack && (
+        <button className="linkback noprint" onClick={onBack}>
+          <ChevronLeft size={16} /> {t("backToDash")}
+        </button>
+      )}
 
       <h2>{t("codesFor")} {building.name}</h2>
 
@@ -78,33 +82,43 @@ export function BuildingCodes({ l, t, building, onBack }: {
                   <div className="row">
                     <button className="iconbtn" onClick={() => setShowSheet(false)}
                       aria-label={t("close")}><X size={17} /></button>
-                    <button className="btn" onClick={() => window.print()}>
+                    <button className="opc-cta" onClick={() => window.print()}>
                       <Printer size={16} /> {t("printCodes")}
                     </button>
                   </div>
                 </div>
 
-                <div className="codesheet">
+                <div className="opc-list">
                   {data.codes.map((c: any) => (
-                    <div className="coderow" key={c.code}>
-                      <span className="codeplate">
-                        {data.building.code}-{c.unit_code} · {c.label || c.room_code}
-                      </span>
-                      <span className="codeval mono">{c.code}</span>
-                      <span className="muted mono codewhen">
-                        {t("issuedOn")} {c.issued_at ? fmtDay(c.issued_at, l) : "–"}
-                        {!c.activated_at && ` · ${t("neverUsed")}`}
-                      </span>
+                    <div className="opc-row" key={c.code}>
+                      <div className="opc-rowmain">
+                        <span className="opc-unit">
+                          {data.building.code}-{c.unit_code} · {c.label || c.room_code}
+                        </span>
+                        <span className="opc-rowright">
+                          <span className="opc-code">{c.code}</span>
+                          {/* Never used and in use are different facts about a
+                              handover, so they read differently. */}
+                          <span className="opc-meta">
+                            {t("issuedOn")} {c.issued_at ? fmtDay(c.issued_at, l) : "–"}
+                            {c.activated_at
+                              ? <> · <span className="opc-meta-used">
+                                  {t("inUseSince")} {fmtDay(c.activated_at, l)}
+                                </span></>
+                              : <> · <span className="opc-meta-never">{t("neverUsed")}</span></>}
+                          </span>
+                        </span>
+                      </div>
                       {turnover === c.room_id ? (
                         <div className="col noprint" style={{ gap: 6, width: "100%" }}>
-                          <p className="muted">{t("turnoverHint")}</p>
-                          <input className="in" value={note} placeholder={t("turnoverNote")}
+                          <p className="opc-note">{t("turnoverHint")}</p>
+                          <input className="opc-input" value={note} placeholder={t("turnoverNote")}
                             maxLength={80} onChange={(e) => setNote(e.target.value)} />
                           <div className="row">
-                            <button className="btn" onClick={() => { setTurnover(null); setNote(""); }}>
+                            <button className="opc-ghost" onClick={() => { setTurnover(null); setNote(""); }}>
                               {t("cancel")}
                             </button>
-                            <button className="btn btn-warn" disabled={!!busy}
+                            <button className="opc-confirm" disabled={!!busy}
                               onClick={() => act(c.code, async () => {
                                 await api.turnoverRoom(c.room_id, note);
                                 setTurnover(null); setNote("");
@@ -114,14 +128,14 @@ export function BuildingCodes({ l, t, building, onBack }: {
                           </div>
                         </div>
                       ) : (
-                        <div className="row noprint coderowacts">
-                          <button className="linkmore"
+                        <div className="opc-rowacts noprint">
+                          <button className="opc-link"
                             onClick={() => { setTurnover(c.room_id); setNote(""); }}>
                             {t("turnoverWord")}
                           </button>
                           {/* Dates and the handover note, never the old code
                               strings: a revoked code has no legitimate use. */}
-                          <button className="linkmore" onClick={async () => {
+                          <button className="opc-link" onClick={async () => {
                             if (history[c.room_id]) {
                               setHistory((h) => { const n = { ...h }; delete n[c.room_id]; return n; });
                               return;

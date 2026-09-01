@@ -1,0 +1,361 @@
+/* ==========================================================================
+   DormTag — sign-in modal.  Pairs with dormtag-signin.html.
+
+   KIND: modal over the landing page. Not a page.
+   LIGHT ONLY: this modal sits on the marketing landing page, which is
+   light-only. The in-app screens are dark; those values are NOT in this file.
+
+   BACKDROP (measured values, both applied to the page layer behind):
+     overlay colour   rgba(31, 63, 79, 0.45)      -> --dt-overlay
+     blur radius      8px                          -> --dt-backdrop-blur
+   The blur is a `filter: blur(8px)` on the PAGE element (.dt-page-behind), not
+   a backdrop-filter on the scrim: blurring the page itself keeps the scrim's
+   own edges crisp and costs one composite instead of one per scroll frame.
+   The scrim (.dt-scrim) is the flat overlay colour on top of that blur.
+
+   SELECTORS: flat, single-class, no descendant scoping anywhere in this file.
+   The modal renders as a sibling of the page in React, so every rule targets
+   its own element. Verify with: no rule in here contains a space between two
+   class selectors.
+
+   CUSTOM PROPERTIES: all defined below with literal values. Nothing here
+   depends on a :root from another stylesheet.
+   ========================================================================== */
+
+:root {
+  /* brand */
+  --dt-primary:        #4a4ad8;   /* indigo, the one action colour */
+  --dt-primary-press:  #2e2ea6;
+  --dt-primary-50:     #eeeefc;   /* focus halo, quiet fills */
+  --dt-primary-100:    #dedef8;
+  --dt-on-primary:     #ffffff;
+  --dt-yellow:         #f2b008;   /* DormTag sticker + "waiting" only */
+  --dt-ink:            #16191b;
+
+  /* text */
+  --dt-fg-1:           #1f3f4f;   /* headings */
+  --dt-fg-2:           #51616c;   /* body */
+  --dt-fg-3:           #8a929b;   /* labels, hints */
+
+  /* surfaces */
+  --dt-surface:        #ffffff;
+  --dt-surface-2:      #f5f7f9;
+  --dt-surface-3:      #eef1f4;   /* disabled fill */
+  --dt-field:          #ebedf0;
+  --dt-border:         #e4e8ed;
+  --dt-border-strong:  #d3d9e0;
+
+  /* status */
+  --dt-error:          #b3251f;
+  --dt-error-bg:       #fdeceb;
+  --dt-success:        #1fa971;
+
+  /* backdrop */
+  --dt-overlay:        rgba(31, 63, 79, 0.45);
+  --dt-backdrop-blur:  8px;
+
+  /* radii */
+  --dt-r-sm:            8px;
+  --dt-r-md:           14px;
+  --dt-r-lg:           18px;
+  --dt-r-xl:           24px;
+  --dt-r-pill:        999px;
+
+  /* elevation */
+  --dt-shadow-sm:      0 1px 2px rgba(31, 63, 79, .06);
+  --dt-shadow-lg:      0 16px 40px rgba(31, 63, 79, .12);
+  --dt-shadow-cta:     0 10px 24px rgba(74, 74, 216, .32);
+
+  /* type */
+  /* The export names Inter and Roboto Mono; this app already loads Archivo and
+     IBM Plex Mono, so the same roles are filled by what's on the page. */
+  --dt-font-sans: Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --dt-font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+
+/* the hidden attribute must beat author display values, or tab switching
+   silently does nothing on any element that sets display */
+[hidden] { display: none !important; }
+
+/* ============================================================ backdrop === */
+
+.dt-page-behind {
+  /* the landing page, blurred. In React this is whatever renders under the
+     modal; apply this class (or the same filter) to that subtree. */
+  filter: blur(var(--dt-backdrop-blur));
+  pointer-events: none;
+  user-select: none;
+}
+
+.dt-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--dt-overlay);
+  cursor: pointer;
+}
+
+/* ============================================================== shell === */
+
+.dt-modal {
+  box-sizing: border-box;
+  position: fixed;
+  z-index: 41;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--dt-surface);
+  border-radius: var(--dt-r-xl);
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: var(--dt-shadow-lg);
+  font-family: var(--dt-font-sans);
+  color: var(--dt-fg-1);
+}
+
+.dt-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.dt-modal-titles { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dt-modal-title { margin: 0; font: 700 26px/1.2 var(--dt-font-sans); letter-spacing: -.025em; }
+.dt-modal-sub   { margin: 0; font: 400 15px/1.5 var(--dt-font-sans); color: var(--dt-fg-2); text-wrap: pretty; }
+
+.dt-close {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--dt-r-pill);
+  background: var(--dt-surface-2);
+  color: var(--dt-fg-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.dt-close:hover { background: var(--dt-surface-3); color: var(--dt-fg-1); }
+.dt-close:focus-visible { outline: 3px solid var(--dt-primary); outline-offset: 2px; }
+
+/* =============================================================== tabs === */
+
+.dt-tabs {
+  box-sizing: border-box;
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  width: 100%;
+  border-radius: var(--dt-r-pill);
+  background: var(--dt-field);
+}
+.dt-tab {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
+  border: 0;
+  padding: 11px 12px;
+  border-radius: var(--dt-r-pill);
+  background: transparent;
+  color: var(--dt-fg-3);
+  /* "Hausmeister · Verwaltung" is the longest label in either language and
+     sets this size; do not raise the font size without re-checking 360px */
+  font: 600 14px/1.2 var(--dt-font-sans);
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease;
+}
+.dt-tab:hover { color: var(--dt-fg-1); }
+.dt-tab:focus-visible { outline: 3px solid var(--dt-primary); outline-offset: 2px; }
+.dt-tab-on { background: var(--dt-surface); color: var(--dt-fg-1); box-shadow: var(--dt-shadow-sm); }
+
+/* ============================================================== panel === */
+
+.dt-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.dt-field { display: flex; flex-direction: column; gap: 7px; }
+.dt-label {
+  font: 600 12px/1.3 var(--dt-font-sans);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--dt-fg-3);
+}
+
+/* the access code: the one hero input, mono and centred like the printed slip */
+.dt-code {
+  box-sizing: border-box;
+  width: 100%;
+  border: 0;
+  background: var(--dt-field);
+  border-radius: var(--dt-r-md);
+  padding: 18px;
+  font: 500 22px/1.4 var(--dt-font-mono);
+  letter-spacing: .18em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--dt-fg-1);
+  outline: none;
+  transition: box-shadow .14s ease, background .14s ease;
+}
+.dt-code::placeholder { color: var(--dt-fg-3); letter-spacing: .12em; }
+.dt-code:hover { background: var(--dt-surface-3); }
+.dt-code:focus { background: var(--dt-surface); box-shadow: 0 0 0 4px var(--dt-primary-50), inset 0 0 0 1.5px var(--dt-primary); }
+.dt-code-invalid { box-shadow: 0 0 0 4px var(--dt-error-bg), inset 0 0 0 1.5px var(--dt-error); }
+
+/* email + password: pill fields with a leading icon */
+.dt-pill {
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--dt-field);
+  border-radius: var(--dt-r-pill);
+  padding: 14px 18px;
+  transition: box-shadow .14s ease, background .14s ease;
+}
+.dt-pill:hover { background: var(--dt-surface-3); }
+.dt-pill-focus { background: var(--dt-surface); box-shadow: 0 0 0 4px var(--dt-primary-50), inset 0 0 0 1.5px var(--dt-primary); }
+.dt-pill-invalid { box-shadow: 0 0 0 4px var(--dt-error-bg), inset 0 0 0 1.5px var(--dt-error); }
+.dt-pill-icon { flex: 0 0 auto; color: var(--dt-fg-3); display: block; }
+.dt-input {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: none;
+  outline: none;
+  font: 400 16px/1.4 var(--dt-font-sans);  /* 16px keeps iOS Safari from zooming */
+  color: var(--dt-fg-1);
+}
+.dt-input::placeholder { color: var(--dt-fg-3); }
+
+.dt-hint { margin: 0; font: 400 14px/1.5 var(--dt-font-sans); color: var(--dt-fg-2); text-wrap: pretty; }
+.dt-hint-strong { color: var(--dt-fg-1); font-weight: 600; }
+.dt-fine { margin: 0; font: 500 13px/1.45 var(--dt-font-sans); color: var(--dt-fg-3); text-wrap: pretty; }
+
+/* the error line */
+.dt-error {
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  background: var(--dt-error-bg);
+  color: var(--dt-error);
+  border-radius: var(--dt-r-md);
+  padding: 12px 14px;
+  font: 500 14px/1.4 var(--dt-font-sans);
+  text-wrap: pretty;
+}
+.dt-error-icon { flex: 0 0 auto; margin-top: 1px; }
+
+/* ============================================================ buttons === */
+
+.dt-btn {
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--dt-r-pill);
+  padding: 17px 24px;
+  font: 600 16px/1.2 var(--dt-font-sans);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
+}
+.dt-btn-block { width: 100%; }
+
+.dt-btn-primary { background: var(--dt-primary); color: var(--dt-on-primary); box-shadow: var(--dt-shadow-cta); }
+.dt-btn-primary:hover { background: var(--dt-primary-press); }
+.dt-btn-primary:active { transform: scale(.975); box-shadow: none; }
+.dt-btn-primary:focus-visible { outline: 3px solid var(--dt-fg-1); outline-offset: 3px; }
+
+/* DISABLED. Contrast is 4.7:1 on the fill, so the label stays readable — a
+   disabled control has to say what you cannot do yet, not vanish. */
+.dt-btn-primary:disabled {
+  background: var(--dt-surface-3);
+  color: var(--dt-fg-3);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* LOADING: same box, label swapped for a spinner + text, still disabled */
+.dt-spinner {
+  box-sizing: border-box;
+  width: 17px;
+  height: 17px;
+  border-radius: var(--dt-r-pill);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: dt-spin .7s linear infinite;
+}
+@keyframes dt-spin { to { transform: rotate(360deg); } }
+
+.dt-btn-ghost {
+  background: var(--dt-surface);
+  color: var(--dt-primary);
+  box-shadow: inset 0 0 0 1.5px var(--dt-primary-100);
+}
+.dt-btn-ghost:hover { background: var(--dt-primary-50); }
+.dt-btn-ghost:active { transform: scale(.975); }
+.dt-btn-ghost:focus-visible { outline: 3px solid var(--dt-primary); outline-offset: 2px; }
+
+.dt-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--dt-primary);
+  font: 600 14px/1.4 var(--dt-font-sans);
+  cursor: pointer;
+  text-decoration: none;
+}
+.dt-link:hover { color: var(--dt-primary-press); text-decoration: underline; text-underline-offset: 3px; }
+.dt-link:focus-visible { outline: 3px solid var(--dt-primary); outline-offset: 2px; border-radius: var(--dt-r-sm); }
+
+.dt-link-quiet {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--dt-fg-3);
+  font: 500 13px/1.45 var(--dt-font-sans);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dt-link-quiet:hover { color: var(--dt-fg-1); }
+.dt-link-quiet:focus-visible { outline: 3px solid var(--dt-primary); outline-offset: 2px; border-radius: var(--dt-r-sm); }
+
+/* ================================================= rule between routes === */
+
+.dt-rule { display: flex; align-items: center; gap: 12px; }
+.dt-rule-line { flex: 1 1 auto; height: 1px; background: var(--dt-border); }
+.dt-rule-word {
+  font: 500 12px/1.3 var(--dt-font-sans);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--dt-fg-3);
+}
+
+.dt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}

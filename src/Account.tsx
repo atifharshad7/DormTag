@@ -27,67 +27,70 @@ export function Account({ l, t, session, onBack, onLanguage, onAbout, onSignOut,
   const roleName = kind === "operator" ? t("operator") : kind === "staff" ? t("staff") : t("tenant");
 
   return (
-    <div className="col">
-      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
+    <div className="rz">
+    <div className="col rz-body">
+      <button className="rz-btn rz-btn-back" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
 
-      <div className="card">
-        <p className="cardtitle"><RoleIcon size={15} strokeWidth={1.75} aria-hidden /> {roleName}</p>
+      <div className="rz-card" style={{ cursor: "default" }}>
+        <p className="rz-cardtitle"><RoleIcon size={15} strokeWidth={1.75} aria-hidden /> {roleName}</p>
         {kind === "tenant" && home && (
           <>
-            <span className="plate">{home.building_code}-{home.unit_code} · {home.room_code}</span>
-            <p className="muted">{t("yourFlat")}</p>
+            <span className="rz-plate">{home.building_code}-{home.unit_code} · {home.room_code}</span>
+            <p className="rz-small">{t("yourFlat")}</p>
           </>
         )}
         {kind === "staff" && (
           <>
-            <p className="cardtitle">{session.principal.name}</p>
-            <p className="muted">
+            <p className="rz-cardtitle">{session.principal.name}</p>
+            <p className="rz-small">
               {(session.buildings || [])
                 .filter((b: any) => (session.principal.buildingIds || []).includes(b.id))
                 .map((b: any) => b.name).join(", ") || t("noBuildingsAssigned")}
             </p>
           </>
         )}
-        {kind === "operator" && <p className="cardtitle">{session.principal.name}</p>}
-        {session.org && <p className="muted mono">{session.org.name}</p>}
+        {kind === "operator" && <p className="rz-cardtitle">{session.principal.name}</p>}
+        {session.org && <p className="rz-small rz-mono">{session.org.name}</p>}
       </div>
 
       {kind === "tenant" && <EmailRow l={l} t={t} session={session} />}
 
-      <button className="accountrow" onClick={onLanguage}>
+      <button className="rz-row rz-accountrow" onClick={onLanguage}>
         <Languages size={16} strokeWidth={1.75} aria-hidden />
         <span>{t("language")}</span>
-        <span className="mono">{l.toUpperCase()}</span>
+        <span className="rz-mono">{l.toUpperCase()}</span>
       </button>
 
       {/* Residents sign in with a room code and have no password to change. */}
       {kind !== "tenant" && onPassword && (
-        <button className="accountrow" onClick={onPassword}>
+        <button className="rz-row rz-accountrow" onClick={onPassword}>
           <KeyRound size={16} strokeWidth={1.75} aria-hidden />
           <span>{t("changePassword")}</span>
-          <span className="mono">→</span>
+          <span className="rz-mono">→</span>
         </button>
       )}
 
-      <button className="accountrow" onClick={onAbout}>
+      
+      <button className="rz-row rz-accountrow" onClick={onAbout}>
         <HelpCircle size={16} strokeWidth={1.75} aria-hidden />
         <span>{t("aboutLink")}</span>
-        <span className="mono">→</span>
+        <span className="rz-mono">→</span>
       </button>
 
       {/* Only ever one person. Deliberately no access to any org's tickets. */}
       {onPlatform && (
-        <button className="accountrow" onClick={onPlatform}>
+        <button className="rz-row rz-accountrow" onClick={onPlatform}>
           <ShieldCheck size={16} strokeWidth={1.75} aria-hidden />
           <span>{t("orgsWord")}</span>
-          <span className="mono">→</span>
+          <span className="rz-mono">→</span>
         </button>
       )}
 
-      <button className="accountrow accountout" onClick={onSignOut}>
+      <button className="rz-row rz-accountrow rz-accountout" onClick={onSignOut}>
         <LogOut size={16} strokeWidth={1.75} aria-hidden />
         <span>{t("logout")}</span>
       </button>
+    </div>
     </div>
   );
 }
@@ -116,10 +119,10 @@ function EmailRow({ l, t, session }: { l: Locale; t: T; session: any }) {
 
   if (!open) {
     return (
-      <button className="accountrow" onClick={() => setOpen(true)}>
+      <button className="rz-row rz-accountrow" onClick={() => setOpen(true)}>
         <Mail size={16} strokeWidth={1.75} aria-hidden />
         <span>{t("emailUpdates")}</span>
-        <span className="mono">
+        <span className="rz-mono">
           {saved ? t("emailSaved") : !email ? t("emailNone") : wants ? t("emailOn") : t("emailOff")}
         </span>
       </button>
@@ -127,9 +130,9 @@ function EmailRow({ l, t, session }: { l: Locale; t: T; session: any }) {
   }
 
   return (
-    <div className="card">
-      <p className="cardtitle"><Mail size={15} aria-hidden /> {t("emailUpdates")}</p>
-      <p className="muted">{t("emailHint")}</p>
+    <div className="rz-card" style={{ cursor: "default" }}>
+      <p className="rz-cardtitle"><Mail size={15} aria-hidden /> {t("emailUpdates")}</p>
+      <p className="rz-small">{t("emailHint")}</p>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
       <input className="in" type="email" value={email} placeholder={t("emailPlaceholder")}
         autoComplete="email" onChange={(e) => setEmail(e.target.value)} />

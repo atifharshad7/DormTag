@@ -19,9 +19,11 @@ type T = (k: StrKey) => string;
 export function About({ t, onBack }: { t: T; onBack: () => void }) {
   return (
     <div className="col about">
-      <button className="linkback" onClick={onBack}>
+      {onBack && (
+        <button className="rz-btn rz-btn-back" onClick={onBack}>
         <ChevronLeft size={16} /> {t("back")}
       </button>
+      )}
 
       <div className="aboutmark">
         <Logo size={62} label="DormTag" />
@@ -91,7 +93,7 @@ export function SignIn({ l, t, session, onDone, onForgot, onBack }: {
   return (
     <div className="col signin">
       {onBack && (
-        <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("back")}</button>
+        <button className="rz-btn rz-btn-back" onClick={onBack}><ChevronLeft size={16} /> {t("back")}</button>
       )}
       <h2>{t("signInTitle")}</h2>
 
@@ -388,7 +390,9 @@ function Qr({ text, size = 132 }: { text: string; size?: number }) {
 }
 
 export function StickerSheet({ l, t, buildings, onBack, initialBuilding, onPick }: {
-  l: Locale; t: T; buildings: any[]; onBack: () => void;
+  l: Locale; t: T; buildings: any[];
+  /* Absent for an operator, whose left panel is the way back. */
+  onBack?: () => void;
   /** Set when arriving from a building card, or from /stickers/A. */
   initialBuilding?: string | null;
   /* Picking changes the URL, so /stickers/A is linkable and back returns to the
@@ -418,18 +422,26 @@ export function StickerSheet({ l, t, buildings, onBack, initialBuilding, onPick 
 
   if (!code) {
     return (
-      <div className="col">
-        <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
-        <h2>{t("stickers")}</h2>
-        <p className="muted">{t("pickBuilding")}</p>
-        {buildings.map((b) => (
-          <button key={b.code} className="card cardlink" onClick={() => setCode(b.code)}>
-            <div className="rowspread">
-              <span className="cardtitle">{b.name}</span>
-              <span className="plate plate-sm">{b.code}</span>
-            </div>
+      <div className="opq-root">
+        {onBack && (
+          <button className="opq-back" onClick={onBack}>
+            <ChevronLeft size={16} /> {t("backToApp")}
           </button>
-        ))}
+        )}
+        <header className="opq-head">
+          <div>
+            <h1 className="opq-title">{t("stickers")}</h1>
+            <p className="opq-sub">{t("pickBuilding")}</p>
+          </div>
+        </header>
+        <div className="opq-picklist">
+          {buildings.map((b) => (
+            <button key={b.code} className="opq-pickrow" onClick={() => setCode(b.code)}>
+              <span className="opq-pick-name">{b.name}</span>
+              <span className="opq-pick-code">{b.code}</span>
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
@@ -459,42 +471,52 @@ export function StickerSheet({ l, t, buildings, onBack, initialBuilding, onPick 
   const filtered = floor !== "" || roomType !== "" || q !== "";
 
   return (
-    <div className="col">
-      <div className="rowspread noprint">
-        {/* Arriving from a building card means there is no picker behind this,
-            so Back must leave the sheet rather than drop into one. */}
-        <button className="linkback"
-          onClick={() => setCode(null)}>
-          <ChevronLeft size={16} /> {initialBuilding ? t("backToApp") : t("pickBuilding")}
-        </button>
-        <div className="row">
-          <span className="muted">
+    <div className="opq-root">
+      <header className="opq-head noprint">
+        {/*
+          Only when there's a picker to return to.
+          
+          Arriving from a building card, or from the left panel with a building
+          already chosen, there is nothing behind this — and the panel is the way
+          out, so a back arrow would be a second one.
+        */}
+        {!initialBuilding ? (
+          <button className="opq-back" onClick={() => setCode(null)}>
+            <ChevronLeft size={16} /> {t("pickBuilding")}
+          </button>
+        ) : onBack ? (
+          <button className="opq-back" onClick={onBack}>
+            <ChevronLeft size={16} /> {t("backToApp")}
+          </button>
+        ) : <span />}
+        <div className="opq-sheethead-right">
+          <span className="opq-count">
             {toPrint.length}{toPrint.length !== all.length ? ` / ${all.length}` : ""} {t("stickerCount")}
           </span>
-          <button className="btn" disabled={toPrint.length === 0} onClick={() => window.print()}>
+          <button className="opq-cta" disabled={toPrint.length === 0} onClick={() => window.print()}>
             <Printer size={16} aria-hidden /> {t("printSheet")}
           </button>
         </div>
-      </div>
+      </header>
 
-      <div className="controls noprint">
-        <label className="ctl">
-          <span>{t("floorLabel")}</span>
-          <select className="in" value={floor} onChange={(e) => setFloor(e.target.value)}>
+      <div className="opq-filters noprint">
+        <label className="opq-field">
+          <span className="opq-label">{t("floorLabel")}</span>
+          <select className="opq-select" value={floor} onChange={(e) => setFloor(e.target.value)}>
             <option value="">{t("allFloors")}</option>
             {floors.map((f) => <option key={f} value={String(f)}>{t("floorShort")}{f}</option>)}
           </select>
         </label>
-        <label className="ctl">
-          <span>{t("roomsInUnit")}</span>
-          <select className="in" value={roomType} onChange={(e) => setRoomType(e.target.value)}>
+        <label className="opq-field">
+          <span className="opq-label">{t("roomsInUnit")}</span>
+          <select className="opq-select" value={roomType} onChange={(e) => setRoomType(e.target.value)}>
             <option value="">{t("allRooms")}</option>
             {roomTypes.map((rt) => <option key={rt} value={rt}>{roomLabel(rt, l)}</option>)}
           </select>
         </label>
-        <label className="ctl">
-          <span>{t("findUnit")}</span>
-          <input className="in mono" value={unitQ} placeholder="204"
+        <label className="opq-field">
+          <span className="opq-label">{t("findUnit")}</span>
+          <input className="opq-input" value={unitQ} placeholder="204"
             onChange={(e) => setUnitQ(e.target.value)} />
         </label>
       </div>
@@ -522,7 +544,7 @@ export function StickerSheet({ l, t, buildings, onBack, initialBuilding, onPick 
       )}
 
       {data && (
-        <div className="sheet">
+        <div className="opq-grid">
           {shown.map((s2: any) => {
             const on = picked.includes(s2.qr_slug);
             // When something is selected, everything else is dropped from the
@@ -530,22 +552,24 @@ export function StickerSheet({ l, t, buildings, onBack, initialBuilding, onPick 
             const printable = picked.length === 0 || on;
             return (
               <button key={s2.qr_slug} type="button"
-                className={"stickercard" + (on ? " stickerpicked" : "") + (printable ? "" : " noprint")}
+                className={"opq-sticker" + (on ? " opq-sticker-on" : "") + (printable ? "" : " noprint")}
                 onClick={() => toggle(s2.qr_slug)}>
                 <Qr text={`${origin}/r/${s2.qr_slug}`} />
-                <div className="stickermeta">
-                  <span className="stickerplate">
+                <span className="opq-st-text">
+                  <span className="opq-st-head">
                     {data.building.code}-{s2.unit_code}
                     {s2.is_common ? ` · ${t("floorShort")}${s2.floor}` : ""}
                   </span>
-                  <span className="stickerobj">
+                  <span className="opq-st-room">
                     {s2.kind === "room"
                       ? (s2.room_label || roomLabel(s2.room_type, l))
                       : `${objLabel(s2.object_type, l)} ${s2.ordinal}`}
                   </span>
-                  <span className="stickerhint">{t("reportProblem")} · Schaden melden</span>
-                  <span className="stickerslug mono">{s2.qr_slug}</span>
-                </div>
+                  {/* Both languages on the sticker itself: it goes on a wall in
+                      a building where not everyone reads German. */}
+                  <span className="opq-st-line">SCHADEN MELDEN · REPORT A PROBLEM</span>
+                  <span className="opq-st-slug">{s2.qr_slug}</span>
+                </span>
               </button>
             );
           })}

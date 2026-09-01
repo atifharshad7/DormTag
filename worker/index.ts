@@ -1228,6 +1228,9 @@ route("GET", "/api/dashboard", async ({ env, p, url }) => {
 
     env.DB.prepare(
       `SELECT b.id, COALESCE(b.display_code, b.code) AS code, b.name, b.room_count,
+              -- The card shows units alongside rooms: an operator thinks in
+              -- flats when planning a visit and in rooms when counting stickers.
+              (SELECT COUNT(*) FROM units u WHERE u.building_id = b.id) AS unit_count,
               (SELECT COUNT(*) FROM v_ticket_location v
                 WHERE v.building_id = b.id AND v.state NOT IN ('done','cancelled')) AS open_count,
               (SELECT COUNT(*) FROM v_ticket_location v

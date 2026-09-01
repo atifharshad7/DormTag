@@ -1,0 +1,225 @@
+/* =============================================================================
+   TOKENS — real values, self-contained.
+   Every file in this export repeats this block on purpose: do NOT rely on a
+   :root from another file. All type is written as LONGHAND (font-weight /
+   font-size / line-height / font-family) — never the `font:` shorthand, because
+   one invalid part drops the whole declaration and silently loses size+weight.
+   Palettes: LIGHT is the default, DARK follows the system theme.
+   ========================================================================== */
+:root {
+  --op-font-sans: Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --op-font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --op-brand-blue: #2026B0;
+  --op-primary: #4A4AD8;
+  --op-primary-100: #DEDEF8;
+  --op-primary-300: #9E9EE8;
+  --op-primary-400: #7373DF;
+  --op-primary-700: #2E2EA6;
+  --op-on-primary: #FFFFFF;
+
+  --op-fg-1: #1F3F4F;
+  --op-fg-2: #51616C;
+  --op-fg-3: #8A929B;
+
+  --op-surface: #FFFFFF;
+  --op-surface-2: #F5F7F9;
+  --op-surface-3: #EEF1F4;
+  --op-field: #EBEDF0;
+  --op-border: #E4E8ED;
+  --op-border-strong: #D3D9E0;
+
+  --op-success: #1FA971;
+  --op-success-bg: #E6F6EF;
+  --op-warning: #E89A2B;
+  --op-warning-bg: #FCF1DF;
+  --op-warning-fg: #7A4A08;
+  --op-danger: #E8403A;
+  --op-danger-bg: #FCE9E8;
+  --op-info-bg: #EEEEFC;
+
+  --op-r-xs: 6px;
+  --op-r-sm: 10px;
+  --op-r-md: 14px;
+  --op-r-lg: 18px;
+  --op-r-pill: 999px;
+
+  --op-shadow-sm: 0 1px 2px rgba(31,63,79,.06);
+  --op-shadow-md: 0 6px 18px rgba(31,63,79,.08);
+  --op-shadow-lg: 0 16px 40px rgba(31,63,79,.12);
+  --op-shadow-cta: 0 10px 24px rgba(74,74,216,.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --op-brand-blue: #5A60E8;
+    --op-primary: #7B7BE6;
+    --op-primary-100: #2A2A5C;
+    --op-primary-300: #5F5FD1;
+    --op-primary-400: #6E6EDA;
+    --op-primary-700: #B4B4F2;
+    --op-on-primary: #0E1216;
+
+    --op-fg-1: #E8EDF1;
+    --op-fg-2: #A9B4BD;
+    --op-fg-3: #78848D;
+
+    --op-surface: #171C21;
+    --op-surface-2: #101418;
+    --op-surface-3: #222A31;
+    --op-field: #222A31;
+    --op-border: #2A333B;
+    --op-border-strong: #3A454E;
+
+    --op-success: #46C48D;
+    --op-success-bg: #12301F;
+    --op-warning: #E8A94A;
+    --op-warning-bg: #33260F;
+    --op-warning-fg: #E8C98A;
+    --op-danger: #F1655F;
+    --op-danger-bg: #3A1A18;
+    --op-info-bg: #1E2140;
+
+    --op-shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    --op-shadow-md: 0 6px 18px rgba(0,0,0,.45);
+    --op-shadow-lg: 0 16px 40px rgba(0,0,0,.55);
+    --op-shadow-cta: 0 10px 24px rgba(123,123,230,.28);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   STAFF — dormtag-op-staff.css
+   Content area only — mounts right of the persistent 240px panel.
+   Flat classes (.ops-*), no descendant selectors anywhere.
+   box-sizing: border-box wherever padding meets a percentage/fr width.
+   Type is longhand only — never the `font:` shorthand.
+   -------------------------------------------------------------------------- */
+
+.ops-preview { margin: 0; padding: 28px; background: var(--op-surface-2); }
+
+.ops-root {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1180px;
+  padding: 26px 28px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: var(--op-surface-2);
+  font-family: var(--op-font-sans);
+  color: var(--op-fg-1);
+}
+
+.ops-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ops-head-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ops-title { margin: 0; font-family: var(--op-font-sans); font-weight: 700; font-size: 28px; line-height: 1.2; letter-spacing: -.02em; color: var(--op-fg-1); }
+.ops-sub { margin: 0; font-family: var(--op-font-sans); font-weight: 400; font-size: 15px; line-height: 1.55; color: var(--op-fg-2); }
+
+.ops-cta { box-sizing: border-box; flex: 0 0 auto; border: 0; cursor: pointer; padding: 12px 20px; border-radius: var(--op-r-pill); background: var(--op-primary); color: var(--op-on-primary); box-shadow: var(--op-shadow-cta); font-family: var(--op-font-sans); font-weight: 600; font-size: 13px; line-height: 1.2; white-space: nowrap; }
+.ops-ghost { border: 0; cursor: pointer; padding: 12px 16px; border-radius: var(--op-r-pill); background: transparent; color: var(--op-fg-2); font-family: var(--op-font-sans); font-weight: 600; font-size: 13px; line-height: 1.2; }
+
+.ops-form { box-sizing: border-box; padding: 20px 22px; border-radius: var(--op-r-lg); background: var(--op-surface); box-shadow: var(--op-shadow-md); display: flex; flex-direction: column; gap: 16px; }
+.ops-field { display: flex; flex-direction: column; gap: 6px; }
+.ops-label { font-family: var(--op-font-sans); font-weight: 600; font-size: 11px; line-height: 1.3; letter-spacing: .08em; text-transform: uppercase; color: var(--op-fg-3); }
+.ops-input { box-sizing: border-box; width: 100%; border: 0; box-shadow: inset 0 0 0 1.5px var(--op-border); border-radius: var(--op-r-sm); padding: 12px 14px; background: var(--op-surface-2); color: var(--op-fg-1); font-family: var(--op-font-sans); font-weight: 400; font-size: 15px; line-height: 1.55; }
+.ops-input:focus { outline: 0; box-shadow: inset 0 0 0 2px var(--op-primary), 0 0 0 4px var(--op-info-bg); }
+.ops-formfoot { display: flex; align-items: center; gap: 6px; }
+
+.ops-seg { box-sizing: border-box; display: flex; gap: 4px; padding: 4px; border-radius: var(--op-r-pill); background: var(--op-surface-2); }
+.ops-seg-btn { flex: 1 1 0; box-sizing: border-box; border: 0; cursor: pointer; padding: 9px 14px; border-radius: var(--op-r-pill); background: transparent; color: var(--op-fg-3); font-family: var(--op-font-sans); font-weight: 600; font-size: 13px; line-height: 1.2; }
+.ops-seg-btn-on { background: var(--op-surface); color: var(--op-fg-1); box-shadow: var(--op-shadow-sm); }
+
+.ops-switchrow {
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border-radius: var(--op-r-sm);
+  background: var(--op-surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ops-switch-name { font-family: var(--op-font-sans); font-weight: 500; font-size: 13px; line-height: 1.45; color: var(--op-fg-1); }
+.ops-switch { position: relative; flex: 0 0 38px; width: 38px; height: 22px; border-radius: var(--op-r-pill); background: var(--op-surface-3); cursor: pointer; display: block; }
+.ops-switch-on { background: var(--op-primary); }
+.ops-knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #FFFFFF; box-shadow: var(--op-shadow-sm); transition: left .16s ease; }
+.ops-knob-on { left: 18px; }
+
+.ops-list { display: flex; flex-direction: column; gap: 12px; }
+
+.ops-card { box-sizing: border-box; padding: 18px 20px; border-radius: var(--op-r-lg); background: var(--op-surface); box-shadow: var(--op-shadow-sm); display: flex; flex-direction: column; gap: 12px; }
+.ops-card-off { opacity: .55; }   /* disabled account: dimmed, still readable */
+
+.ops-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.ops-ident { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+.ops-avatar { box-sizing: border-box; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%; background: var(--op-info-bg); color: var(--op-primary-700); display: flex; align-items: center; justify-content: center; font-family: var(--op-font-mono); font-weight: 500; font-size: 12px; line-height: 1; }
+
+.ops-ident-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ops-name { font-family: var(--op-font-sans); font-weight: 600; font-size: 16px; line-height: 1.35; color: var(--op-fg-1); overflow-wrap: break-word; text-wrap: pretty; }
+.ops-mail { font-family: var(--op-font-mono); font-weight: 400; font-size: 12px; line-height: 1.4; color: var(--op-fg-3); overflow-wrap: anywhere; }
+
+.ops-role { box-sizing: border-box; flex: 0 0 auto; padding: 5px 10px; border-radius: var(--op-r-pill); background: var(--op-surface-2); color: var(--op-fg-3); font-family: var(--op-font-sans); font-weight: 600; font-size: 11px; line-height: 1.3; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.ops-role-operator { background: var(--op-info-bg); color: var(--op-primary-700); }
+.ops-role-off { background: var(--op-warning-bg); color: var(--op-warning-fg); }
+
+.ops-warn { box-sizing: border-box; margin: 0; padding: 9px 12px; border-radius: var(--op-r-sm); background: var(--op-warning-bg); color: var(--op-warning-fg); font-family: var(--op-font-sans); font-weight: 500; font-size: 12px; line-height: 1.45; }
+
+.ops-scoperow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ops-scope { margin: 0; font-family: var(--op-font-sans); font-weight: 500; font-size: 13px; line-height: 1.45; color: var(--op-fg-2); text-wrap: pretty; }
+.ops-link { border: 0; cursor: pointer; background: transparent; padding: 0; font-family: var(--op-font-sans); font-weight: 500; font-size: 12px; line-height: 1.4; color: var(--op-primary); }
+
+.ops-meta { margin: 0; font-family: var(--op-font-mono); font-weight: 400; font-size: 11px; line-height: 1.45; color: var(--op-fg-3); }
+.ops-meta-zero { color: var(--op-fg-3); }
+
+.ops-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ops-pill { box-sizing: border-box; border: 0; cursor: pointer; padding: 9px 14px; border-radius: var(--op-r-pill); background: var(--op-surface-2); color: var(--op-fg-1); font-family: var(--op-font-sans); font-weight: 500; font-size: 12px; line-height: 1.3; }
+.ops-pill-warn { background: var(--op-warning-bg); color: var(--op-warning-fg); }
+.ops-pill-good { background: var(--op-success-bg); color: var(--op-success); }
+
+/*
+ * Button reset for elements the export renders as div/li/article.
+ *
+ * A row that changes the view has to be a button — a keyboard user needs it to
+ * be — but the export's rules assume a non-interactive element and don't clear
+ * the browser's default button face. Without this the page reads as a stack of
+ * boxed controls, which is exactly what happened to the panel, the bar groups
+ * and the building cards.
+ */
+.opb-row, .opb-action, .opb-room, .ops-card, .ops-pill {
+  appearance: none; -webkit-appearance: none;
+  font: inherit; color: inherit; text-align: left;
+}
+
+/*
+ * The page's primary action — the same button as Add building, Print sheet and
+ * Print the list, so a Studierendenwerk sees one control doing one job wherever
+ * they are. Repeated here rather than shared, so this file stands alone.
+ */
+.ops-cta {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  appearance: none; -webkit-appearance: none;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: var(--op-r-pill);
+  background: var(--op-primary);
+  color: var(--op-on-primary);
+  box-shadow: var(--op-shadow-cta);
+  font-family: var(--op-font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: background .14s ease, transform .12s ease;
+}
+.ops-cta:hover { background: var(--op-primary-700); }
+.ops-cta:active { transform: scale(.975); }
+.ops-cta:focus-visible { outline: 2px solid var(--op-primary); outline-offset: 2px; }
+
+/* The head puts the title left and the action right, as the other pages do. */
+.ops-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap; }

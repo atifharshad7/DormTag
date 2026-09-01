@@ -1,0 +1,349 @@
+/* ==========================================================================
+   DormTag — "Die Aufkleber druckst du selbst" block.
+   Pairs with dormtag-printblock.html.
+
+   KIND: section inline on the landing page, near the bottom of the
+   "So funktioniert es / How it works" area. Not a page, not a modal.
+
+   LIGHT ONLY: the landing page is light-only. No dark values are implied here.
+
+   SELECTORS: flat, single-class, no descendant selectors anywhere. Verified by
+   walking every rule: zero selectors contain whitespace or ">" between two
+   compound selectors.
+
+   CUSTOM PROPERTIES: all defined below with literal values. Nothing reads a
+   :root from another stylesheet.
+
+   ------------------------------------------------------------------------
+   EVERY VALUE YOU ASKED FOR, in one place:
+
+   OUTER PANEL  .pb-panel
+     background      #f5f7f9
+     radius          24px
+     padding         32px            (24px below 880px, 20px below 560px)
+     inset border    inset 0 0 0 1.5px #e4e8ed     (an inset box-shadow, not a
+                                     real border: it cannot shift the grid)
+     column gap      24px
+
+   WHITE CARD   .pb-card
+     background      #ffffff
+     radius          18px
+     padding         18px
+     shadow          0 6px 18px rgba(31, 63, 79, .08)
+
+   QR TILE      .pb-tile
+     background      #f5f7f9
+     radius          14px
+     padding         10px
+     border          1px solid #e4e8ed   (real border here; box-sizing keeps it
+                                          inside the track width)
+     gap between     10px
+     inner gap       8px  (QR to caption)
+
+   THE QR       .pb-qr
+     background      #ffffff
+     radius          4px
+     padding         3px           <- white space around the code IN THE TILE
+     plus            2 modules of quiet zone drawn INSIDE the canvas by the
+                     encoder (margin: 2). Total white around the dark modules
+                     is therefore 3px + 2 modules ≈ 3px + 4.7px = 7.7px at the
+                     78px display size.
+
+   HEADER ROW   .pb-cardhead
+     left  .pb-overline   12px / 600 / uppercase / .08em / #8a929b / SANS
+     right .pb-code-sm    13px / 500 / .04em     / #51616c / MONO
+   TILE CAPTION .pb-tilename
+                          10px / 500 / uppercase / .04em / #51616c / MONO
+
+   TEAR LINE    .pb-tear
+     colour          #d3d9e0
+     dash pattern    6px dash, 5px gap, 1.5px thick  (a repeating-linear-
+                     gradient, so the pattern is exact — `border-top: dashed`
+                     lets the browser pick the dash length)
+     space above     14px   (margin-top)
+     space below     14px   (padding-top on the row under it)
+
+   ACCESS CODE  .pb-access
+     16px / 500 / .14em / #1f3f4f / MONO
+
+   ------------------------------------------------------------------------
+   REFLOW — breakpoints in pixels (viewport width):
+
+     > 880px    two columns (copy left, card right), 4 QR tiles in one row
+     ≤ 880px    the block becomes ONE column: copy, then the card beneath.
+                Tiles stay in one row of 4 because the card is now full width.
+     ≤ 560px    the 4 tiles become TWO ROWS OF TWO. Below this a tile's inner
+                width drops under 64px, where an 84px-wide code stops being
+                reliably scannable on a printed sheet.
+     ≤ 380px    tiles stay 2×2 (never 1 per row) and the panel padding drops to
+                20px. A single column of giant codes reads as an error.
+
+   If you can use container queries in the React build, swap the two media
+   queries for `@container (max-width: …)` on .pb-panel — the block is
+   width-driven, not viewport-driven, and it may end up in a narrower column
+   than the landing page's. The pixel values stay the same.
+   ========================================================================== */
+
+:root {
+  /* brand */
+  --pb-primary:        #4a4ad8;
+  --pb-primary-press:  #2e2ea6;
+  --pb-primary-50:     #eeeefc;
+  --pb-primary-100:    #dedef8;
+  --pb-yellow:         #f2b008;   /* sticker identity + "waiting" only */
+  --pb-ink:            #16191b;
+
+  /* text */
+  --pb-fg-1:           #1f3f4f;
+  --pb-fg-2:           #51616c;
+  --pb-fg-3:           #8a929b;
+
+  /* surfaces */
+  --pb-surface:        #ffffff;
+  --pb-surface-2:      #f5f7f9;
+  --pb-border:         #e4e8ed;
+  --pb-border-strong:  #d3d9e0;
+
+  /* geometry */
+  --pb-panel-radius:   24px;
+  --pb-panel-pad:      32px;
+  --pb-panel-gap:      24px;
+  --pb-card-radius:    18px;
+  --pb-card-pad:       18px;
+  --pb-tile-radius:    14px;
+  --pb-tile-pad:       10px;
+  --pb-tile-gap:       10px;
+  --pb-qr-radius:       4px;
+  --pb-qr-pad:          3px;
+  --pb-tear-gap:       14px;
+
+  /* elevation */
+  --pb-shadow-card:    0 6px 18px rgba(31, 63, 79, .08);
+  --pb-inset-border:   inset 0 0 0 1.5px #e4e8ed;
+
+  /* type */
+  --pb-font-sans: Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pb-font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+
+/* ============================================================== panel === */
+
+.pb-section {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1160px;
+  /* The block is a section of the page, not the next line of it: without this
+     the panel butts against the step stamps above and the whole thing reads as
+     one crowded lump. */
+  margin: clamp(40px, 5vw, 64px) auto 0;
+  padding: 0 24px;
+  font-family: var(--pb-font-sans);
+  color: var(--pb-fg-1);
+}
+
+.pb-panel {
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--pb-panel-gap);
+  align-items: center;
+  background: var(--pb-surface-2);
+  border-radius: var(--pb-panel-radius);
+  padding: var(--pb-panel-pad);
+  box-shadow: var(--pb-inset-border);
+  container-type: inline-size;    /* harmless here; lets you switch to @container */
+}
+
+/* --------------------------------------------------------- left column --- */
+
+.pb-copy {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.pb-heading {
+  margin: 0;
+  font: 700 clamp(21px, 2.4vw, 26px)/1.25 var(--pb-font-sans);
+  letter-spacing: -.02em;
+  text-wrap: pretty;
+}
+.pb-body {
+  margin: 0;
+  font: 400 17px/1.55 var(--pb-font-sans);
+  color: var(--pb-fg-2);
+  text-wrap: pretty;
+}
+
+/* ghost button: white fill, indigo label, hairline ring */
+.pb-ghost {
+  box-sizing: border-box;
+  align-self: flex-start;
+  border: 0;
+  border-radius: 999px;
+  padding: 13px 22px;
+  background: var(--pb-surface);
+  color: var(--pb-primary);
+  font: 600 15px/1.2 var(--pb-font-sans);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1.5px var(--pb-primary-100);
+  transition: background 140ms ease, transform 140ms ease;
+}
+.pb-ghost:hover  { background: var(--pb-primary-50); }
+.pb-ghost:active { transform: scale(.975); }
+.pb-ghost:focus-visible { outline: 3px solid var(--pb-primary); outline-offset: 2px; }
+/* DISABLED: 4.8:1 on the fill, so the label still says what you cannot do */
+.pb-ghost:disabled { background: var(--pb-surface-2); color: #5f6b74; box-shadow: inset 0 0 0 1.5px var(--pb-border); cursor: not-allowed; transform: none; }
+
+/* -------------------------------------------------------- the sheet card --- */
+
+.pb-card {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  background: var(--pb-surface);
+  border-radius: var(--pb-card-radius);
+  padding: var(--pb-card-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--pb-shadow-card);
+}
+
+.pb-cardhead {
+  box-sizing: border-box;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pb-overline {
+  font: 600 12px/1.3 var(--pb-font-sans);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--pb-fg-3);
+}
+.pb-code-sm {
+  font: 500 13px/1.4 var(--pb-font-mono);
+  letter-spacing: .04em;
+  color: var(--pb-fg-2);
+  white-space: nowrap;
+}
+
+/* four tiles in a row. Fixed count, not auto-fit: this sheet has exactly four
+   fixtures and an orphan on a second row looks like a bug. */
+.pb-tiles {
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--pb-tile-gap);
+}
+/* A grid item's min-width is auto, so each tile took its canvas's intrinsic
+   240px and the row grew to 960px, overflowing the card. 1fr can only divide
+   the space once the items are allowed to shrink. */
+.pb-tiles > * { min-width: 0; }
+
+.pb-tile {
+  box-sizing: border-box;          /* padding + 1fr track: border-box or the
+                                      border and padding push the track wider */
+  width: 100%;
+  min-width: 0;
+  background: var(--pb-surface-2);
+  border: 1px solid var(--pb-border);
+  border-radius: var(--pb-tile-radius);
+  padding: var(--pb-tile-pad);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* the white box the code sits in. padding here IS the tile-side quiet zone;
+   the encoder adds 2 more modules inside the canvas. */
+.pb-qr {
+  box-sizing: border-box;          /* 100% width + 3px padding: border-box or
+                                      the canvas overflows the tile */
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--pb-surface);
+  border-radius: var(--pb-qr-radius);
+  padding: var(--pb-qr-pad);
+  display: block;
+}
+
+.pb-tilename {
+  font: 500 10px/1.5 var(--pb-font-mono);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--pb-fg-2);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* the tear line. A gradient, so the dash pattern is exactly 6/5 rather than
+   whatever the browser picks for `border-top: 1.5px dashed`. */
+.pb-tear {
+  box-sizing: border-box;
+  width: 100%;
+  height: 1.5px;
+  margin-top: var(--pb-tear-gap);
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--pb-border-strong) 0,
+    var(--pb-border-strong) 6px,
+    transparent 6px,
+    transparent 11px
+  );
+}
+
+.pb-tearrow {
+  box-sizing: border-box;
+  width: 100%;
+  padding-top: var(--pb-tear-gap);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pb-tearlabel {
+  font: 500 13px/1.45 var(--pb-font-sans);
+  color: var(--pb-fg-3);
+}
+.pb-access {
+  font: 500 16px/1.3 var(--pb-font-mono);
+  letter-spacing: .14em;
+  color: var(--pb-fg-1);
+  white-space: nowrap;
+}
+
+/* ============================================================= reflow === */
+
+/* 880px: two columns become one. The card then has the full panel width, so
+   the four tiles still fit in a single row. */
+@media (max-width: 880px) {
+  .pb-panel { grid-template-columns: 1fr; padding: 24px; }
+}
+
+/* 560px: four tiles become two rows of two. Below this a tile's inner width
+   drops under 64px, where a printed code stops scanning reliably. */
+@media (max-width: 560px) {
+  .pb-tiles { grid-template-columns: repeat(2, 1fr); }
+  .pb-panel { padding: 20px; }
+  .pb-body { font-size: 16px; }
+}
+
+/* 380px: tiles stay 2×2 — never one per row. A single column of oversized
+   codes reads as a rendering fault rather than a sheet. */
+@media (max-width: 380px) {
+  .pb-panel { padding: 20px 16px; }
+  /* The section's own gutter is left alone here: inside the landing page the
+     page sets it, so overriding it would reintroduce two different left edges. */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-ghost { transition: none; }
+}

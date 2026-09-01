@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   QrCode, Calendar, Clock, Check, ChevronLeft, Package, AlertTriangle, Key,
   Wrench, LayoutDashboard, Languages, User, Users, ArrowRight, Plus,
-  LogOut, Camera, Building, Send, Settings, CalendarX,
+  LogOut, Camera, Building, Send, Settings, CalendarX, Search, FlaskConical,
 } from "lucide-react";
 import {
   api, T, SYMPTOMS_FOR, CAUSE, CAUSES_FOR,
@@ -18,7 +18,7 @@ import { Logo } from "./Logo";
 import { parse, href, readQuery, queryString, type Route } from "./router";
 import { StaffPage, BuildingsPage, FirstRunSetup, AcceptInvite, ForgotPassword, ResetPassword, ChangePassword } from "./Admin";
 import { Account } from "./Account";
-import { Landing, DemoPicker, SignUpOrg, OrgWaiting } from "./Landing";
+import { Landing, DemoPicker, SignUpOrg, OrgWaiting, SignInModal, DemoModal } from "./Landing";
 import { Platform } from "./Platform";
 import { About } from "./Auth";
 import { BellButton, NotificationPanel, useNotifications } from "./Notifications";
@@ -98,48 +98,54 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
       (a.room_kind === b.room_kind ? 0 : a.room_kind === "private" ? -1 : 1));
 
     return (
-      <div className="col">
-        <button className="linkback" onClick={() => onWizard()}><ChevronLeft size={16} /> {t("back")}</button>
-
-        <div>
-          <h2>{t("reportProblem")}</h2>
-          {home && <p className="muted">{home.building_code}-{home.unit_code} · {t("yourFlat")}</p>}
-        </div>
-
-        <div className="scancard">
-          <div className="scanhead">
-            <QrCode size={22} strokeWidth={1.5} aria-hidden />
-            <div>
-              <p className="scanheadtitle">{t("scanQrTitle")}</p>
-              <p className="scanheadsub">{t("scanKnowsItem")}</p>
-            </div>
-          </div>
-          <button className="btn btn-scan" onClick={onScan}>
-            <Camera size={16} aria-hidden /> {t("openCamera")}
+      <div className="rz">
+        <div className="col rz-body">
+          <button className="rz-btn rz-btn-back" onClick={() => onWizard()}>
+            <ChevronLeft size={16} /> {t("back")}
           </button>
-        </div>
 
-        <div className="divider"><span>{t("orChooseRoom")}</span></div>
+          <div>
+            <h2 className="rz-display">{t("reportProblem")}</h2>
+            {home && (
+              <p className="rz-small" style={{ marginTop: 6 }}>
+                {home.building_code}-{home.unit_code} · {t("yourFlat")}
+              </p>
+            )}
+          </div>
 
-        <div className="col" style={{ gap: 6 }}>
-          {ordered.map((r) => {
-            const Icon = roomIcon(r.room_type);
-            return (
-              <button key={r.room_id} className="roomrow"
+          <div className="rz-linkwell">
+            <div className="rz-spread">
+              <div>
+                <p className="rz-cardtitle">{t("scanQrTitle")}</p>
+                <p className="rz-small">{t("scanKnowsItem")}</p>
+              </div>
+              <QrCode size={24} strokeWidth={1.5} aria-hidden />
+            </div>
+            <button className="rz-btn rz-btn-ghost" onClick={onScan}>
+              <Camera size={16} aria-hidden /> {t("openCamera")}
+            </button>
+          </div>
+
+          <div className="rz-grouphead">
+            <p className="rz-overline">{t("orChooseRoom")}</p>
+            <span className="rz-rule" />
+          </div>
+
+          <div className="col" style={{ gap: 8 }}>
+            {ordered.map((r) => (
+              <button key={r.room_id} className="rz-row"
                 onClick={() => { setSymptom(null); onWizard(r.room_id); }}>
-                <span className="roomname">
-                  <Icon size={18} strokeWidth={1.5} aria-hidden />
-                  {roomLabel(r.room_type, l)}
-                </span>
-                <Pill tone={r.room_kind === "private" ? "info" : "neutral"}>
+                <span className="rz-rowcode">{r.room_code}</span>
+                <span className="rz-rowname">{roomLabel(r.room_type, l)}</span>
+                <span className="rz-small">
                   {r.room_kind === "private" ? t("yourRoom") : t("sharedTag")}
-                </Pill>
+                </span>
               </button>
-            );
-          })}
-        </div>
+            ))}
+          </div>
 
-        <p className="muted">{t("outsideFlat")}</p>
+          <p className="rz-small">{t("outsideFlat")}</p>
+        </div>
       </div>
     );
   }
@@ -147,16 +153,32 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
   if (screen === "object" && roomId) {
     const room = rooms.find((r) => r.room_id === roomId);
     return (
-      <div className="col">
-        <button className="linkback" onClick={() => onWizard()}><ChevronLeft size={16} /> {t("back")}</button>
-        <Plate>{roomLabel(room?.room_type ?? "", l)}</Plate>
-        <h2>{t("whatBroken")}</h2>
-        <div className="grid2">
-          {objects.map((o) => (
-            <Tile key={o.object_id} icon={objIcon(o.object_type)}
-              label={objLabel(o.object_type, l)}
-              onClick={() => onWizard(roomId ?? undefined, o.object_id)} />
-          ))}
+      <div className="rz">
+        <div className="col rz-body">
+          <button className="rz-btn rz-btn-back" onClick={() => onWizard()}>
+            <ChevronLeft size={16} /> {t("back")}
+          </button>
+          <div>
+            <span className="rz-plate">
+              {home?.building_code}-{home?.unit_code} · {roomLabel(room?.room_type ?? "", l)}
+            </span>
+            <h2 className="rz-display" style={{ marginTop: 10 }}>{t("whatBroken")}</h2>
+          </div>
+
+          {/* Tiles rather than rows: bigger targets, which matters when
+              somebody is holding a phone one-handed in a bathroom. */}
+          <div className="rz-tiles">
+            {objects.map((o) => {
+              const Icon = objIcon(o.object_type) ?? Package;
+              return (
+                <button key={o.object_id} className="rz-tile"
+                  onClick={() => onWizard(roomId ?? undefined, o.object_id)}>
+                  <Icon size={28} strokeWidth={1.6} aria-hidden />
+                  <span className="rz-tilelabel">{objLabel(o.object_type, l)}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -165,51 +187,73 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
   if (screen === "symptom" && currentObj) {
     const syms = SYMPTOMS_FOR[currentObj.object_type] ?? ["BROKEN"];
     return (
-      <div className="col">
-        <button className="linkback" onClick={() => onWizard(roomId ?? undefined)}><ChevronLeft size={16} /> {t("back")}</button>
-        <Plate>{roomLabel(currentObj.room_type, l)} · {objLabel(currentObj.object_type, l)}</Plate>
-        <h2>{t("whatWrong")}</h2>
-        <Err msg={err} onClose={() => setErr("")} />
-        <div className="grid2">
-          {syms.map((s) => (
-            <Tile key={s} label={symptomLabel(s, l)} active={symptom === s} onClick={() => setSymptom(s)} />
-          ))}
+      <div className="rz">
+        <div className="col rz-body">
+          <button className="rz-btn rz-btn-back" onClick={() => onWizard(roomId ?? undefined)}>
+            <ChevronLeft size={16} /> {t("back")}
+          </button>
+          <div>
+            <span className="rz-plate">
+              {roomLabel(currentObj.room_type, l)} · {objLabel(currentObj.object_type, l)}
+            </span>
+            <h2 className="rz-display" style={{ marginTop: 10 }}>{t("whatWrong")}</h2>
+          </div>
+
+          <Err msg={err} onClose={() => setErr("")} />
+
+          {/* Full width with a visible selected state, because the choice has
+              to survive somebody glancing away and back. */}
+          <div className="col" style={{ gap: 8 }}>
+            {syms.map((sy) => (
+              <button key={sy} className="rz-option" aria-pressed={symptom === sy}
+                onClick={() => setSymptom(sy)}>
+                {symptomLabel(sy, l)}
+                <Check className="rz-tick" size={19} strokeWidth={2.4} aria-hidden />
+              </button>
+            ))}
+          </div>
+
+          <textarea className="rz-note" rows={3}
+            placeholder={symptom === "OTHER" ? t("noteWanted") : t("noteOptional")}
+            value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
-        <textarea className="ta" rows={2}
-          placeholder={symptom === "OTHER" ? t("noteWanted") : t("noteOptional")}
-          value={note} onChange={(e) => setNote(e.target.value)} />
-        <button className="btn btn-primary"
-          disabled={!symptom || (symptom === "OTHER" && !note.trim())}
-          onClick={async () => {
-            try {
-              const r = await api.report(objectId!, symptom!, note);
-              setNote(""); setSymptom(null); onWizard();
-              setFlash(r.merged ? t("merged") : "");
-              await reload();
-              setOpenId(r.id);
-            } catch (e: any) { setErr(e.message); }
-          }}>
-          {t("send")} <ArrowRight size={16} />
-        </button>
+
+        <div className="rz-actionbar">
+          <button className="rz-actionmain"
+            disabled={!symptom || (symptom === "OTHER" && !note.trim())}
+            style={!symptom || (symptom === "OTHER" && !note.trim())
+              ? { background: "var(--rz-surface-3)", color: "var(--fg-3)", boxShadow: "none" }
+              : undefined}
+            onClick={async () => {
+              try {
+                const r = await api.report(objectId!, symptom!, note);
+                setNote(""); setSymptom(null); onWizard();
+                setFlash(r.merged ? t("merged") : "");
+                await reload();
+                setOpenId(r.id);
+              } catch (e: any) { setErr(e.message); }
+            }}>
+            {t("send")} <ArrowRight size={17} />
+          </button>
+        </div>
       </div>
     );
   }
 
+  /* Older, closed reports. Same card in the new language, so "show older"
+     doesn't drop you into the previous design. */
   const Card = ({ x }: any) => (
-    <button key={x.ticket_id} className="card cardlink" onClick={() => setOpenId(x.ticket_id)}>
-      <div className="rowspread">
-        <Plate sm>{plate(x, l)}</Plate>
-        <Pill tone={STATE_TONE[x.state]}>{t(("st_" + x.state) as StrKey)}</Pill>
-      </div>
-      <p className="cardtitle">{title(x, x.symptom, l)}</p>
-      {x.appt_at && <p className="mono muted"><Calendar size={13} /> {fmtDT(x.appt_at, l)}</p>}
-      {x.part_what && (
-        <p className="mono muted">
-          <Package size={13} /> {x.part_what}{x.part_eta ? ` · ${t("supplierEta")}: ${x.part_eta}` : ""}
-        </p>
+    <button key={x.ticket_id} className="rz-card" onClick={() => setOpenId(x.ticket_id)}>
+      <span className="rz-spread">
+        <span className="rz-mono">{plate(x, l)}</span>
+        <span className={"rz-pill " + (TONE[x.state] ?? "")}>
+          {t(("st_" + x.state) as StrKey)}
+        </span>
+      </span>
+      <span className="rz-cardtitle">{title(x, x.symptom, l)}</span>
+      {x.closed_at && (
+        <span className="rz-small">{t("fixed")} {fmtDay(x.closed_at, l)}</span>
       )}
-      {x.trade && <p className="muted">{t("externalNote")}</p>}
-      {x.state === "slots_offered" && <p className="cta">{t("pickSlot")} →</p>}
     </button>
   );
 
@@ -225,46 +269,87 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
   ];
   const older = tickets.filter((x: any) => x.state === "done" && (x.closed_at ?? 0) < recentCut);
 
+  /*
+   * Grouped by what the resident has to do, not by date.
+   *
+   * "Pick a time" first, then waiting, then done. The chronological list buried
+   * the one report that needed them, which is the whole reason they opened the
+   * app.
+   */
+  const TONE: Record<string, string> = {
+    slots_offered: "rz-pill-info", scheduled: "rz-pill-info",
+    waiting_for_parts: "rz-pill-warn", done: "rz-pill-ok",
+  };
+
   return (
-    <div className="col tenantlist">
-      <h2>{t("myReports")}</h2>
-      {flash && <div className="flash" onClick={() => setFlash("")}>{flash}</div>}
+    <div className="rz">
+      <div className="col rz-body">
+        <div>
+          <span className="rz-plate">{home?.building_code}-{home?.unit_code}</span>
+          <h2 className="rz-display" style={{ marginTop: 10 }}>{t("myReports")}</h2>
+        </div>
 
-      {tickets.length === 0 && (
-        <div className="empty"><p>{t("noReports")}</p><p className="muted">{t("noReportsCta")}</p></div>
-      )}
+        {flash && <div className="flash" onClick={() => setFlash("")}>{flash}</div>}
 
-      {groups.filter((g) => g.rows.length > 0).map((g) => (
-        <React.Fragment key={g.key}>
-          <p className="eyebrow">{t(g.key as StrKey)} <span className="grpcount">{g.rows.length}</span></p>
-          {g.rows.map((x: any) => <Card key={x.ticket_id} x={x} />)}
-        </React.Fragment>
-      ))}
+        {tickets.length === 0 && (
+          <div className="empty"><p>{t("noReports")}</p><p className="rz-small">{t("noReportsCta")}</p></div>
+        )}
 
-      {older.length > 0 && (
-        <>
-          <button className="linkmore" onClick={() => setShowOlder((v) => !v)}>
-            {showOlder ? t("hideOlder") : `${t("showOlder")} (${older.length})`}
-          </button>
-          {showOlder && older.map((x: any) => <Card key={x.ticket_id} x={x} />)}
-        </>
-      )}
+        {groups.filter((g) => g.rows.length > 0).map((g) => (
+          <div className="col" key={g.key} style={{ gap: 10 }}>
+            <div className="rz-grouphead">
+              <p className="rz-overline">{t(g.key as StrKey)}</p>
+              <span className="rz-rule" />
+              <span className="rz-overline">{g.rows.length}</span>
+            </div>
+            {g.rows.map((x: any) => (
+              <button className="rz-card" key={x.ticket_id} onClick={() => setOpenId(x.ticket_id)}>
+                <span className="rz-spread">
+                  <span className="rz-mono">
+                    {x.building_code}-{x.unit_code} · {x.room_label || roomLabel(x.room_type, l)}
+                  </span>
+                  <span className={"rz-pill " + (TONE[x.state] ?? "")}>
+                    {t(("st_" + x.state) as StrKey)}
+                  </span>
+                </span>
 
-      {/*
-        Fixed, so the one thing a resident came to do is always in reach — they
-        arrive to report something, not to read a list. The list scrolls behind
-        it, with padding at the end so the last card isn't hidden underneath.
+                <span className="rz-cardtitle">
+                  {objLabel(x.object_type, l)} · {symptomLabel(x.symptom, l)}
+                </span>
 
-        Two controls, deliberately different shapes: a wide pill for reporting,
-        a round button for scanning. They do different jobs and looked
-        interchangeable when both were icons in the header.
-      */}
-      <div className="actionbar">
-        <button className="btn btn-primary actionmain" onClick={() => onWizard("")}>
-          <Plus size={17} aria-hidden /> {t("newReport")}
+                <span className="rz-small">
+                  {x.state === "done" && x.closed_at
+                    ? `${t("fixed")} ${fmtDay(x.closed_at, l)}`
+                    : x.state === "waiting_for_parts" && x.part_what
+                      ? `${x.part_what}${x.part_eta ? ` · ${t("supplierEta")}: ${x.part_eta}` : ""}`
+                      : `${t("reportedOn")} ${fmtDay(x.reported_at, l)}`}
+                </span>
+
+                {/* Only where the resident has to act. */}
+                {x.state === "slots_offered" && (
+                  <span className="rz-cardcta">{t("pickSlot")} →</span>
+                )}
+              </button>
+            ))}
+          </div>
+        ))}
+
+        {older.length > 0 && (
+          <>
+            <button className="rz-sheetcancel" onClick={() => setShowOlder((v) => !v)}>
+              {showOlder ? t("hideOlder") : `${t("showOlder")} (${older.length})`}
+            </button>
+            {showOlder && older.map((x: any) => <Card key={x.ticket_id} x={x} />)}
+          </>
+        )}
+      </div>
+
+      <div className="rz-actionbar">
+        <button className="rz-actionmain" onClick={() => onWizard("")}>
+          <Plus size={18} aria-hidden /> {t("newReport")}
         </button>
-        <button className="actionscan" onClick={onScan} aria-label={t("scanQrTitle")}>
-          <QrCode size={19} strokeWidth={1.75} aria-hidden />
+        <button className="rz-actionscan" onClick={onScan} aria-label={t("scanQrTitle")}>
+          <QrCode size={20} strokeWidth={1.75} aria-hidden />
         </button>
       </div>
     </div>
@@ -274,9 +359,13 @@ function TenantView({ l, t, tickets, reload, home, onScan, recentDays, openTicke
 function TenantTicket({ l, t, id, onBack }: any) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
+  /* Choosing a time is a commitment: somebody has to be home. A stray tap
+     shouldn't book it, so the slot is selected first and confirmed second —
+     the same two-step the symptom screen uses, so it's one habit not two. */
+  const [picked, setPicked] = useState<string | null>(null);
   const load = useCallback(() => api.ticket(id).then(setD).catch((e) => setErr(e.message)), [id]);
   useEffect(() => { load(); }, [load]);
-  if (!d) return <div className="col"><p className="muted">…</p></div>;
+  if (!d) return <div className="col"><p className="rz-small">…</p></div>;
 
   const appt = d.appointments.find((a: any) => a.status === "booked");
   const act = async (fn: () => Promise<any>) => {
@@ -285,40 +374,63 @@ function TenantTicket({ l, t, id, onBack }: any) {
   };
 
   return (
-    <div className="col">
-      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("back")}</button>
-      <Plate>{plate(d.loc, l)}</Plate>
-      <h2>{title(d.loc, d.ticket.symptom, l)}</h2>
-      {d.reporterCount > 1 && <p className="muted"><Users size={13} /> {d.reporterCount} {t("reports")}</p>}
-      {d.ticket.note && <p className="quote">{d.ticket.note}</p>}
+    <div className="rz">
+      <div className="col rz-body">
+        <button className="rz-btn rz-btn-back" onClick={onBack}>
+          <ChevronLeft size={16} /> {t("back")}
+        </button>
+
+        {/* The room and the fault, stated once and large, so the rest of the
+            screen is free to be about what happens next. */}
+        <div className="rz-hero">
+          <div className="rz-spread">
+            <span className="rz-herobadge">{t(("st_" + d.ticket.state) as StrKey)}</span>
+            {d.reporterCount > 1 && (
+              <span className="rz-small" style={{ color: "rgba(255,255,255,.72)" }}>
+                {d.reporterCount} {t("reports")}
+              </span>
+            )}
+          </div>
+          <h2 className="rz-display">{title(d.loc, d.ticket.symptom, l)}</h2>
+          <div className="rz-herometa">
+            <span className="rz-mono">{plate(d.loc, l)}</span>
+            <span>· {t("reportedOn")} {fmtDay(d.ticket.reported_at, l)}</span>
+          </div>
+        </div>
+      {d.ticket.note && <p className="rz-quote">{d.ticket.note}</p>}
       <Err msg={err} onClose={() => setErr("")} />
 
-      <div className="timeline">
-        {d.events.map((e: any) => (
-          <div className="tl" key={e.id}>
-            <div className={"tldot" + (e.reason === "no_access" ? " tldot-warn" : "")} />
-            <div>
-              <p>{reasonLabel(e.reason, l)}</p>
-              <p className="mono muted">{fmtDT(e.created_at, l)}</p>
+      {/* A numbered ladder rather than a list of timestamps: the newest step is
+          the coloured one, so "where has this got to" is a glance. */}
+      <div className="rz-ladder">
+        {[
+          ...(d.ticket.state === "waiting_for_parts" && d.parts[0] ? [{
+            id: "part",
+            label: t("st_waiting_for_parts"),
+            sub: `${d.parts[0].description} · ${t("supplierEta")}: ${d.parts[0].supplier_eta || "—"}`,
+          }] : []),
+          ...[...d.events].reverse().map((e: any) => ({
+            id: e.id,
+            label: reasonLabel(e.reason, l),
+            sub: fmtDT(e.created_at, l),
+          })),
+        ].map((step, i, all) => (
+          <div className="rz-step" key={step.id}>
+            <div className="rz-rail">
+              <span className="rz-num">{all.length - i}</span>
+              <span className="rz-line" />
+            </div>
+            <div className="rz-stepbody">
+              <p className="rz-steptitle">{step.label}</p>
+              <p className="rz-small rz-mono">{step.sub}</p>
             </div>
           </div>
         ))}
-        {d.ticket.state === "waiting_for_parts" && d.parts[0] && (
-          <div className="tl">
-            <div className="tldot tldot-warn" />
-            <div>
-              <p>{t("st_waiting_for_parts")}</p>
-              <p className="mono muted">
-                {d.parts[0].description} · {t("supplierEta")}: {d.parts[0].supplier_eta || "—"}
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
       {!d.escalation && d.ticket.state === "accepted" && d.events.length > 2 && (
-        <div className="card">
-          <p className="cardtitle">{t("awaitingTimes")}</p>
+        <div className="rz-card" style={{ cursor: "default" }}>
+          <span className="rz-cardtitle">{t("awaitingTimes")}</span>
         </div>
       )}
 
@@ -327,49 +439,135 @@ function TenantTicket({ l, t, id, onBack }: any) {
           two states are worth distinguishing: waiting on the operator to
           commission a firm is different news from waiting on the firm. */}
       {d.escalation && (
-        <div className="card extcard">
-          <p className="cardtitle">{t("externalNote")}</p>
-          <p className="muted">{tradeLabel(d.escalation.trade, l)}</p>
-          <p className="muted">
+        <div className="rz-card" style={{ cursor: "default" }}>
+          <span className="rz-spread">
+            <span className="rz-cardtitle">{t("externalNote")}</span>
+            <span className="rz-pill rz-pill-info">{tradeLabel(d.escalation.trade, l)}</span>
+          </span>
+          <span className="rz-small">
             {d.escalation.commissioned_at ? t("firmWillConfirm") : t("awaitingCommission")}
-          </p>
+          </span>
         </div>
       )}
 
       {!d.escalation && d.ticket.state === "slots_offered" && (
-        <div className="card">
-          <p className="cardtitle">{t("pickSlot")}</p>
-          <p className="muted">{d.canBook ? t("pickSlotHint") : t("onlyPrimary")}</p>
-          {d.canBook && d.slots.map((s: any) => (
-            <button key={s.id} className="slot" onClick={() => act(() => api.book(id, s.id))}>
-              <Clock size={16} strokeWidth={1.5} aria-hidden />
-              <span>{fmtDay(s.starts_at, l)}</span>
-              <span className="mono">{fmtTime(s.starts_at, l)}</span>
+        <div className="col" style={{ gap: 10 }}>
+          <div className="rz-grouphead">
+            <p className="rz-overline">{t("pickSlot")}</p>
+            <span className="rz-rule" />
+          </div>
+          <p className="rz-small">{d.canBook ? t("pickSlotHint") : t("onlyPrimary")}</p>
+          {d.canBook && d.slots.map((sl: any) => (
+            <button key={sl.id} className="rz-option" aria-pressed={picked === sl.id}
+              onClick={() => setPicked(picked === sl.id ? null : sl.id)}>
+              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Clock size={18} strokeWidth={1.6} aria-hidden />
+                {fmtDay(sl.starts_at, l)}
+              </span>
+              <span className="rz-mono">{fmtTime(sl.starts_at, l)}</span>
+              <Check className="rz-tick" size={19} strokeWidth={2.4} aria-hidden />
             </button>
           ))}
         </div>
       )}
 
       {appt && !d.escalation && (
-        <div className="card">
-          <p className="cardtitle"><Calendar size={15} aria-hidden /> {fmtDT(appt.starts_at, l)}</p>
-          {d.canBook && (
-            <button className="btn" onClick={() => act(() => api.reschedule(id))}>{t("changeAppt")}</button>
-          )}
+        <div className="rz-appt">
+          <div className="rz-apptrow">
+            <Calendar size={22} strokeWidth={1.6} aria-hidden />
+            <div>
+              <p className="rz-small" style={{ color: "rgba(255,255,255,.72)" }}>{t("appointment")}</p>
+              <p className="rz-apptwhen">{fmtDT(appt.starts_at, l)}</p>
+            </div>
+          </div>
         </div>
       )}
 
+      {/*
+        The way out of a time that no longer suits.
+        
+        The caretaker offered three times and the resident took one, so the
+        others are usually still free — offering those first is instant and
+        costs the caretaker nothing. Only when none of them fit does it fall
+        back to asking for new ones.
+        
+        Note the wording: "change the appointment" implied the resident picks a
+        new time, and they can't. The caretaker offers, the resident chooses.
+      */}
+      {appt && !d.escalation && d.canBook && (
+        <div className="col" style={{ gap: 8 }}>
+          {d.slots.length > 0 && (
+            <>
+              <div className="rz-grouphead">
+                <p className="rz-overline">{t("otherTimes")}</p>
+                <span className="rz-rule" />
+              </div>
+              {d.slots.map((sl: any) => (
+                <button key={sl.id} className="rz-option"
+                  onClick={() => act(() => api.book(id, sl.id))}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Clock size={18} strokeWidth={1.6} aria-hidden />
+                    {fmtDay(sl.starts_at, l)}
+                  </span>
+                  <span className="rz-mono">{fmtTime(sl.starts_at, l)}</span>
+                </button>
+              ))}
+            </>
+          )}
+          <button className="rz-btn rz-btn-ghost" style={{ alignSelf: "flex-start" }}
+            onClick={() => act(() => api.reschedule(id))}>
+            {t("askNewTimes")}
+          </button>
+        </div>
+      )}
+
+      {d.ticket.note && (
+        <p className="rz-small" style={{ fontStyle: "italic" }}>{d.ticket.note}</p>
+      )}
+
+      {/*
+        A permission, not a disabled row.
+        
+        The old version was a grey bordered button with a pill, which read as
+        something that wasn't working. It's actually the one decision a resident
+        makes about their own front door, so it gets a switch and a key that
+        turns when they grant it.
+      */}
       {d.ticket.needs_access ? (
-        <button className="consent" disabled={!d.canBook}
+        <button className={"rz-consent" + (d.ticket.access_consent ? " rz-consent-on" : "")}
+          role="switch" aria-checked={d.ticket.access_consent} disabled={!d.canBook}
           onClick={() => act(() => api.consent(id, !d.ticket.access_consent))}>
-          <Key size={16} strokeWidth={1.5} aria-hidden />
-          <span>{t("enterWithoutMe")}</span>
-          <Pill tone={d.ticket.access_consent ? "ok" : "neutral"}>
-            {d.ticket.access_consent ? t("allowed") : t("notAllowed")}
-          </Pill>
+          <span className="rz-keywell">
+            <Key size={19} strokeWidth={1.8} aria-hidden />
+          </span>
+          <span className="rz-consenttext">
+            <span className="rz-consentlabel">{t("enterWithoutMe")}</span>
+            <span className="rz-small">
+              {d.ticket.access_consent ? t("allowed") : t("notAllowed")}
+            </span>
+          </span>
+          <span className="rz-switch" aria-hidden><span className="rz-knob" /></span>
         </button>
       ) : (
-        <p className="muted"><Users size={13} /> {t("sharedRoom")}</p>
+        <p className="rz-small"><Users size={13} /> {t("sharedRoom")}</p>
+      )}
+
+      <Err msg={err} onClose={() => setErr("")} />
+      </div>
+
+      {/* Only once a time is chosen. It names the time it's about to book, so
+          confirming is a second look rather than a second tap. */}
+      {picked && (
+        <div className="rz-actionbar">
+          <button className="rz-actionmain"
+            onClick={() => { const id2 = picked; setPicked(null); act(() => api.book(id, id2)); }}>
+            <Check size={18} aria-hidden /> {t("confirmTime")}
+            {(() => {
+              const sl = d.slots.find((x: any) => x.id === picked);
+              return sl ? ` · ${fmtDT(sl.starts_at, l)}` : "";
+            })()}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -382,6 +580,7 @@ function TenantTicket({ l, t, id, onBack }: any) {
 function StaffView({ l, t, tickets, reload, rules, openTicket, onOpenTicket }: {
   l: Locale; t: (k: StrKey) => string; tickets: any[]; reload: () => Promise<void>;
   rules: SlotRules;
+  /* The open job comes from the URL, so back closes it and a link opens it. */
   openTicket: string | null; onOpenTicket: (id: string | null) => void;
 }) {
   const openId = openTicket;
@@ -427,23 +626,36 @@ function StaffView({ l, t, tickets, reload, rules, openTicket, onOpenTicket }: {
   const days = (x: any) => Math.max(0, Math.round((Date.now() - x.reported_at) / 864e5));
 
   const Row = ({ x }: any) => (
-    <button className="job" onClick={() => setOpenId(x.ticket_id)}>
-      <div className={"jobbar jobbar-" + STATE_TONE[x.state]} />
-      <div className="jobmain">
-        <div className="rowspread">
-          <span className="mono">{x.appt_at ? fmtTime(x.appt_at, l) + " · " : ""}{plate(x, l)}</span>
-          <Pill tone={STATE_TONE[x.state]}>{t(("st_" + x.state) as StrKey)}</Pill>
-        </div>
-        <p className="muted">
-          {title(x, x.symptom, l)}
-          {x.trade && ` · ${tradeLabel(x.trade, l)}`}
-          {x.reporter_count > 1 && ` · ${x.reporter_count} ${t("reports")}`}
-          {!!x.access_consent && <> · <Key size={12} aria-hidden /></>}
-        </p>
-        {(oldestFirst || days(x) >= 14) && (
-          <p className="muted mono">{days(x)} {t("daysOpen")}</p>
-        )}
-      </div>
+    <button className="rz-card" onClick={() => setOpenId(x.ticket_id)}>
+      <span className="rz-spread">
+        <span className="rz-mono">
+          {x.appt_at ? fmtTime(x.appt_at, l) + " · " : ""}{plate(x, l)}
+        </span>
+        {/* Unaccepted work reads red: it's the only thing nobody has looked at. */}
+        <span className={"rz-pill " + (x.state === "reported" ? "rz-pill-new"
+          : x.state === "waiting_for_parts" ? "rz-pill-warn"
+          : x.state === "done" ? "rz-pill-ok" : "rz-pill-info")}>
+          {t(("st_" + x.state) as StrKey)}
+        </span>
+      </span>
+
+      {/* An icon in a tinted square, so a caretaker scanning thirty rows sees
+          light, light, drain by shape before reading a word. */}
+      <span className="rz-jobline">
+        <span className="rz-jobicon">
+          {(() => { const I = objIcon(x.object_type) ?? Package; return <I size={20} strokeWidth={1.7} aria-hidden />; })()}
+        </span>
+        <span className="rz-jobtext">
+          <span className="rz-jobtitle">{title(x, x.symptom, l)}</span>
+          <span className="rz-small">
+            {x.reporter_count > 1 ? `${x.reporter_count} ${t("reports")} · ` : ""}
+            {days(x)} {t("daysOpen")}
+          </span>
+        </span>
+      </span>
+
+      {x.note && <span className="rz-quote">{x.note}</span>}
+      {x.trade && <span className="rz-small">{tradeLabel(x.trade, l)}</span>}
     </button>
   );
 
@@ -458,30 +670,36 @@ function StaffView({ l, t, tickets, reload, rules, openTicket, onOpenTicket }: {
   const byAge = [...shown].sort((a: any, b: any) => a.reported_at - b.reported_at);
 
   return (
-    <div className="col">
-      <div className="rowspread">
+    <div className="rz">
+      <div className="col rz-body">
+      <div className="rz-spread">
         <h2>{t("queueToday")}</h2>
-        <span className="muted">
+        <span className="rz-small">
           {filtering ? `${shown.length} / ${all.length}` : all.length} {t("jobs")}
         </span>
       </div>
 
-      <div className="queuefilters">
-        <input className="in queuesearch" value={q} onChange={(e) => setQ(e.target.value)}
+      {/* A pill-shaped search with the icon inside, rather than a bordered
+          input: it's the first thing a caretaker reaches for. */}
+      <div className="rz-search">
+        <Search size={18} aria-hidden />
+        <input value={q} onChange={(e) => setQ(e.target.value)}
           placeholder={t("searchQueue")} aria-label={t("searchQueue")} />
+      </div>
 
-        {/* Selects rather than a row of chips: three controls that name
-            themselves take less room than eight toggles, and they don't push the
-            first actual job below the fold on a phone. */}
+      {/* Selects rather than a row of chips: three controls that name
+          themselves take less room than eight toggles, and they don't push the
+          first actual job below the fold on a phone. */}
+      <div className="rz-queuefilters">
         {buildingCodes.length > 1 && (
-          <select className="in queuesel" value={buildingF} aria-label={t("buildingLabel")}
+          <select className={"rz-queuesel" + (buildingF ? " on" : "")} value={buildingF} aria-label={t("buildingLabel")}
             onChange={(e) => setBuildingF(e.target.value)}>
             <option value="">{t("allBuildings")}</option>
             {buildingCodes.map((c: any) => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
 
-        <select className="in queuesel" value={stateF} aria-label={t("statusLabel")}
+        <select className={"rz-queuesel" + (stateF ? " on" : "")} value={stateF} aria-label={t("statusLabel")}
           onChange={(e) => setStateF(e.target.value)}>
           <option value="">{t("allJobs")}</option>
           <option value="needs_time">{t("queueNew")}</option>
@@ -490,7 +708,7 @@ function StaffView({ l, t, tickets, reload, rules, openTicket, onOpenTicket }: {
           <option value="external">{t("withExternal")}</option>
         </select>
 
-        <select className="in queuesel" value={oldestFirst ? "age" : "day"} aria-label={t("sortLabel")}
+        <select className={"rz-queuesel" + (oldestFirst ? " on" : "")} value={oldestFirst ? "age" : "day"} aria-label={t("sortLabel")}
           onChange={(e) => setOldestFirst(e.target.value === "age")}>
           <option value="day">{t("sortByDay")}</option>
           <option value="age">{t("oldestFirst")}</option>
@@ -498,13 +716,13 @@ function StaffView({ l, t, tickets, reload, rules, openTicket, onOpenTicket }: {
       </div>
 
       {(filtering || oldestFirst) && (
-        <button className="linkmore" onClick={() => {
+        <button className="rz-sheetcancel" onClick={() => {
           setQ(""); setBuildingF(""); setStateF(""); setOldestFirst(false);
         }}>{t("clearFilter")}</button>
       )}
 
       {shown.length === 0 && (
-        <div className="empty"><p className="muted">{t("nothingHere")}</p></div>
+        <div className="empty"><p className="rz-small">{t("nothingHere")}</p></div>
       )}
 
       {oldestFirst ? (
@@ -512,17 +730,25 @@ function StaffView({ l, t, tickets, reload, rules, openTicket, onOpenTicket }: {
       ) : (
         <>
           {booked.map((x: any) => <Row key={x.ticket_id} x={x} />)}
-          {noSlot.length > 0 && <p className="eyebrow">{t("queueNew")}</p>}
+          {noSlot.length > 0 && <div className="rz-grouphead">
+            <p className="rz-overline">{t("queueNew")}</p><span className="rz-rule" />
+          </div>}
           {noSlot.map((x: any) => <Row key={x.ticket_id} x={x} />)}
-          {waiting.length > 0 && <p className="eyebrow">{t("queueWaiting")}</p>}
+          {waiting.length > 0 && <div className="rz-grouphead">
+            <p className="rz-overline">{t("queueWaiting")}</p><span className="rz-rule" />
+          </div>}
           {waiting.map((x: any) => <Row key={x.ticket_id} x={x} />)}
-          {external.length > 0 && <p className="eyebrow">{t("withExternal")}</p>}
+          {external.length > 0 && <div className="rz-grouphead">
+            <p className="rz-overline">{t("withExternal")}</p><span className="rz-rule" />
+          </div>}
           {external.map((x: any) => <Row key={x.ticket_id} x={x} />)}
         </>
       )}
+      </div>
     </div>
   );
 }
+
 
 function StaffTicket({ l, t, id, onBack, rules }: any) {
   const [d, setD] = useState<any>(null);
@@ -538,7 +764,7 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
 
   const load = useCallback(() => api.ticket(id).then(setD).catch((e) => setErr(e.message)), [id]);
   useEffect(() => { load(); }, [load]);
-  if (!d) return <div className="col"><p className="muted">…</p></div>;
+  if (!d) return <div className="col"><p className="rz-small">…</p></div>;
 
   const appt = d.appointments.find((a: any) => a.status === "booked");
   const causes = CAUSES_FOR[d.loc.object_type] ?? (Object.keys(CAUSE) as any);
@@ -548,42 +774,63 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
   };
 
   return (
-    <div className="col">
-      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("back")}</button>
-      <Plate>{plate(d.loc, l)} · {objLabel(d.loc.object_type, l)}</Plate>
-      <h2>{title(d.loc, d.ticket.symptom, l)}</h2>
-      {d.ticket.note && <p className="quote">{d.ticket.note}</p>}
-      <p className="mono muted">
+    <div className="rz">
+      <div className="col rz-body">
+      <button className="rz-btn rz-btn-back" onClick={onBack}>
+        <ChevronLeft size={16} /> {t("back")}
+      </button>
+
+      <div>
+        <span className="rz-plate">{plate(d.loc, l)} · {objLabel(d.loc.object_type, l)}</span>
+        <h2 className="rz-display" style={{ marginTop: 10 }}>
+          {title(d.loc, d.ticket.symptom, l)}
+        </h2>
+      </div>
+
+      {/* The resident's own words, quoted rather than run into the page. */}
+      {d.ticket.note && (
+        <div className="rz-notewell">
+          <p className="rz-overline">{t("noteFromResident")}</p>
+          <p className="rz-notebody">{d.ticket.note}</p>
+        </div>
+      )}
+      <p className="rz-small rz-mono">
         {fmtDT(d.ticket.reported_at, l)}
         {d.reporterCount > 1 && ` · ${d.reporterCount} ${t("reports")}`}
       </p>
-      {!!d.ticket.access_consent && <p className="muted"><Key size={13} /> {t("enterWithoutMe")}: {t("allowed")}</p>}
+      {!!d.ticket.access_consent && <p className="rz-small"><Key size={13} /> {t("enterWithoutMe")}: {t("allowed")}</p>}
       {d.parts[0] && !d.parts[0].arrived_at && (
-        <p className="muted"><Package size={13} /> {d.parts[0].description} · {t("supplierEta")}: {d.parts[0].supplier_eta || "—"}</p>
+        <div className="rz-partwell">
+          <p className="rz-overline">{t("st_waiting_for_parts")}</p>
+          <p className="rz-partwhat">{d.parts[0].description}</p>
+          <p className="rz-small">{t("supplierEta")}: {d.parts[0].supplier_eta || "—"}</p>
+        </div>
       )}
       <Err msg={err} onClose={() => setErr("")} />
 
       {d.ticket.state === "reported" && !d.escalation && (
-        <button className="btn btn-primary" onClick={() => act(() => api.accept(id))}>
+        <button className="rz-btn rz-btn-primary" onClick={() => act(() => api.accept(id))}>
           <Check size={16} /> {t("accept")}
         </button>
       )}
 
       {d.escalation && (
-        <div className="card extcard">
-          <p className="cardtitle">
-            <Building size={15} aria-hidden /> {tradeLabel(d.escalation.trade, l)}
-          </p>
-          <p className="muted">{escReason(d.escalation.reason, l)}</p>
-          {d.escalation.note && <p className="quote">{d.escalation.note}</p>}
-          <p className="muted mono">
+        <div className="rz-card" style={{ cursor: "default" }}>
+          <span className="rz-spread">
+            <span className="rz-cardtitle">
+              <Building size={17} aria-hidden /> {tradeLabel(d.escalation.trade, l)}
+            </span>
+          </span>
+          <span className="rz-small">{escReason(d.escalation.reason, l)}</span>
+          {d.escalation.note && <p className="rz-quote">{d.escalation.note}</p>}
+          <p className="rz-small rz-mono">
             {t("raisedOn")} {fmtDT(d.escalation.raised_at, l)}
             {" · "}
             {d.escalation.commissioned_at
               ? `${t("commissionedTo")} ${d.escalation.contractor}`
               : t("notCommissioned")}
           </p>
-          <button className="btn" onClick={() => act(() => api.deescalate(id))}>
+          <button className="rz-btn rz-btn-ghost" onClick={() => act(() => api.deescalate(id))}>
             {t("giveBack")}
           </button>
         </div>
@@ -595,18 +842,18 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
 
       {d.ticket.state === "accepted" && mode === "main" && !d.escalation && (
         <>
-          <button className="btn btn-primary" onClick={() => setMode("times")}>
+          <button className="rz-btn rz-btn-primary" onClick={() => setMode("times")}>
             <Calendar size={16} /> {t("chooseTimes")}
           </button>
           {/* No appointment needed in a stairwell or laundry — but offering
               times stays available, because the caretaker may still want the
               residents to know when he's coming. */}
           {!d.ticket.needs_access && (
-            <button className="btn" onClick={() => setMode("close")}>
+            <button className="rz-actionitem" onClick={() => setMode("close")}>
               <Wrench size={16} /> {t("goFix")}
             </button>
           )}
-          <button className="btn" onClick={() => setMode("part")}>
+          <button className="rz-actionitem" onClick={() => setMode("part")}>
             <Package size={16} aria-hidden /> {t("partNeeded")}
           </button>
         </>
@@ -629,116 +876,152 @@ function StaffTicket({ l, t, id, onBack, rules }: any) {
       {notice && <div className="flash" onClick={() => setNotice("")}>{notice}</div>}
 
       {d.ticket.state === "slots_offered" && mode !== "times" && (
-        <div className="card">
-          <p className="cardtitle">{t("slotsOffered")}</p>
-          {d.slots.map((s: any) => <p key={s.id} className="mono muted">{fmtDT(s.starts_at, l)}</p>)}
-          <p className="muted">{t("awaitingPick")}</p>
-          <button className="btn" onClick={() => setMode("times")}>{t("reoffer")}</button>
+        <div className="rz-offered">
+          <p className="rz-overline">{t("slotsOffered")}</p>
+          {d.slots.map((sl: any) => (
+            <p key={sl.id} className="rz-offeredtime">{fmtDT(sl.starts_at, l)}</p>
+          ))}
+          <p className="rz-small">{t("awaitingPick")}</p>
+          <button className="rz-btn rz-btn-ghost" style={{ alignSelf: "flex-start" }}
+            onClick={() => setMode("times")}>{t("reoffer")}</button>
         </div>
       )}
 
       {d.ticket.state === "waiting_for_parts" && !appt && (
-        <button className="btn btn-primary" onClick={() => act(() => api.partArrived(id))}>
+        <button className="rz-btn rz-btn-primary" onClick={() => act(() => api.partArrived(id))}>
           <Package size={16} /> {t("partArrived")}
         </button>
       )}
 
       {appt && mode === "main" && (
         <>
-          <div className="card"><p className="cardtitle"><Calendar size={15} aria-hidden /> {fmtDT(appt.starts_at, l)}</p></div>
-          <button className="btn btn-primary" onClick={() => setMode("close")}><Wrench size={16} /> {t("markDone")}</button>
-          <button className="btn btn-warn" onClick={() => act(() => api.noAccess(id))}>
+          <div className="rz-appt">
+            <Calendar size={22} strokeWidth={1.6} aria-hidden />
+            <div>
+              <p className="rz-small" style={{ color: "rgba(255,255,255,.72)" }}>{t("appointment")}</p>
+              <p className="rz-apptwhen">{fmtDT(appt.starts_at, l)}</p>
+            </div>
+          </div>
+          <button className="rz-btn rz-btn-primary" onClick={() => setMode("close")}>
+            <Wrench size={17} /> {t("markDone")}
+          </button>
+          <button className="rz-actionitem rz-actionitem-danger" onClick={() => act(() => api.noAccess(id))}>
             <AlertTriangle size={16} /> {t("noAccess")}
           </button>
-          <button className="btn" onClick={() => setMode("part")}>
+          <button className="rz-actionitem" onClick={() => setMode("part")}>
             <Package size={16} aria-hidden /> {t("partNeeded")}
           </button>
           {/* The resident is expecting him, so cancelling has to be possible
               and has to tell them. */}
-          <button className="btn" onClick={() => act(() => api.reschedule(id))}>
+          <button className="rz-actionitem" onClick={() => act(() => api.reschedule(id))}>
             <CalendarX size={16} aria-hidden /> {t("cancelAppointment")}
           </button>
         </>
       )}
 
       {mode === "main" && !d.escalation && d.ticket.state !== "done" && (
-        <button className="btn" onClick={() => setMode("escalate")}>
+        <button className="rz-btn rz-btn-ghost" onClick={() => setMode("escalate")}>
           <Building size={16} aria-hidden /> {t("cantFixMyself")}
         </button>
       )}
 
       {mode === "escalate" && (
-        <div className="card">
-          <p className="cardtitle">{t("whichTrade")}</p>
-          <div className="grid2">
-            {Object.keys(TRADE).map((k) => (
-              <Tile key={k} label={tradeLabel(k, l)} active={trade === k} onClick={() => setTrade(k)} />
-            ))}
-          </div>
-          <p className="cardtitle">{t("whyExternal")}</p>
-          <div className="grid2">
-            {Object.keys(ESC_REASON).map((k) => (
-              <Tile key={k} label={escReason(k, l)} active={escWhy === k} onClick={() => setEscWhy(k)} />
-            ))}
-          </div>
-          <textarea className="ta" rows={2} placeholder={t("noteOptional")}
-            value={escNote} onChange={(e) => setEscNote(e.target.value)} />
-          <div className="row">
-            <button className="btn" onClick={() => setMode("main")}>{t("cancel")}</button>
-            <button className="btn btn-primary" disabled={!trade || !escWhy}
+        <>
+          <button className="rz-scrim" aria-label={t("cancel")} onClick={() => setMode("main")} />
+          <div className="rz-sheet" role="dialog" aria-modal="true" aria-label={t("whichTrade")}>
+            <div className="rz-sheethead">
+              <p className="rz-cardtitle">{t("whichTrade")}</p>
+              <button className="rz-sheetcancel" onClick={() => setMode("main")}>{t("cancel")}</button>
+            </div>
+            <div className="rz-choices">
+              {Object.keys(TRADE).map((k) => (
+                <button key={k} className="rz-choice" aria-pressed={trade === k}
+                  onClick={() => setTrade(k)}>
+                  {tradeLabel(k, l)}
+                  <Check className="rz-choicetick" size={19} strokeWidth={2.4} aria-hidden />
+                </button>
+              ))}
+            </div>
+
+            <p className="rz-overline">{t("whyExternal")}</p>
+            <div className="rz-choices">
+              {Object.keys(ESC_REASON).map((k) => (
+                <button key={k} className="rz-choice" aria-pressed={escWhy === k}
+                  onClick={() => setEscWhy(k)}>
+                  {escReason(k, l)}
+                  <Check className="rz-choicetick" size={19} strokeWidth={2.4} aria-hidden />
+                </button>
+              ))}
+            </div>
+
+            <textarea className="rz-note" rows={2} placeholder={t("noteOptional")}
+              value={escNote} onChange={(e) => setEscNote(e.target.value)} />
+
+            <button className="rz-btn rz-btn-primary" disabled={!trade || !escWhy}
               onClick={() => act(() => api.escalate(id, trade!, escWhy!, escNote), true)}>
-              <Send size={16} aria-hidden /> {t("sendToTrade")}
+              <Send size={17} aria-hidden /> {t("sendToTrade")}
             </button>
           </div>
-        </div>
+        </>
       )}
 
       {mode === "close" && (
-        <div className="card">
-          <p className="cardtitle">{t("causeQ")}</p>
-          <div className="grid2">
-            {causes.map((c: string) => (
-              <Tile key={c} label={causeLabel(c, l)} active={cause === c} onClick={() => setCause(c)} />
-            ))}
-          </div>
-          <div className="row">
-            <button className="btn" onClick={() => setMode("main")}>{t("cancel")}</button>
-            <button className="btn btn-primary" disabled={!cause}
+        <>
+          <button className="rz-scrim" aria-label={t("cancel")} onClick={() => setMode("main")} />
+          <div className="rz-sheet" role="dialog" aria-modal="true" aria-label={t("causeQ")}>
+            <div className="rz-sheethead">
+              <p className="rz-cardtitle">{t("causeQ")}</p>
+              <button className="rz-sheetcancel" onClick={() => setMode("main")}>{t("cancel")}</button>
+            </div>
+            <div className="rz-choices">
+              {causes.map((c: string) => (
+                <button key={c} className="rz-choice" aria-pressed={cause === c}
+                  onClick={() => setCause(c)}>
+                  {causeLabel(c, l)}
+                  <Check className="rz-choicetick" size={19} strokeWidth={2.4} aria-hidden />
+                </button>
+              ))}
+            </div>
+            <button className="rz-btn rz-btn-primary" disabled={!cause}
               onClick={() => act(() => api.done(id, cause!), true)}>
-              <Check size={16} /> {t("markDone")}
+              <Check size={17} /> {t("markDone")}
             </button>
           </div>
-        </div>
+        </>
       )}
 
       {/* Ordering a part used to live inside the "Done" panel, which meant
           saying "not done, waiting for a part" started with tapping Done. */}
       {mode === "part" && (
-        <div className="card">
-          <p className="cardtitle"><Package size={15} aria-hidden /> {t("partWhat")}</p>
-          <input className="in" value={what} onChange={(e) => setWhat(e.target.value)}
-            placeholder="Siphon-Dichtung" />
-          <input className="in" value={eta} onChange={(e) => setEta(e.target.value)}
-            placeholder={t("supplierEta")} />
-          <p className="muted">{t("etaHint")}</p>
-          <div className="row">
-            <button className="btn" onClick={() => setMode("main")}>{t("cancel")}</button>
-            <button className="btn btn-warn" disabled={!what}
+        <>
+          <button className="rz-scrim" aria-label={t("cancel")} onClick={() => setMode("main")} />
+          <div className="rz-sheet" role="dialog" aria-modal="true" aria-label={t("partWhat")}>
+            <div className="rz-sheethead">
+              <p className="rz-cardtitle">{t("partWhat")}</p>
+              <button className="rz-sheetcancel" onClick={() => setMode("main")}>{t("cancel")}</button>
+            </div>
+            <label className="rz-field">
+              <span className="rz-overline">{t("partWhat")}</span>
+              <input value={what} onChange={(e) => setWhat(e.target.value)}
+                placeholder="Siphon-Dichtung" />
+            </label>
+            <label className="rz-field">
+              <span className="rz-overline">{t("supplierEta")}</span>
+              <input value={eta} onChange={(e) => setEta(e.target.value)} placeholder="KW 34" />
+            </label>
+            <p className="rz-small">{t("etaHint")}</p>
+            <button className="rz-btn rz-btn-primary" disabled={!what}
               onClick={() => act(() => api.orderPart(id, what, eta), true)}>
-              <Package size={16} /> {t("orderPart")}
+              <Package size={17} /> {t("orderPart")}
             </button>
           </div>
-        </div>
+        </>
       )}
+      </div>
     </div>
   );
 }
 
-/* ---------------------------------------------------------------- */
-/* operator                                                         */
-/* ---------------------------------------------------------------- */
-
-/* ---------------------------------------------------------------- */
 /* app shell                                                        */
 /* ---------------------------------------------------------------- */
 
@@ -869,9 +1152,30 @@ export default function App() {
    */
   // Exactly the routes OperatorView renders for, which is the only view that
   // brings its own left panel and manages its own width.
-  const OPERATOR_OWN: Route["kind"][] =
-    ["home", "dashboard", "drill", "month", "repeat", "codes", "ticket"];
-  const operatorOwnView = kind === "operator" && OPERATOR_OWN.includes(route.kind);
+  /*
+   * Every operator route now renders inside OperatorView, which brings its own
+   * left panel and manages its own width — so the whole role gets the wrapper
+   * rather than a list of routes that has to be kept in step with the view.
+   *
+   * The exceptions are the screens that aren't the operator's own: the account
+   * pages and About, which are shared with everyone.
+   */
+  const SHARED: Route["kind"][] = ["account", "password", "about"];
+  const operatorOwnView = kind === "operator" && !SHARED.includes(route.kind);
+
+  /*
+   * The landing page is a full-width marketing page with its own gutters, so it
+   * opts out of main's centred column the same way the dashboard does.
+   *
+   * It covers the overlay routes too: on /demo the page is still rendered
+   * behind the modal, and without this it fell back to the 560px column and
+   * laid itself out as if on a phone — a mobile page blurred behind a desktop
+   * modal.
+   */
+  const LANDING_ROUTES: Route["kind"][] = ["home", "demo", "signup", "signin"];
+  const fullBleed =
+    kind === "anonymous" && LANDING_ROUTES.includes(route.kind) && !session?.needsSetup;
+
   const wideView = kind === "operator" || route.kind === "stickers";
 
   const whoLabel =
@@ -881,7 +1185,47 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="topbar" ref={headerRef}>
+      {/*
+        A demo you can only leave by signing out is a trap, and "sign out" is
+        the wrong word for somebody who never signed in. It also says whose data
+        this is — without it, someone could reasonably think they were looking
+        at a real building.
+
+        Only ever the demo organisation, so a real Studierendenwerk never sees it.
+      */}
+      {signedIn && session.org?.status === "demo" && (
+        <div className="demobar">
+          <FlaskConical size={16} strokeWidth={1.8} aria-hidden />
+          <span className="demobartext">
+            <span className="demobarorg">{t("demoBarLabel")}</span>
+            {" · "}{session.org.name}
+            <span className="demobarnote"> — {t("demoBarNote")}</span>
+          </span>
+          <button className="demoleave" onClick={async () => {
+            /*
+             * Session first, then navigate.
+             *
+             * The other order raced: navigating to "/" while the session still
+             * said operator let the redirect effect fire and push straight back
+             * to /dashboard, so leaving the demo appeared to do nothing.
+             */
+            await api.logout();
+            await loadSession();
+            navigate({ kind: "home" });
+          }}>
+            {t("demoLeave")}
+          </button>
+        </div>
+      )}
+
+      {/* One header for all three roles, because it's one component and three
+          versions of it would drift.
+          
+          Hidden entirely on the landing page and its overlays: that page has its
+          own nav carrying the logo, the language and both actions, so the app
+          header would be a second one stacked above it. */}
+      {!fullBleed && (
+      <header className="topbar topbar-rz" ref={headerRef}>
         <button className="brand brandbtn" onClick={goHome} aria-label={t("appName")}>
           <Logo size={22} /><span>{t("appName")}</span>
         </button>
@@ -925,8 +1269,9 @@ export default function App() {
           )}
         </div>
       </header>
+      )}
 
-      <main className={operatorOwnView ? "opview" : wideView ? "wide" : "narrow"}>
+      <main className={operatorOwnView || fullBleed ? "opview" : wideView ? "wide" : "narrow"}>
         {/*
           One switch on the route, rather than a chain testing two overlapping
           pieces of state. Every screen has a URL now, so back, forward and
@@ -957,25 +1302,71 @@ export default function App() {
 
           if (kind === "anonymous") {
             if (r.kind === "forgot") return <ForgotPassword t={t} onBack={() => navigate({ kind: "home" })} />;
-            if (r.kind === "demo") return <DemoPicker t={t} onBack={() => navigate({ kind: "home" })} onDone={loadSession} />;
-            if (r.kind === "signup") return <SignUpOrg t={t} onBack={() => navigate({ kind: "home" })} />;
             if (r.kind === "about") return <About t={t} onBack={() => navigate({ kind: "home" })} />;
-            if (r.kind === "signin") {
-              return <SignIn l={l} t={t} session={session} onDone={loadSession}
-                onForgot={() => navigate({ kind: "forgot" })}
-                onBack={() => navigate({ kind: "home" })} />;
-            }
-            return <Landing l={l} t={t}
-              onDemo={() => navigate({ kind: "demo" })}
-              onSignUp={() => navigate({ kind: "signup" })}
-              onSignIn={() => navigate({ kind: "signin" })}
-              onAbout={() => navigate({ kind: "about" })} />;
+
+            /*
+             * Sign in, the demo and signup all open over a blurred landing page.
+             * They're decisions made while reading it, so keeping the page
+             * behind them costs nothing and losing it would cost the reader
+             * their place. Each keeps its own URL, so back closes the overlay
+             * rather than leaving the site.
+             */
+            const landing = (
+              <Landing l={l} t={t} setL={setL}
+                onDemo={() => navigate({ kind: "demo" })}
+                onSignUp={() => navigate({ kind: "signup" })}
+                onSignIn={() => navigate({ kind: "signin" })}
+                onAbout={() => navigate({ kind: "about" })} />
+            );
+
+            const overlaid = ["demo", "signup", "signin"].includes(r.kind);
+
+            return (
+              <>
+                {/* `inert` keeps tab out of the blurred page; aria-hidden alone
+                    hides it from a screen reader but not from the keyboard. */}
+                {/* The export blurs the page element rather than using a
+                    backdrop-filter on the scrim: one composite instead of one
+                    per scroll frame, and the scrim's own edges stay crisp. */}
+                <div className={overlaid ? "dt-page-behind" : undefined}
+                  aria-hidden={overlaid || undefined}
+                  {...(overlaid ? { inert: "" } : {})}>
+                  {landing}
+                </div>
+                {r.kind === "signin" && (
+                  <SignInModal t={t}
+                    onClose={() => navigate({ kind: "home" })}
+                    onDone={loadSession}
+                    onScan={() => setScanning(true)}
+                    onDemo={() => navigate({ kind: "demo" })}
+                    onForgot={() => navigate({ kind: "forgot" })} />
+                )}
+                {r.kind === "demo" && (
+                  <DemoModal t={t}
+                    onClose={() => navigate({ kind: "home" })}
+                    onDone={loadSession}
+                    onSignIn={() => navigate({ kind: "signin" })} />
+                )}
+                {/* /signup stays a real path — an emailed or bookmarked link has
+                    to land somewhere — but the page's own button scrolls to the
+                    form rather than navigating. */}
+                {r.kind === "signup" && (
+                  <>
+                    <button className="dt-scrim" aria-label={t("close")}
+                      onClick={() => navigate({ kind: "home" })} />
+                    <div className="dt-modal" role="dialog" aria-modal="true">
+                      <SignUpOrg t={t} onBack={() => navigate({ kind: "home" })} />
+                    </div>
+                  </>
+                )}
+              </>
+            );
           }
 
           /* Signed in, but the organisation isn't switched on yet. */
           if (session.orgBlocked) {
             return <OrgWaiting t={t} status={session.org?.status ?? "pending"}
-              onSignOut={async () => { await api.logout(); navigate({ kind: "home" }); await loadSession(); }} />;
+              onSignOut={async () => { await api.logout(); await loadSession(); navigate({ kind: "home" }); }} />;
           }
 
           if (r.kind === "sent") return <ReportDone t={t} token={sent?.token} onHome={goApp} />;
@@ -987,32 +1378,36 @@ export default function App() {
               onPassword={() => navigate({ kind: "password" })}
               onPlatform={session.principal.isPlatformAdmin ? () => navigate({ kind: "orgs" }) : undefined}
               onAbout={() => navigate({ kind: "about" })}
-              onSignOut={async () => { await api.logout(); navigate({ kind: "home" }); await loadSession(); }} />;
+              onSignOut={async () => { await api.logout(); await loadSession(); navigate({ kind: "home" }); }} />;
           }
           if (r.kind === "password") return <ChangePassword t={t} onBack={() => navigate({ kind: "account" })} />;
           if (r.kind === "about") return <About t={t} onBack={() => navigate({ kind: "account" })} />;
 
-          if (r.kind === "stickers" && isStaffKind) {
+          /*
+           * A caretaker gets the sticker sheet on its own, with a back button:
+           * they have no left panel to return to.
+           *
+           * An operator does have one, so their copy renders inside
+           * OperatorView with everything else — see below.
+           */
+          if (r.kind === "stickers" && isStaffKind && kind !== "operator") {
             return <StickerSheet l={l} t={t} buildings={session.buildings}
               initialBuilding={r.code ?? null}
               onPick={(code) => navigate({ kind: "stickers", code: code ?? undefined })}
-              onBack={() => navigate(kind === "operator" ? { kind: "dashboard" } : { kind: "home" })} />;
+              onBack={() => navigate({ kind: "home" })} />;
           }
 
+          /*
+           * Every operator destination goes through OperatorView, so the left
+           * panel is on all of them.
+           *
+           * Access codes already rendered inside it while buildings, staff,
+           * stickers and organisations rendered as siblings — so the panel
+           * vanished on four of six destinations and an in-app back button
+           * appeared instead. The panel is permanent navigation; it shouldn't
+           * come and go, and where it's present the back button is redundant.
+           */
           if (kind === "operator") {
-            if (r.kind === "orgs" && session.principal.isPlatformAdmin) {
-              return <Platform l={l} t={t} onBack={() => navigate({ kind: "dashboard" })} />;
-            }
-            if (r.kind === "staff") {
-              return <StaffPage l={l} t={t} me={session.principal.staffId}
-                onBack={() => navigate({ kind: "dashboard" })} />;
-            }
-            if (r.kind === "buildings" || r.kind === "building") {
-              return <BuildingsPage l={l} t={t}
-                onBack={() => navigate({ kind: "dashboard" })}
-                openCode={r.kind === "building" ? r.code : null}
-                onOpen={(code) => navigate(code ? { kind: "building", code } : { kind: "buildings" })} />;
-            }
             return <OperatorView key={opKey} l={l} t={t} session={session} route={r} query={query}
               navigate={navigate} />;
           }

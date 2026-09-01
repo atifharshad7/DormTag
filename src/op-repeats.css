@@ -1,0 +1,165 @@
+/* =============================================================================
+   TOKENS — real values, self-contained.
+   Every file in this export repeats this block on purpose: do NOT rely on a
+   :root from another file. All type is LONGHAND (font-weight / font-size /
+   line-height / font-family) — never the font shorthand, because one invalid
+   part drops the whole declaration and silently loses size and weight.
+   Palettes: LIGHT is the default, DARK follows the system theme.
+   ========================================================================== */
+:root {
+  --op-font-sans: Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --op-font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --op-brand-blue: #2026B0;
+  --op-primary: #4A4AD8;
+  --op-primary-50: #EEEEFC;
+  --op-primary-100: #DEDEF8;
+  --op-primary-300: #9E9EE8;
+  --op-primary-400: #7373DF;
+  --op-primary-700: #2E2EA6;
+  --op-on-primary: #FFFFFF;
+
+  --op-fg-1: #1F3F4F;
+  --op-fg-2: #51616C;
+  --op-fg-3: #8A929B;
+
+  --op-surface: #FFFFFF;
+  --op-surface-2: #F5F7F9;
+  --op-surface-3: #EEF1F4;
+  --op-field: #EBEDF0;
+  --op-border: #E4E8ED;
+  --op-border-strong: #D3D9E0;
+  --op-overlay: rgba(31, 63, 79, 0.45);
+
+  --op-success: #1FA971;
+  --op-success-bg: #E6F6EF;
+  --op-warning: #E89A2B;
+  --op-warning-bg: #FCF1DF;
+  --op-warning-fg: #7A4A08;
+  --op-danger: #E8403A;
+  --op-danger-bg: #FCE9E8;
+  --op-danger-fg: #8E2420;
+  --op-info-bg: #EEEEFC;
+
+  --op-r-xs: 6px;
+  --op-r-sm: 10px;
+  --op-r-md: 14px;
+  --op-r-lg: 18px;
+  --op-r-xl: 24px;
+  --op-r-pill: 999px;
+
+  --op-shadow-sm: 0 1px 2px rgba(31,63,79,.06);
+  --op-shadow-md: 0 6px 18px rgba(31,63,79,.08);
+  --op-shadow-lg: 0 16px 40px rgba(31,63,79,.12);
+  --op-shadow-cta: 0 10px 24px rgba(74,74,216,.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --op-brand-blue: #5A60E8;
+    --op-primary: #7B7BE6;
+    --op-primary-50: #1E2140;
+    --op-primary-100: #2A2A5C;
+    --op-primary-300: #5F5FD1;
+    --op-primary-400: #6E6EDA;
+    --op-primary-700: #B4B4F2;
+    --op-on-primary: #0E1216;
+
+    --op-fg-1: #E8EDF1;
+    --op-fg-2: #A9B4BD;
+    --op-fg-3: #78848D;
+
+    --op-surface: #171C21;
+    --op-surface-2: #101418;
+    --op-surface-3: #222A31;
+    --op-field: #222A31;
+    --op-border: #2A333B;
+    --op-border-strong: #3A454E;
+    --op-overlay: rgba(4, 8, 11, 0.66);
+
+    --op-success: #46C48D;
+    --op-success-bg: #12301F;
+    --op-warning: #E8A94A;
+    --op-warning-bg: #33260F;
+    --op-warning-fg: #E8C98A;
+    --op-danger: #F1655F;
+    --op-danger-bg: #3A1A18;
+    --op-danger-fg: #F7A9A5;
+    --op-info-bg: #1E2140;
+
+    --op-shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    --op-shadow-md: 0 6px 18px rgba(0,0,0,.45);
+    --op-shadow-lg: 0 16px 40px rgba(0,0,0,.55);
+    --op-shadow-cta: 0 10px 24px rgba(123,123,230,.28);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   REPEAT FAULTS — dormtag-op-repeats.css
+   Fragment inside the dashboard content area.
+   Flat classes (.opr-*), no descendant selectors anywhere.
+   box-sizing: border-box wherever padding meets a percentage/fr width.
+   All type is longhand — the font shorthand is never used in this export.
+   -------------------------------------------------------------------------- */
+
+.opr-preview { margin: 0; padding: 28px; background: var(--op-surface-2); }
+
+.opr-root { box-sizing: border-box; width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 28px; font-family: var(--op-font-sans); color: var(--op-fg-1); }
+
+.opr-block { box-sizing: border-box; padding: 20px 22px; border-radius: var(--op-r-lg); background: var(--op-surface); box-shadow: var(--op-shadow-md); display: flex; flex-direction: column; gap: 14px; }
+
+.opr-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.opr-title { margin: 0; font-family: var(--op-font-sans); font-weight: 600; font-size: 17px; line-height: 1.35; color: var(--op-fg-1); }
+.opr-count { font-family: var(--op-font-mono); font-weight: 400; font-size: 12px; line-height: 1.4; color: var(--op-fg-3); }
+
+.opr-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* one row only: same row styling, no grid, no filler */
+.opr-list-single { display: flex; flex-direction: column; gap: 8px; }
+
+/* the whole row is the hit target, not the chevron */
+.opr-row {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: var(--op-r-md);
+  background: var(--op-surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background .14s ease;
+}
+
+.opr-row:hover { background: var(--op-surface-3); }
+.opr-row:focus-visible { outline: 0; box-shadow: 0 0 0 2px var(--op-primary), 0 0 0 6px var(--op-info-bg); }
+
+/* THE ALARM: amber rule + tinted well. Reserved for rows whose tickets name the
+   riser itself as the cause. */
+.opr-row-alarm { background: var(--op-warning-bg); border-left: 3px solid var(--op-warning); border-radius: var(--op-r-xs) var(--op-r-md) var(--op-r-md) var(--op-r-xs); }
+.opr-row-alarm:hover { background: var(--op-warning-bg); box-shadow: var(--op-shadow-sm); }
+
+.opr-rowtop { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+
+.opr-key { font-family: var(--op-font-mono); font-weight: 500; font-size: 13px; line-height: 1.4; letter-spacing: .03em; color: var(--op-fg-1); min-width: 0; overflow-wrap: break-word; }
+
+.opr-figs { flex: 0 0 auto; display: flex; align-items: center; gap: 18px; }
+.opr-fig { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.opr-fig-n { font-family: var(--op-font-mono); font-weight: 500; font-size: 16px; line-height: 1.2; color: var(--op-fg-1); }
+.opr-fig-alarm { color: var(--op-danger); }
+.opr-fig-l { font-family: var(--op-font-sans); font-weight: 500; font-size: 11px; line-height: 1.3; color: var(--op-fg-3); }
+.opr-chev { font-family: var(--op-font-mono); font-weight: 400; font-size: 16px; line-height: 1.2; color: var(--op-fg-3); }
+
+.opr-cause { display: flex; align-items: flex-start; gap: 8px; }
+.opr-cause-icon { flex: 0 0 15px; width: 15px; height: 15px; margin-top: 1px; color: var(--op-warning-fg); }
+.opr-cause-text { font-family: var(--op-font-sans); font-weight: 500; font-size: 12px; line-height: 1.5; color: var(--op-warning-fg); text-wrap: pretty; }
+
+/* nothing flagged: "not recorded yet", never "no problem" */
+.opr-nocause { font-family: var(--op-font-sans); font-weight: 400; font-size: 12px; line-height: 1.5; color: var(--op-fg-3); text-wrap: pretty; }
+
+.opr-empty { box-sizing: border-box; padding: 26px 4px 30px; display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; }
+.opr-empty-line { margin: 0; font-family: var(--op-font-sans); font-weight: 600; font-size: 15px; line-height: 1.45; color: var(--op-fg-2); }
+.opr-empty-sub { margin: 0; max-width: 42ch; font-family: var(--op-font-sans); font-weight: 400; font-size: 13px; line-height: 1.55; color: var(--op-fg-3); text-wrap: pretty; }

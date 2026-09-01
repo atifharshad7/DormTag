@@ -28,9 +28,9 @@ export function FirstRunSetup({ t, onDone }: { t: T; onDone: () => Promise<void>
   };
 
   return (
-    <div className="col signin">
-      <h2>{t("setupTitle")}</h2>
-      <p className="muted">{t("setupHint")}</p>
+    <div className="rz"><div className="col rz-body signin">
+      <h2 className="rz-display">{t("setupTitle")}</h2>
+      <p className="rz-small">{t("setupHint")}</p>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
       <label className="field"><span>{t("nameLabel")}</span>
         <input className="in" value={name} onChange={(e) => setName(e.target.value)} /></label>
@@ -39,10 +39,11 @@ export function FirstRunSetup({ t, onDone }: { t: T; onDone: () => Promise<void>
           value={email} onChange={(e) => setEmail(e.target.value)} /></label>
       <NewPassword t={t} value={password} confirm={confirm}
         onChange={setPassword} onConfirm={setConfirm} />
-      <button className="btn btn-primary btn-big"
+      <button className="rz-btn rz-btn-primary"
         disabled={busy || !passwordsOk(password, confirm)} onClick={go}>
         {t("createOperator")}
       </button>
+    </div>
     </div>
   );
 }
@@ -58,13 +59,13 @@ export function AcceptInvite({ t, token, onDone }: { t: T; token: string; onDone
   const [err, setErr] = useState("");
 
   return (
-    <div className="col signin">
-      <h2>{t("setPassword")}</h2>
-      <p className="muted">{t("setPasswordHint")}</p>
+    <div className="rz"><div className="col rz-body signin">
+      <h2 className="rz-display">{t("setPassword")}</h2>
+      <p className="rz-small">{t("setPasswordHint")}</p>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
       <NewPassword t={t} value={password} confirm={confirm}
         onChange={setPassword} onConfirm={setConfirm} />
-      <button className="btn btn-primary btn-big"
+      <button className="rz-btn rz-btn-primary"
         disabled={busy || !passwordsOk(password, confirm)}
         onClick={async () => {
           setBusy(true); setErr("");
@@ -73,6 +74,7 @@ export function AcceptInvite({ t, token, onDone }: { t: T; token: string; onDone
         }}>
         {t("signInBtn")}
       </button>
+    </div>
     </div>
   );
 }
@@ -87,11 +89,13 @@ export function ForgotPassword({ t, onBack }: { t: T; onBack: () => void }) {
   const [sent, setSent] = useState(false);
 
   return (
-    <div className="col signin">
-      <button className="linkback" onClick={onBack}>
+    <div className="rz"><div className="col rz-body signin">
+      {onBack && (
+        <button className="rz-btn rz-btn-back" onClick={onBack}>
         <ChevronLeft size={16} /> {t("backToSignIn")}
       </button>
-      <h2>{t("forgotTitle")}</h2>
+      )}
+      <h2 className="rz-display">{t("forgotTitle")}</h2>
 
       {sent ? (
         // The same message whether or not the account exists: otherwise this
@@ -99,12 +103,12 @@ export function ForgotPassword({ t, onBack }: { t: T; onBack: () => void }) {
         <div className="flash">{t("forgotSent")}</div>
       ) : (
         <>
-          <p className="muted">{t("forgotHint")}</p>
+          <p className="rz-small">{t("forgotHint")}</p>
           <label className="field"><span>{t("emailLabel")}</span>
             <input className="in" type="email" autoComplete="username" value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && email.includes("@") && setBusy(true)} /></label>
-          <button className="btn btn-primary btn-big" disabled={busy || !email.includes("@")}
+          <button className="rz-btn rz-btn-primary" disabled={busy || !email.includes("@")}
             onClick={async () => {
               setBusy(true);
               try { await api.forgotPassword(email); } catch { /* same answer either way */ }
@@ -114,6 +118,7 @@ export function ForgotPassword({ t, onBack }: { t: T; onBack: () => void }) {
           </button>
         </>
       )}
+    </div>
     </div>
   );
 }
@@ -127,13 +132,13 @@ export function ResetPassword({ t, token, onDone }: {
   const [err, setErr] = useState("");
 
   return (
-    <div className="col signin">
-      <h2>{t("forgotTitle")}</h2>
-      <p className="muted">{t("signedOutElse")}</p>
+    <div className="rz"><div className="col rz-body signin">
+      <h2 className="rz-display">{t("forgotTitle")}</h2>
+      <p className="rz-small">{t("signedOutElse")}</p>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
       <NewPassword t={t} value={password} confirm={confirm}
         onChange={setPassword} onConfirm={setConfirm} />
-      <button className="btn btn-primary btn-big"
+      <button className="rz-btn rz-btn-primary"
         disabled={busy || !passwordsOk(password, confirm)}
         onClick={async () => {
           setBusy(true); setErr("");
@@ -142,6 +147,7 @@ export function ResetPassword({ t, token, onDone }: {
         }}>
         {t("signInBtn")}
       </button>
+    </div>
     </div>
   );
 }
@@ -156,16 +162,18 @@ export function ChangePassword({ t, onBack }: { t: T; onBack: () => void }) {
   const [done, setDone] = useState(false);
 
   return (
-    <div className="col">
-      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
-      <h2>{t("changePassword")}</h2>
+    <div className="rz"><div className="col rz-body">
+      {onBack && (
+        <button className="rz-btn rz-btn-back" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
+      )}
+      <h2 className="rz-display">{t("changePassword")}</h2>
       {done && <div className="flash">{t("passwordChanged")} · {t("signedOutElse")}</div>}
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
       <PasswordField t={t} label={t("currentPassword")} value={current}
         onChange={setCurrent} autoComplete="current-password" />
       <NewPassword t={t} value={next} confirm={confirm}
         onChange={setNext} onConfirm={setConfirm} />
-      <button className="btn btn-primary"
+      <button className="rz-btn rz-btn-primary"
         disabled={busy || !current || !passwordsOk(next, confirm)}
         onClick={async () => {
           setBusy(true); setErr(""); setDone(false);
@@ -176,6 +184,7 @@ export function ChangePassword({ t, onBack }: { t: T; onBack: () => void }) {
         }}>
         {t("changePassword")}
       </button>
+    </div>
     </div>
   );
 }
@@ -191,8 +200,8 @@ function CopyLink({ t, token }: { t: T; token: string }) {
     <div className="card demo">
       <p className="cardtitle">{t("setupLink")}</p>
       <p className="mono breakall">{url}</p>
-      <p className="muted">{t("setupLinkHint")}</p>
-      <button className="btn" onClick={async () => {
+      <p className="rz-small">{t("setupLinkHint")}</p>
+      <button className="rz-btn rz-btn-ghost" onClick={async () => {
         try { await navigator.clipboard.writeText(url); setDone(true); } catch { /* ignore */ }
       }}>
         {done ? <><Check size={16} /> {t("copied")}</> : <><Copy size={16} /> {t("copyLink")}</>}
@@ -202,15 +211,17 @@ function CopyLink({ t, token }: { t: T; token: string }) {
 }
 
 export function BuildingsPage({ l, t, onBack, openCode, onOpen }: {
-  l: Locale; t: T; onBack?: () => void;
+  l: Locale; t: T;
+  /* Absent where the left panel is present. */
+  onBack?: () => void;
   /* Which building is open comes from the URL, so /buildings/A is its own page
      and back collapses it rather than leaving the app. */
   openCode?: string | null;
   onOpen?: (code: string | null) => void;
 }) {
   const [rows, setRows] = useState<any[] | null>(null);
-  const [err, setErr] = useState("");
   const [adding, setAdding] = useState(false);
+  const [err, setErr] = useState("");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [count, setCount] = useState("");
@@ -229,19 +240,29 @@ export function BuildingsPage({ l, t, onBack, openCode, onOpen }: {
   }
 
   return (
-    <div className="col">
+    <div className="opb-root">
       {onBack && (
-        <button className="linkback" onClick={onBack}>
+        <button className="rz-btn rz-btn-back" onClick={onBack}>
           <ChevronLeft size={16} /> {t("backToApp")}
         </button>
       )}
-      <div className="rowspread">
-        <h2>{t("buildings")}</h2>
+      {/* The head carries the totals, so an operator sees the size of the
+          estate before reading a single row. */}
+      <header className="opb-head">
+        <div className="opb-head-text">
+          <h1 className="opb-title">{t("buildings")}</h1>
+          <p className="opb-sub">{t("opbSub")}</p>
+          {rows && rows.length > 0 && (
+            <p className="opb-count">
+              {rows.length} {t("buildings")} · {rows.reduce((n, b) => n + (b.rooms ?? 0), 0)} {t("roomsWord")}
+            </p>
+          )}
+        </div>
         {/* Add building belongs here, not behind Staff. */}
-        <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
+        <button className="opb-cta" onClick={() => setAdding((v) => !v)}>
           <Plus size={16} /> {t("addBuilding")}
         </button>
-      </div>
+      </header>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
 
       {adding && (
@@ -273,20 +294,30 @@ export function BuildingsPage({ l, t, onBack, openCode, onOpen }: {
       {!rows && !err && <p className="muted">…</p>}
       {rows?.length === 0 && <div className="empty"><p className="muted">{t("noBuildings")}</p></div>}
 
-      {rows?.map((b) => (
-        <button className="card cardlink" key={b.id} onClick={() => onOpen?.(b.code)}>
-          <div className="rowspread">
-            <p className="cardtitle">{b.name}</p>
-            <span className="plate plate-sm">{b.code}</span>
-          </div>
-          <p className="muted mono">
-            {b.units} {t("unitsWord")} · {b.rooms} {t("roomsWord")} · {b.room_count} {t("plannedWord")}
-          </p>
-          {b.caretakers.length === 0
-            ? <p className="muted warnline"><AlertTriangle size={13} /> {t("noCaretaker")}</p>
-            : <p className="muted">{b.caretakers.map((c: any) => c.name).join(", ")}</p>}
-        </button>
-      ))}
+      <div className="opb-list">
+        {rows?.map((b) => (
+          <button className="opb-row" key={b.id} onClick={() => onOpen?.(b.code)}>
+            <span className="opb-row-main">
+              <span className="opb-row-name">{b.name}</span>
+              <span className="opb-row-counts">
+                {b.units} {t("unitsWord")} · {b.rooms} {t("roomsWord")} ·{" "}
+                {/* Zero reads differently from a small number: it's the good
+                    outcome, so it isn't dressed as a warning. */}
+                <span className={(b.room_count ?? 0) === 0 ? "opb-inline-zero" : undefined}>
+                  {b.room_count} {t("plannedWord")}
+                </span>
+              </span>
+              <span className={"opb-row-care"
+                + (b.caretakers.length === 0 ? " opb-row-care-vacant" : "")}>
+                {b.caretakers.length === 0
+                  ? t("noCaretaker")
+                  : b.caretakers.map((c: any) => c.name).join(", ")}
+              </span>
+            </span>
+            <span className="opb-row-code">{b.code}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -305,7 +336,9 @@ function BuildingDetail({ l, t, building, onBack }: any) {
 
   return (
     <div className="col">
-      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToDash")}</button>
+      {onBack && (
+        <button className="rz-btn rz-btn-back" onClick={onBack}><ChevronLeft size={16} /> {t("backToDash")}</button>
+      )}
       <div className="rowspread">
         <h2>{building.name}</h2>
         <span className="plate plate-sm">{building.code}</span>
@@ -386,11 +419,13 @@ function BuildingDetail({ l, t, building, onBack }: any) {
   );
 }
 
-function Staff({ l, t, me }: { l: Locale; t: T; me: string }) {
+function Staff({ l, t, me, adding, setAdding }: {
+  l: Locale; t: T; me: string;
+  adding: boolean; setAdding: React.Dispatch<React.SetStateAction<boolean>>;
+}) {
   const [rows, setRows] = useState<any[] | null>(null);
   const [buildings, setBuildings] = useState<any[]>([]);
   const [err, setErr] = useState("");
-  const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [isOp, setIsOp] = useState(false);
@@ -410,12 +445,6 @@ function Staff({ l, t, me }: { l: Locale; t: T; me: string }) {
 
   return (
     <div className="col">
-      <div className="rowspread">
-        <h2>{t("staffWord")}</h2>
-        <button className="btn btn-primary" onClick={() => { setAdding((v) => !v); setToken(null); }}>
-          <Plus size={16} /> {t("addStaff")}
-        </button>
-      </div>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
       {token && <CopyLink t={t} token={token} />}
 
@@ -465,16 +494,34 @@ function Staff({ l, t, me }: { l: Locale; t: T; me: string }) {
       {!rows && !err && <p className="muted">…</p>}
 
       {rows?.map((s) => (
-        <div className={"card" + (s.disabled_at ? " cardmuted" : "")} key={s.id}>
-          <div className="rowspread">
-            <p className="cardtitle">{s.display_name}</p>
-            <span className={"pill pill-" + (s.is_operator ? "info" : "neutral")}>
+        <div className={"ops-card" + (s.disabled_at ? " ops-card-off" : "")} key={s.id}>
+          <div className="ops-card-head">
+            <div className="ops-ident">
+              {/* Initials rather than a photo: the app has no images anywhere,
+                  and a caretaker's face isn't the operator's to store. */}
+              <span className="ops-avatar" aria-hidden>
+                {s.display_name.split(/\s+/).slice(0, 2).map((w: string) => w[0]).join("")}
+              </span>
+              <span className="ops-ident-text">
+                <span className="ops-name">{s.display_name}</span>
+                <span className="ops-mail">{s.email}</span>
+              </span>
+            </div>
+            <span className={"ops-role" + (s.is_operator ? " ops-role-operator" : "")}>
               {s.is_operator ? t("operator") : t("staff")}
             </span>
           </div>
-          <p className="muted mono">{s.email}</p>
-          {!s.has_password && <p className="muted"><AlertTriangle size={13} /> {t("neverSignedIn")}</p>}
-          {s.disabled_at && <p className="muted"><Ban size={13} /> {t("disabledWord")}</p>}
+
+          {/* An operator covers the organisation, not a building — the export
+              is explicit that this line is never left blank. */}
+          {s.is_operator && <p className="ops-scope">{t("orgWide")}</p>}
+
+          {!s.has_password && (
+            <p className="ops-meta"><AlertTriangle size={13} /> {t("neverSignedIn")}</p>
+          )}
+          {s.disabled_at && (
+            <p className="ops-meta"><Ban size={13} /> {t("disabledWord")}</p>
+          )}
 
           {!s.is_operator && !s.disabled_at && (
             editing === s.id ? (
@@ -547,14 +594,33 @@ function Staff({ l, t, me }: { l: Locale; t: T; me: string }) {
  * which is where nobody would look for it.
  */
 export function StaffPage({ l, t, me, onBack }: {
-  l: Locale; t: T; me: string; onBack: () => void;
+  l: Locale; t: T; me: string;
+  /* Absent where the left panel is present: two ways back is one too many. */
+  onBack?: () => void;
 }) {
+  /* Held here rather than inside Staff, so the button can live in the page
+     head alongside the title. */
+  const [adding, setAdding] = useState(false);
   return (
-    <div className="col">
-      <button className="linkback" onClick={onBack}>
-        <ChevronLeft size={16} /> {t("backToApp")}
-      </button>
-      <Staff l={l} t={t} me={me} />
+    <div className="ops-root">
+      {onBack && (
+        <button className="rz-btn rz-btn-back" onClick={onBack}>
+          <ChevronLeft size={16} /> {t("backToApp")}
+        </button>
+      )}
+      {/* Top-right, the same button in the same place as Add building and
+          Print sheet. It used to sit inside the list with its own duplicate
+          heading above it. */}
+      <header className="ops-head">
+        <div className="ops-head-text">
+          <h1 className="ops-title">{t("staff")}</h1>
+          <p className="ops-sub">{t("opsSub")}</p>
+        </div>
+        <button className="ops-cta" onClick={() => setAdding((v) => !v)}>
+          <Plus size={16} aria-hidden /> {t("addStaff")}
+        </button>
+      </header>
+      <Staff l={l} t={t} me={me} adding={adding} setAdding={setAdding} />
     </div>
   );
 }

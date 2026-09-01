@@ -55,10 +55,10 @@ export function NotificationPanel({ l, t, items, onClose, onOpenTicket, onReadAl
   onReadAll: () => void;
 }) {
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label={t("notifications")}>
-      <div className="sheetcard">
+    <div className="rz modal modal-rz" role="dialog" aria-modal="true" aria-label={t("notifications")}>
+      <div className="sheetcard sheetcard-rz">
         <div className="rowspread">
-          <p className="cardtitle"><Bell size={15} aria-hidden /> {t("notifications")}</p>
+          <p className="rz-cardtitle"><Bell size={17} aria-hidden /> {t("notifications")}</p>
           <div className="row">
             {items.some((x) => !x.is_read) && (
               <button className="iconbtn" onClick={onReadAll} aria-label={t("markAllRead")}>
@@ -78,7 +78,7 @@ export function NotificationPanel({ l, t, items, onClose, onOpenTicket, onReadAl
             onClick={() => n.ticket_id && onOpenTicket(n.id)}>
             {!n.is_read && <span className="notifdot" aria-hidden />}
             <div className="notifbody">
-              <p className="notiftext">{describe(n, l, t)}</p>
+              <p className="notiftext rz-consentlabel">{describe(n, l, t)}</p>
               <p className="muted mono">
                 {place(n, l)}{n.object_type ? ` · ${objLabel(n.object_type, l)}` : ""}
               </p>

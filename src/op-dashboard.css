@@ -1,0 +1,763 @@
+/* =============================================================================
+   TOKENS — real values, self-contained.
+   Every file in this export repeats this block on purpose: do NOT rely on a
+   :root from another file. All type is written as LONGHAND (font-weight /
+   font-size / line-height / font-family) — never the `font:` shorthand, because
+   one invalid part drops the whole declaration and silently loses size+weight.
+   Palettes: LIGHT is the default, DARK follows the system theme.
+   ========================================================================== */
+:root {
+  --op-font-sans: Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --op-font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --op-brand-blue: #2026B0;
+  --op-primary: #4A4AD8;
+  --op-primary-100: #DEDEF8;
+  --op-primary-300: #9E9EE8;
+  --op-primary-400: #7373DF;
+  --op-primary-700: #2E2EA6;
+  --op-on-primary: #FFFFFF;
+
+  --op-fg-1: #1F3F4F;
+  --op-fg-2: #51616C;
+  --op-fg-3: #8A929B;
+
+  --op-surface: #FFFFFF;
+  --op-surface-2: #F5F7F9;
+  --op-surface-3: #EEF1F4;
+  --op-field: #EBEDF0;
+  --op-border: #E4E8ED;
+  --op-border-strong: #D3D9E0;
+
+  --op-success: #1FA971;
+  --op-success-bg: #E6F6EF;
+  --op-warning: #E89A2B;
+  --op-warning-bg: #FCF1DF;
+  --op-warning-fg: #7A4A08;
+  --op-danger: #E8403A;
+  --op-danger-bg: #FCE9E8;
+  --op-info-bg: #EEEEFC;
+
+  --op-r-xs: 6px;
+  --op-r-sm: 10px;
+  --op-r-md: 14px;
+  --op-r-lg: 18px;
+  --op-r-pill: 999px;
+
+  --op-shadow-sm: 0 1px 2px rgba(31,63,79,.06);
+  --op-shadow-md: 0 6px 18px rgba(31,63,79,.08);
+  --op-shadow-lg: 0 16px 40px rgba(31,63,79,.12);
+  --op-shadow-cta: 0 10px 24px rgba(74,74,216,.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --op-brand-blue: #5A60E8;
+    --op-primary: #7B7BE6;
+    --op-primary-100: #2A2A5C;
+    --op-primary-300: #5F5FD1;
+    --op-primary-400: #6E6EDA;
+    --op-primary-700: #B4B4F2;
+    --op-on-primary: #0E1216;
+
+    --op-fg-1: #E8EDF1;
+    --op-fg-2: #A9B4BD;
+    --op-fg-3: #78848D;
+
+    --op-surface: #171C21;
+    --op-surface-2: #101418;
+    --op-surface-3: #222A31;
+    --op-field: #222A31;
+    --op-border: #2A333B;
+    --op-border-strong: #3A454E;
+
+    --op-success: #46C48D;
+    --op-success-bg: #12301F;
+    --op-warning: #E8A94A;
+    --op-warning-bg: #33260F;
+    --op-warning-fg: #E8C98A;
+    --op-danger: #F1655F;
+    --op-danger-bg: #3A1A18;
+    --op-info-bg: #1E2140;
+
+    --op-shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    --op-shadow-md: 0 6px 18px rgba(0,0,0,.45);
+    --op-shadow-lg: 0 16px 40px rgba(0,0,0,.55);
+    --op-shadow-cta: 0 10px 24px rgba(123,123,230,.28);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   DASHBOARD CONTENT AREA — dormtag-op-dashboard.css
+   Flat classes only, no descendant selectors.
+   box-sizing: border-box is set explicitly on everything that mixes padding
+   with a percentage or grid-fraction width.
+   -------------------------------------------------------------------------- */
+
+.opd-preview {                 /* PREVIEW ONLY — delete when porting */
+  margin: 0;
+  padding: 28px;
+  background: var(--op-surface-2);
+}
+
+.opd-root {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1180px;
+  padding: 26px 28px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: var(--op-surface-2);
+  font-family: var(--op-font-sans);
+  color: var(--op-fg-1);
+}
+
+.opd-head { display: flex; flex-direction: column; gap: 6px; }
+
+.opd-title {
+  margin: 0;
+  font-family: var(--op-font-sans);
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -.02em;
+  color: var(--op-fg-1);
+}
+
+.opd-sub {
+  margin: 0;
+  font-family: var(--op-font-sans);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--op-fg-2);
+}
+
+/* ---- metric cards ---- */
+.opd-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.opd-metric {
+  box-sizing: border-box;
+  padding: 16px 18px;
+  border-radius: var(--op-r-lg);
+  background: var(--op-surface);
+  box-shadow: var(--op-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 96px;
+}
+
+.opd-metric-label {
+  font-family: var(--op-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--op-fg-2);
+  text-wrap: pretty;
+}
+
+.opd-metric-row { display: flex; align-items: baseline; gap: 8px; }
+
+.opd-metric-value {
+  font-family: var(--op-font-mono);
+  font-weight: 500;
+  font-size: 30px;
+  line-height: 1.1;
+  letter-spacing: -.02em;
+  color: var(--op-fg-1);
+}
+
+.opd-metric-zero { color: var(--op-fg-3); }
+
+/*
+ * Not in the export, which colours deltas but not values.
+ *
+ * The oldest open ticket is the one figure on this screen where the number
+ * itself is the alarm — two weeks is where a backlog item becomes one nobody is
+ * looking at. Uses the export's own danger colour rather than a new one.
+ */
+.opd-metric-bad { color: var(--op-danger); }
+
+.opd-metric-delta {
+  font-family: var(--op-font-mono);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.opd-delta-bad { color: var(--op-danger); }
+.opd-delta-good { color: var(--op-success); }
+.opd-delta-flat { color: var(--op-fg-3); }
+
+/* ---- generic card ---- */
+.opd-card {
+  box-sizing: border-box;
+  padding: 20px 22px;
+  border-radius: var(--op-r-lg);
+  background: var(--op-surface);
+  box-shadow: var(--op-shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.opd-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.opd-card-title {
+  margin: 0;
+  font-family: var(--op-font-sans);
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--op-fg-1);
+}
+
+.opd-card-meta {
+  font-family: var(--op-font-mono);
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--op-fg-3);
+}
+
+.opd-legend { display: flex; align-items: center; gap: 14px; }
+
+.opd-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--op-font-sans);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--op-fg-2);
+}
+
+.opd-swatch { width: 10px; height: 10px; border-radius: 3px; display: block; }
+.opd-swatch-reported { background: var(--op-primary-400); }
+.opd-swatch-fixed { background: var(--op-primary-100); }
+
+.opd-chart-note {
+  margin: 0;
+  font-family: var(--op-font-sans);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--op-fg-3);
+}
+
+.opd-chart-empty {
+  margin: 0;
+  padding: 26px 0;
+  text-align: center;
+  font-family: var(--op-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--op-fg-3);
+}
+
+/* ---- chart 1: grouped vertical bar ---- */
+.opd-chart-trend {
+  box-sizing: border-box;
+  height: 208px;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  align-items: end;
+  gap: 8px;
+}
+
+.opd-bargroup {
+  box-sizing: border-box;
+  /*
+   * The export styles this as a div; it's a button here so a month can be
+   * tapped for detail. Without the reset each group rendered with the browser's
+   * default button face — a pale block filling the full height, which read as a
+   * bar at 100% and made every month look nearly full.
+   */
+  appearance: none; -webkit-appearance: none;
+  background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr auto;
+  align-items: end;
+  gap: 3px;
+  border-bottom: 1px solid var(--op-border);
+}
+
+.opd-bar {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+}
+
+.opd-bar-reported { background: var(--op-primary-400); }
+.opd-bar-fixed { background: var(--op-primary-100); }
+
+.opd-bar-zero {                 /* real zero: 2px stub on the baseline */
+  height: 2px;
+  border-radius: 1px;
+  opacity: .8;
+}
+
+.opd-bar-nodata {               /* before go-live: hatched, not zero */
+  height: 100%;
+  border-radius: 3px 3px 0 0;
+  background-image: repeating-linear-gradient(45deg, var(--op-surface-3) 0 4px, transparent 4px 8px);
+  background-color: transparent;
+}
+
+.opd-bar-label {
+  grid-column: 1 / -1;
+  padding-top: 6px;
+  text-align: center;
+  font-family: var(--op-font-mono);
+  font-weight: 400;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--op-fg-3);
+}
+
+/* ---- chart 2: ranked bar list ---- */
+.opd-chart-trades { display: flex; flex-direction: column; gap: 12px; }
+
+.opd-rankrow { display: flex; align-items: center; gap: 12px; }
+
+.opd-rank {
+  flex: 0 0 26px;
+  font-family: var(--op-font-mono);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--op-fg-3);
+}
+
+.opd-rank-tie { color: var(--op-warning); }   /* shared rank, nothing promoted */
+
+.opd-rank-label {
+  flex: 0 0 130px;
+  font-family: var(--op-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--op-fg-1);
+}
+
+.opd-rank-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 9px;
+  border-radius: var(--op-r-pill);
+  background: var(--op-surface-3);
+  overflow: hidden;
+  display: block;
+}
+
+.opd-rank-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--op-r-pill);
+  background: var(--op-primary);
+}
+
+.opd-rank-value {
+  flex: 0 0 38px;
+  text-align: right;
+  font-family: var(--op-font-mono);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--op-fg-2);
+}
+
+/* ---- chart 3: object frequency ---- */
+.opd-chart-objects { display: flex; flex-direction: column; gap: 12px; }
+
+.opd-objrow { display: flex; align-items: center; gap: 12px; }
+
+.opd-obj-label {
+  flex: 0 0 150px;
+  font-family: var(--op-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--op-fg-1);
+}
+
+.opd-obj-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 9px;
+  border-radius: var(--op-r-pill);
+  background: var(--op-surface-3);
+  overflow: hidden;
+  display: block;
+}
+
+.opd-obj-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--op-r-pill);
+  background: var(--op-primary-400);
+}
+
+.opd-obj-value {
+  flex: 0 0 34px;
+  text-align: right;
+  font-family: var(--op-font-mono);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--op-fg-2);
+}
+
+/* ---- building cards: 4 in the design, N from the API ---- */
+.opd-buildings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.opd-bcard {
+  box-sizing: border-box;
+  /* An article in the export; a button here, because tapping a card filters the
+     dashboard to that building. Same reset as the bar groups. */
+  appearance: none; -webkit-appearance: none;
+  border: 0; font: inherit; text-align: left; cursor: pointer;
+  padding: 17px 18px;
+  border-radius: var(--op-r-lg);
+  background: var(--op-surface);
+  box-shadow: var(--op-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.opd-bcard-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+.opd-bcard-name {
+  font-family: var(--op-font-sans);
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--op-fg-1);
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.opd-bcard-code {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  border-radius: var(--op-r-xs);
+  background: var(--op-surface-2);
+  font-family: var(--op-font-mono);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.3;
+  letter-spacing: .06em;
+  color: var(--op-fg-2);
+}
+
+.opd-bcard-figs { display: flex; gap: 18px; }
+
+.opd-fig { display: flex; flex-direction: column; gap: 1px; }
+
+.opd-fig-n {
+  font-family: var(--op-font-mono);
+  font-weight: 500;
+  font-size: 17px;
+  line-height: 1.2;
+  color: var(--op-fg-1);
+}
+
+.opd-fig-bad { color: var(--op-danger); }
+.opd-fig-zero { color: var(--op-fg-3); }
+
+.opd-fig-l {
+  font-family: var(--op-font-sans);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--op-fg-3);
+}
+
+.opd-bcard-care {
+  font-family: var(--op-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--op-fg-2);
+}
+
+.opd-bcard-care-vacant {        /* no caretaker: stated, never blank */
+  color: var(--op-danger);
+}
+
+/* The tappable month, since the export didn't need these on a div. */
+.opd-bargroup:hover .opd-bar-reported { filter: brightness(1.12); }
+.opd-bargroup[aria-pressed="true"] .opd-bar-reported { background: var(--op-primary-700); }
+.opd-bargroup[aria-pressed="true"] .opd-bar-label { color: var(--op-fg-1); font-weight: 600; }
+.opd-bargroup:focus-visible { outline: 2px solid var(--op-primary); outline-offset: 2px; }
+
+/* Tapping a card filters the dashboard to that building, so it needs to show
+   which one is active — the export had no state for this. */
+.opd-bcard[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px var(--op-primary), var(--op-shadow-sm);
+}
+.opd-bcard:hover { box-shadow: var(--op-shadow-md, 0 6px 18px rgba(31,63,79,.10)); }
+.opd-bcard:focus-visible { outline: 2px solid var(--op-primary); outline-offset: 2px; }
+
+/*
+ * Two additions to the export's metric card.
+ *
+ * The export's cards are static readouts. Here most of them are the way into a
+ * filtered ticket list — the number is a question and the list is the answer —
+ * so a card needs to look pressable and needs a line saying where it goes.
+ */
+.opd-metric-link {
+  appearance: none; -webkit-appearance: none;
+  border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+  transition: box-shadow .14s ease, transform .14s ease;
+}
+.opd-metric-link:hover { box-shadow: 0 6px 18px rgba(31, 63, 79, .10); }
+.opd-metric-link:active { transform: scale(.99); }
+.opd-metric-link:focus-visible { outline: 2px solid var(--op-primary); outline-offset: 2px; }
+
+.opd-metric-hint {
+  font-family: var(--op-font-sans);
+  font-weight: 500;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--op-fg-3);
+}
+.opd-metric-link:hover .opd-metric-hint { color: var(--op-primary); }
+
+@media (prefers-color-scheme: dark) {
+  .opd-metric-link:hover { box-shadow: 0 6px 18px rgba(0, 0, 0, .34); }
+}
+
+/* --- Customise, inline ------------------------------------------------ */
+
+/*
+ * Not the modal in dormtag-op-customise: this matches the dashboard mock, where
+ * the panel opens in place. It's short, and what it changes sits directly
+ * below — a modal would cover the cards the operator is deciding about.
+ */
+.opd-customise {
+  box-sizing: border-box;
+  background: var(--op-surface);
+  border-radius: var(--op-r-lg);
+  box-shadow: var(--op-shadow-sm);
+  padding: 22px 24px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.opd-cust-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.opd-cust-title {
+  margin: 0; font-family: var(--op-font-sans); font-weight: 700;
+  font-size: 19px; line-height: 1.25; letter-spacing: -.02em; color: var(--op-fg-1);
+}
+.opd-cust-sub {
+  margin: 4px 0 0; font-family: var(--op-font-sans); font-weight: 400;
+  font-size: 14px; line-height: 1.5; color: var(--op-fg-2);
+}
+.opd-cust-x {
+  appearance: none; -webkit-appearance: none;
+  flex: 0 0 auto; width: 32px; height: 32px; border: 0; border-radius: var(--op-r-pill);
+  background: var(--op-surface-2); color: var(--op-fg-2);
+  display: grid; place-items: center; cursor: pointer;
+}
+.opd-cust-x:hover { background: var(--op-surface-3); color: var(--op-fg-1); }
+
+/* The two that aren't offered, stated rather than shown as dead controls. */
+.opd-cust-locked {
+  margin: 0; font-family: var(--op-font-sans); font-weight: 400;
+  font-size: 13.5px; line-height: 1.5; color: var(--op-fg-3);
+}
+
+.opd-pills { display: flex; flex-wrap: wrap; gap: 9px; }
+.opd-pill {
+  appearance: none; -webkit-appearance: none;
+  display: inline-flex; align-items: center; gap: 9px;
+  border: 0; cursor: pointer; border-radius: var(--op-r-pill);
+  padding: 9px 15px;
+  background: var(--op-surface-2); color: var(--op-fg-2);
+  box-shadow: inset 0 0 0 1.5px var(--op-border);
+  font-family: var(--op-font-sans); font-weight: 600; font-size: 13.5px; line-height: 1.2;
+  transition: background .14s ease, box-shadow .14s ease, color .14s ease;
+}
+.opd-pill:hover { color: var(--op-fg-1); }
+.opd-pill-on {
+  background: var(--op-info-bg); color: var(--op-primary);
+  box-shadow: inset 0 0 0 1.5px var(--op-primary);
+}
+.opd-pill-state {
+  font-family: var(--op-font-mono); font-weight: 400; font-size: 11.5px;
+  color: var(--op-fg-3);
+}
+.opd-pill-on .opd-pill-state { color: var(--op-primary); }
+.opd-pill:focus-visible { outline: 2px solid var(--op-primary); outline-offset: 2px; }
+
+.opd-cust-eyebrow {
+  margin: 4px 0 0; font-family: var(--op-font-sans); font-weight: 600;
+  font-size: 11px; line-height: 1.3; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--op-fg-3);
+}
+
+.opd-chartrows { display: flex; flex-wrap: wrap; gap: 22px; align-items: center; }
+.opd-chartrow { display: flex; align-items: center; gap: 12px; }
+.opd-chartname {
+  font-family: var(--op-font-sans); font-weight: 500; font-size: 14px;
+  line-height: 1.4; color: var(--op-fg-2);
+}
+.opd-seg {
+  display: flex; gap: 3px; padding: 3px;
+  border-radius: var(--op-r-pill); background: var(--op-field);
+}
+.opd-segbtn {
+  appearance: none; -webkit-appearance: none;
+  border: 0; cursor: pointer; border-radius: var(--op-r-pill);
+  padding: 7px 15px; background: transparent; color: var(--op-fg-3);
+  font-family: var(--op-font-sans); font-weight: 600; font-size: 13px; line-height: 1.2;
+}
+.opd-segbtn-on { background: var(--op-surface); color: var(--op-fg-1); box-shadow: var(--op-shadow-sm); }
+.opd-segbtn:focus-visible { outline: 2px solid var(--op-primary); outline-offset: 2px; }
+
+.opd-cust-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding-top: 4px;
+}
+.opd-cust-ghost {
+  appearance: none; -webkit-appearance: none;
+  border: 0; cursor: pointer; border-radius: var(--op-r-pill); padding: 11px 18px;
+  background: transparent; color: var(--op-fg-2);
+  font-family: var(--op-font-sans); font-weight: 600; font-size: 13.5px; line-height: 1.2;
+}
+.opd-cust-save {
+  appearance: none; -webkit-appearance: none;
+  border: 0; cursor: pointer; border-radius: var(--op-r-pill); padding: 11px 22px;
+  background: var(--op-primary); color: var(--op-on-primary);
+  box-shadow: var(--op-shadow-cta);
+  font-family: var(--op-font-sans); font-weight: 600; font-size: 13.5px; line-height: 1.2;
+}
+.opd-cust-save:disabled { background: var(--op-surface-3); color: var(--op-fg-3); box-shadow: none; cursor: default; }
+
+/* --- the donut, where the operator chooses it ------------------------- */
+
+.opd-donutwrap {
+  display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
+}
+.opd-donut { width: 168px; height: 168px; flex: 0 0 auto; }
+.opd-donutlegend { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.opd-legendrow { display: flex; align-items: center; gap: 10px; }
+.opd-legenddot { flex: 0 0 9px; width: 9px; height: 9px; border-radius: 2px; display: block; }
+.opd-legendname {
+  flex: 1; min-width: 0;
+  font-family: var(--op-font-sans); font-weight: 500; font-size: 14px;
+  line-height: 1.4; color: var(--op-fg-1);
+}
+.opd-legendn {
+  font-family: var(--op-font-mono); font-weight: 500; font-size: 13.5px; color: var(--op-fg-1);
+}
+.opd-legendpct {
+  min-width: 3.5ch; text-align: right;
+  font-family: var(--op-font-mono); font-weight: 400; font-size: 12.5px; color: var(--op-fg-3);
+}
+
+/* --- the two charts side by side -------------------------------------- */
+
+/*
+ * The trend chart is taller than the trade panel, so the row stretches to it
+ * and the trade panel fills. With only two or three trades the bar list is
+ * short, and the leftover space would sit at the top with the bars floating —
+ * so the content is pinned to the top and the space falls below it, where it
+ * reads as room rather than as a gap.
+ */
+.opd-card { display: flex; flex-direction: column; }
+.opd-chart-trades { margin-bottom: auto; }
+
+/* A donut is centred instead: it's one object, and hanging it from the top of a
+   tall card looks like it slipped. */
+.opd-donutwrap { margin-block: auto; }
+
+/* --- the drill-downs -------------------------------------------------- */
+
+/*
+ * Tapping a metric opens the tickets behind it. No design export for these, so
+ * they borrow the dashboard's own vocabulary rather than inventing a third
+ * language: same card surface, same mono plate, same status pills.
+ */
+.opd-drill { display: flex; flex-direction: column; gap: 14px; padding: 26px 28px 48px; max-width: 1180px; }
+.opd-drill-back {
+  appearance: none; -webkit-appearance: none;
+  align-self: flex-start; border: 0; background: transparent; padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--op-font-sans); font-weight: 600; font-size: 13.5px;
+  line-height: 1.4; color: var(--op-primary);
+}
+.opd-drill-back:hover { color: var(--op-primary-700); }
+
+.opd-tcard {
+  box-sizing: border-box;
+  background: var(--op-surface);
+  border-radius: var(--op-r-lg);
+  box-shadow: var(--op-shadow-sm);
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.opd-tcard-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.opd-tcard-plate {
+  font-family: var(--op-font-mono); font-weight: 500; font-size: 12px;
+  line-height: 1.3; letter-spacing: .06em; color: var(--op-fg-2);
+  background: var(--op-surface-2); padding: 5px 10px; border-radius: var(--op-r-xs);
+}
+.opd-tcard-title {
+  margin: 0; font-family: var(--op-font-sans); font-weight: 600; font-size: 17px;
+  line-height: 1.35; letter-spacing: -.01em; color: var(--op-fg-1);
+}
+.opd-tmeta {
+  margin: 0; display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-family: var(--op-font-sans); font-weight: 400; font-size: 13px;
+  line-height: 1.5; color: var(--op-fg-3);
+}
+.opd-tmeta svg { flex: 0 0 auto; }
+.opd-tmeta-warn { color: var(--op-warning); }
+/* Past a fortnight the age is the point of the row, not a detail on it. */
+.opd-tage-bad { color: var(--op-danger); font-weight: 600; }
+
+.opd-tpill {
+  font-family: var(--op-font-sans); font-weight: 600; font-size: 10.5px;
+  line-height: 1.3; letter-spacing: .06em; text-transform: uppercase;
+  padding: 4px 9px; border-radius: var(--op-r-pill); white-space: nowrap;
+}
+.opd-tpill-neutral { background: var(--op-surface-3); color: var(--op-fg-2); }
+.opd-tpill-info    { background: var(--op-info-bg); color: var(--op-primary); }
+.opd-tpill-ok      { background: var(--op-success-bg); color: var(--op-success); }
+.opd-tpill-warn    { background: var(--op-warning-bg); color: var(--op-warning); }
+.opd-tpill-bad     { background: var(--op-danger-bg); color: var(--op-danger); }
+
+/* A month's tickets: the same row, laid out horizontally because the list can
+   run to dozens and a card each would bury the pattern. */
+.opd-trow {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 0; border-top: 1px solid var(--op-border);
+}
+.opd-trow-obj {
+  flex: 1; min-width: 0;
+  font-family: var(--op-font-sans); font-weight: 500; font-size: 14.5px;
+  line-height: 1.4; color: var(--op-fg-1);
+}

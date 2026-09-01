@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Package, AlertTriangle, Clock, X, Building, Check,
+import { ChevronLeft, ChevronRight, Package, AlertTriangle, Clock, X, Building, Check, Lock,
   SlidersHorizontal } from "lucide-react";
 import {
   api, objLabel, roomLabel, causeLabel, fmtDay, fmtDT, STATE_TONE, tradeLabel, escReason,
@@ -7,6 +7,9 @@ import {
 } from "./lib";
 import { BuildingCard } from "./BuildingEdit";
 import { Sidebar, type OpSection } from "./Sidebar";
+import { StaffPage, BuildingsPage } from "./Admin";
+import { StickerSheet } from "./Auth";
+import { Platform } from "./Platform";
 import { type Route, queryString } from "./router";
 import { BuildingCodes } from "./Codes";
 
@@ -21,78 +24,63 @@ function monthName(bucket: string, l: Locale) {
   return new Date(y, m - 1, 1).toLocaleDateString(l === "de" ? "de-DE" : "en-GB", { month: "short" });
 }
 
+/**
+ * Reported against fixed, month by month.
+ *
+ * A grouped vertical bar chart, from the design export, and its reasoning is
+ * worth keeping: the months are discrete buckets and an operator compares the
+ * pair within each one, not a trajectory across them. So bars, not a line.
+ *
+ * Two empty states, deliberately different. No data at all keeps the twelve
+ * slots with a baseline stub, because the empty grid is itself the message.
+ * Months before the estate went live are hatched instead, so "nothing broke"
+ * and "we weren't running yet" don't look the same.
+ */
 function TrendChart({ l, t, data, selected, onSelect, mode = "bars" }: {
   l: Locale; t: T; data: any[]; selected: string | null;
   onSelect: (b: string | null) => void; mode?: string;
 }) {
-  if (data.length === 0) return <p className="muted">{t("noData")}</p>;
-  const max = Math.max(...data.map((d) => d.reported), 1);
-
-  // Lines show the gap between reported and fixed more directly; bars show each
-  // month split into the two. Both are honest readings of the same numbers.
-  if (mode === "lines") {
-    const w = 100 / Math.max(data.length - 1, 1);
-    const pt = (v: number, i: number) => `${i * w},${100 - (v / max) * 92}`;
-    return (
-      <div>
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="linechart"
-          role="img" aria-label={t("reportedVsFixed")}>
-          <polyline points={data.map((d, i) => pt(d.reported, i)).join(" ")}
-            fill="none" stroke="var(--muted)" strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
-          <polyline points={data.map((d, i) => pt(d.fixed, i)).join(" ")}
-            fill="none" stroke="var(--green)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
-        </svg>
-        <div className="chartaxis">
-          {data.map((d) => (
-            <button key={d.bucket} className="axtick" onClick={() => onSelect(selected === d.bucket ? null : d.bucket)}
-              aria-pressed={selected === d.bucket}>
-              {monthName(d.bucket, l)}
-            </button>
-          ))}
-        </div>
-        <div className="legend">
-          <span><i className="swatch swatch-fixed" /> {t("fixed")}</span>
-          <span><i className="swatch swatch-open" /> {t("reportedOn")}</span>
-          {!selected && <span className="legendhint">{t("tapMonth")}</span>}
-        </div>
-      </div>
-    );
-  }
+  const max = Math.max(...data.map((d) => Math.max(d.reported, d.fixed)), 1);
+  const any = data.some((d) => d.reported > 0 || d.fixed > 0);
 
   return (
-    <div>
-      <div className="chart">
+    <>
+      <div className="opd-chart-trend" role="img" aria-label={t("reportedVsFixed")}>
         {data.map((d) => {
-          const on = selected === d.bucket;
+          /* A month with no rows at all, before anything was recorded, is not
+             the same as a month where nothing broke. */
+          const blank = d.reported === 0 && d.fixed === 0 && !d.live;
           return (
-            <button key={d.bucket}
-              className={"chartcol" + (on ? " chartcol-on" : "")}
-              style={{ width: `${100 / data.length}%` }}
-              aria-pressed={on}
-              aria-label={`${monthName(d.bucket, l)}: ${d.reported} ${t("reported")}, ${d.fixed} ${t("fixed")}`}
-              onClick={() => onSelect(on ? null : d.bucket)}>
-              <span className="chartvalue">{d.reported}</span>
-              <span className="barstack">
-                <span className="barreported" style={{ height: `${(d.reported / max) * 100}%` }}>
-                  <span className="barfixed"
-                    style={{ height: `${(d.fixed / Math.max(d.reported, 1)) * 100}%` }} />
-                </span>
-              </span>
-              <span className="chartlabel">{monthName(d.bucket, l)}</span>
+            <button className="opd-bargroup" key={d.bucket}
+              aria-pressed={selected === d.bucket}
+              onClick={() => onSelect(selected === d.bucket ? null : d.bucket)}>
+              <span className={"opd-bar opd-bar-reported"
+                + (blank ? " opd-bar-nodata" : d.reported === 0 ? " opd-bar-zero" : "")}
+                style={{ height: `${(d.reported / max) * 100}%` }} />
+              <span className={"opd-bar opd-bar-fixed"
+                + (blank ? " opd-bar-nodata" : d.fixed === 0 ? " opd-bar-zero" : "")}
+                style={{ height: `${(d.fixed / max) * 100}%` }} />
+              <span className="opd-bar-label">{monthName(d.bucket, l)}</span>
             </button>
           );
         })}
       </div>
-      <div className="legend">
-        <span><i className="swatch swatch-fixed" /> {t("fixed")}</span>
-        <span><i className="swatch swatch-open" /> {t("stillOpen")}</span>
-        {!selected && <span className="legendhint">{t("tapMonth")}</span>}
+
+      {!any && <p className="opd-chart-empty">{t("opdNoTrend")}</p>}
+
+      <div className="opd-legend">
+        <span className="opd-legend-item">
+          <i className="opd-swatch opd-swatch-reported" aria-hidden /> {t("opdReported")}
+        </span>
+        <span className="opd-legend-item">
+          <i className="opd-swatch opd-swatch-fixed" aria-hidden /> {t("opdFixedLeg")}
+        </span>
+        <span className="opd-chart-note">{t("opdTapMonth")}</span>
       </div>
-    </div>
+    </>
   );
 }
 
-/** Bars for a small ranked breakdown. Used three times in the month panel. */
 function MiniBars({ rows, label }: { rows: { key: string; n: number }[]; label: (k: string) => string }) {
   const max = Math.max(...rows.map((r) => r.n), 1);
   return (
@@ -115,38 +103,72 @@ function MiniBars({ rows, label }: { rows: { key: string; n: number }[]; label: 
  * way it isn't for the eight-fixture ranking — where three are tied and angles
  * would hide what bar lengths make obvious.
  */
-function TradePanel({ l, t, data, mode }: { l: Locale; t: T; data: any[]; mode: string }) {
-  if (!data || data.length === 0) return <p className="muted">{t("noData")}</p>;
+
+/**
+ * Which trade has the most.
+ *
+ * Two readings of the same numbers, chosen in Customise.
+ *
+ * The bar list is the safer default and the design export argues why: the
+ * question is an ORDER, and a donut encodes order only through angle, which
+ * stops being readable once two segments are within a few percent. Ties share a
+ * rank and sort alphabetically, so nothing is silently promoted.
+ *
+ * The donut is offered because these four groups are also parts of a real
+ * whole — and the export allows it on one condition: the sorted numbers are
+ * printed beside it, and that list is the source of truth.
+ */
+function TradePanel({ l, t, data, mode = "bars" }: {
+  l: Locale; t: T; data: any[]; mode?: string;
+}) {
+  if (!data || data.length === 0) {
+    return <p className="opd-chart-empty">{t("opdNoData")}</p>;
+  }
+
   const total = data.reduce((n, x) => n + x.n, 0) || 1;
-  const COLOURS = ["var(--blue)", "var(--green)", "var(--red)", "var(--muted)", "var(--amber)"];
+  const max = Math.max(...data.map((x) => x.n), 1);
+
+  const rows = [...data].sort((a, b) =>
+    b.n - a.n || tradeLabel(a.trade, l).localeCompare(tradeLabel(b.trade, l)));
+
+  const ranks = rows.map((r, i) => (i > 0 && rows[i - 1].n === r.n ? -1 : i + 1));
+  ranks.forEach((v, i) => { if (v === -1) ranks[i] = ranks[i - 1]; });
+  const tied = (i: number) => rows.some((r, j) => j !== i && r.n === rows[i].n);
+
+  const COLOURS = ["var(--op-primary)", "var(--op-primary-400)",
+                   "var(--op-primary-700)", "var(--op-warning)"];
 
   if (mode === "donut") {
     const R = 46, C = 2 * Math.PI * R;
     let acc = 0;
     return (
-      <div className="donutwrap">
-        <svg viewBox="0 0 120 120" className="donut" role="img" aria-label={t("byTradeWord")}>
-          <circle cx="60" cy="60" r={R} fill="none" stroke="var(--line)" strokeWidth="15" />
+      <div className="opd-donutwrap">
+        <svg viewBox="0 0 120 120" className="opd-donut" role="img" aria-label={t("byTradeWord")}>
+          <circle cx="60" cy="60" r={R} fill="none" stroke="var(--op-border)" strokeWidth="15" />
           <g transform="rotate(-90 60 60)" fill="none" strokeWidth="15">
-            {data.map((x, i) => {
+            {rows.map((x, i) => {
               const len = (x.n / total) * C;
-              const el = (
-                <circle key={x.trade} cx="60" cy="60" r={R} stroke={COLOURS[i % COLOURS.length]}
+              const seg = (
+                <circle key={x.trade} cx="60" cy="60" r={R}
+                  stroke={COLOURS[i % COLOURS.length]}
                   strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-acc} />
               );
               acc += len;
-              return el;
+              return seg;
             })}
           </g>
-          <text x="60" y="58" textAnchor="middle" className="donuttotal">{total}</text>
-          <text x="60" y="72" textAnchor="middle" className="donutcap">{t("reports")}</text>
         </svg>
-        <div className="donutkey">
-          {data.map((x, i) => (
-            <div className="keyrow" key={x.trade}>
-              <i className="swatch" style={{ background: COLOURS[i % COLOURS.length] }} />
-              <span className="keyname">{tradeLabel(x.trade, l)}</span>
-              <span className="mono">{x.n} · {Math.round((x.n / total) * 100)}%</span>
+
+        {/* The sorted numbers beside the ring: the export's condition for using
+            a donut at all, and the part a reader can actually compare. */}
+        <div className="opd-donutlegend">
+          {rows.map((x, i) => (
+            <div className="opd-legendrow" key={x.trade}>
+              <i className="opd-legenddot"
+                style={{ background: COLOURS[i % COLOURS.length] }} aria-hidden />
+              <span className="opd-legendname">{tradeLabel(x.trade, l)}</span>
+              <span className="opd-legendn">{x.n}</span>
+              <span className="opd-legendpct">{Math.round((x.n / total) * 100)}%</span>
             </div>
           ))}
         </div>
@@ -154,19 +176,22 @@ function TradePanel({ l, t, data, mode }: { l: Locale; t: T; data: any[]; mode: 
     );
   }
 
-  const max = Math.max(...data.map((x) => x.n), 1);
   return (
-    <>
-      {data.map((x) => (
-        <div className="typerow" key={x.trade}>
-          <span className="typename">{tradeLabel(x.trade, l)}</span>
-          <div className="typebar"><div style={{ width: `${(x.n / max) * 100}%` }} /></div>
-          <span className="mono typecount">{x.n}</span>
+    <div className="opd-chart-trades">
+      {rows.map((x, i) => (
+        <div className="opd-rankrow" key={x.trade}>
+          <span className={"opd-rank" + (tied(i) ? " opd-rank-tie" : "")}>{ranks[i]}.</span>
+          <span className="opd-rank-label">{tradeLabel(x.trade, l)}</span>
+          <span className="opd-rank-track">
+            <span className="opd-rank-fill" style={{ width: `${(x.n / max) * 100}%` }} />
+          </span>
+          <span className="opd-rank-value">{x.n}</span>
         </div>
       ))}
-    </>
+    </div>
   );
 }
+
 
 function MonthPanel({ l, t, bucket, building, onClose }: {
   l: Locale; t: T; bucket: string; building: string | null; onClose: () => void;
@@ -229,12 +254,13 @@ function MonthPanel({ l, t, bucket, building, onClose }: {
           </button>
 
           {showList && d.tickets.map((r: any) => (
-            <div className="monthrow" key={r.ticket_id}>
-              <span className="plate plate-sm">
+            /* Tapping a month is a drill-down too, so it uses the same row. */
+            <div className="opd-trow" key={r.ticket_id}>
+              <span className="opd-tcard-plate">
                 {r.building_code}-{r.unit_code} · {roomLabel(r.room_type, l)}
               </span>
-              <span className="monthobj">{objLabel(r.object_type, l)}</span>
-              <span className={"pill pill-" + (STATE_TONE[r.state] || "neutral")}>
+              <span className="opd-trow-obj">{objLabel(r.object_type, l)}</span>
+              <span className={"opd-tpill opd-tpill-" + (STATE_TONE[r.state] || "neutral")}>
                 {t(("st_" + r.state) as StrKey)}
               </span>
             </div>
@@ -272,39 +298,68 @@ function TicketList({ l, t, which, months, building, onBack }: {
     : t("openTickets");
 
   return (
-    <div className="col">
-      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToDash")}</button>
-      <div className="rowspread">
-        <h2>{heading}</h2>
-        {rows && <span className="muted">{rows.length}</span>}
-      </div>
-      {err && <div className="err">{err}</div>}
-      {!rows && !err && <p className="muted">…</p>}
-      {rows?.length === 0 && <div className="empty"><p className="muted">{t("nothingHere")}</p></div>}
+    /*
+      No export for the drill-downs, so they borrow the dashboard's own
+      vocabulary rather than inventing a third language: the same card surface,
+      the same mono plate, the same status pills.
+    */
+    <div className="opd-drill">
+      {/* Back belongs here: a drill-down is somewhere you went from a metric,
+          and the panel can't return you to the card you came from. */}
+      <button className="opd-drill-back" onClick={onBack}>
+        <ChevronLeft size={16} aria-hidden /> {t("backToDash")}
+      </button>
 
-      {rows?.map((r) => (
-        <div className="card" key={r.ticket_id + (r.missed_at || "")}>
-          <div className="rowspread">
-            <span className="plate plate-sm">
+      <header className="opd-head">
+        <h1 className="opd-title">{heading}</h1>
+        {rows && (
+          <p className="opd-sub">
+            {rows.length} {rows.length === 1 ? t("ticketWord") : t("ticketsWord")}
+          </p>
+        )}
+      </header>
+
+      {err && <div className="err">{err}</div>}
+      {!rows && !err && <p className="opd-chart-empty">…</p>}
+      {rows?.length === 0 && (
+        <div className="opr-empty">
+          <p className="opr-empty-line">{t("nothingHere")}</p>
+        </div>
+      )}
+
+      {rows?.map((r) => {
+        const days = Math.max(0, Math.round((Date.now() - r.reported_at) / 864e5));
+        return (
+        <div className="opd-tcard" key={r.ticket_id + (r.missed_at || "")}>
+          <div className="opd-tcard-head">
+            <span className="opd-tcard-plate">
               {r.building_code}-{r.unit_code} · {roomLabel(r.room_type, l)}
             </span>
-            <span className={"pill pill-" + (STATE_TONE[r.state] || "neutral")}>
+            <span className={"opd-tpill opd-tpill-" + (STATE_TONE[r.state] || "neutral")}>
               {t(("st_" + r.state) as StrKey)}
             </span>
           </div>
-          <p className="cardtitle">{objLabel(r.object_type, l)}</p>
-          <p className="muted mono">
-            <Clock size={12} aria-hidden /> {t("reportedOn")} {fmtDay(r.reported_at, l)}
-            {" · "}{Math.max(0, Math.round((Date.now() - r.reported_at) / 864e5))} {t("daysOpen")}
+
+          <p className="opd-tcard-title">{objLabel(r.object_type, l)}</p>
+
+          <p className="opd-tmeta">
+            <Clock size={13} aria-hidden /> {t("reportedOn")} {fmtDay(r.reported_at, l)}
+            {" · "}
+            {/* Past a fortnight the age is the point of the row, so it says so. */}
+            <span className={days >= 14 ? "opd-tage-bad" : undefined}>
+              {days} {t("daysOpen")}
+            </span>
           </p>
           {r.part && (
-            <p className="muted"><Package size={13} aria-hidden /> {r.part}
+            <p className="opd-tmeta"><Package size={13} aria-hidden /> {r.part}
               {r.supplier_eta ? ` · ${t("supplierEta")}: ${r.supplier_eta}` : ""}</p>
           )}
           {r.missed_at && (
-            <p className="muted"><AlertTriangle size={13} aria-hidden /> {fmtDT(r.missed_at, l)}</p>
+            <p className="opd-tmeta opd-tmeta-warn">
+              <AlertTriangle size={13} aria-hidden /> {fmtDT(r.missed_at, l)}
+            </p>
           )}
-          {r.appt_at && <p className="muted mono">{fmtDT(r.appt_at, l)}</p>}
+          {r.appt_at && <p className="opd-tmeta">{fmtDT(r.appt_at, l)}</p>}
 
           {r.trade && (
             <>
@@ -342,7 +397,8 @@ function TicketList({ l, t, which, months, building, onBack }: {
             </>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -389,49 +445,75 @@ function CustomisePanel({ t, available, chosen, charts, chartChoices, onSave, on
     bars: "chartBars", lines: "chartLines", donut: "chartDonut",
   };
 
+  /*
+   * Inline on the dashboard, not a modal.
+   *
+   * The panel is short and the thing it changes is directly below it — a modal
+   * would cover the very cards the operator is deciding about. Pills rather
+   * than switch rows for the same reason: eight of them fit on two lines, so
+   * the whole choice is visible at once.
+   *
+   * Two metrics have no pill at all. The screen is about open work, and
+   * oldest-open is the number that surfaces a ticket everyone stopped seeing —
+   * they aren't disabled, they aren't negotiable, so they're stated as a line
+   * of text instead of offered as a control.
+   */
   return (
-    <div className="card">
-      <div className="rowspread">
-        <p className="cardtitle">{t("whichNumbers")}</p>
-        <button className="iconbtn" onClick={onClose} aria-label={t("close")}><X size={16} /></button>
+    <div className="opd-customise">
+      <div className="opd-cust-head">
+        <div>
+          <p className="opd-cust-title">{t("whichNumbers")}</p>
+          <p className="opd-cust-sub">{t("customiseSub")}</p>
+        </div>
+        <button className="opd-cust-x" onClick={onClose} aria-label={t("close")}>
+          <X size={17} aria-hidden />
+        </button>
       </div>
 
-      {/* Open and oldest-open aren't offered: the screen is about open work, and
-          oldest-open is the one number that surfaces a forgotten ticket. */}
-      <p className="muted">
+      <p className="opd-cust-locked">
         {t("openTickets")} · {t("oldestOpen")} — {t("alwaysShown")}
       </p>
 
-      {available.map((m) => (
-        <button key={m} className="consent"
-          onClick={() => setPicked((a) => a.includes(m) ? a.filter((x) => x !== m) : [...a, m])}>
-          <span>{t(LABEL[m] ?? ("openTickets" as StrKey))}</span>
-          <span className={"pill pill-" + (picked.includes(m) ? "info" : "neutral")}>
-            {picked.includes(m) ? t("yes") : t("no")}
-          </span>
-        </button>
-      ))}
+      <div className="opd-pills">
+        {available.map((m) => {
+          const on = picked.includes(m);
+          return (
+            <button key={m} className={"opd-pill" + (on ? " opd-pill-on" : "")}
+              role="switch" aria-checked={on}
+              onClick={() => setPicked((a) => on ? a.filter((x) => x !== m) : [...a, m])}>
+              {t(LABEL[m] ?? ("openTickets" as StrKey))}
+              <span className="opd-pill-state">{on ? t("yes") : t("no")}</span>
+            </button>
+          );
+        })}
+      </div>
 
-      <p className="steplabel">{t("chartsWord")}</p>
-      {Object.entries(chartChoices).map(([panel, choices]) => (
-        choices.length < 2 ? null : (
-          <div className="row chartrow" key={panel}>
-            <span className="chartname">{t(PANEL[panel] ?? ("byObject" as StrKey))}</span>
-            <div className="tabs tabs-sm">
-              {choices.map((c) => (
-                <button key={c} className={"tab" + (ch[panel] === c ? " tab-on" : "")}
-                  onClick={() => setCh((x) => ({ ...x, [panel]: c }))}>
-                  {t(CHART[c] ?? ("chartBars" as StrKey))}
-                </button>
-              ))}
+      <p className="opd-cust-eyebrow">{t("chartsWord")}</p>
+
+      <div className="opd-chartrows">
+        {Object.entries(chartChoices).map(([panel, choices]) => (
+          choices.length < 2 ? null : (
+            <div className="opd-chartrow" key={panel}>
+              <span className="opd-chartname">
+                {t(PANEL[panel] ?? ("byObject" as StrKey))}
+              </span>
+              <div className="opd-seg">
+                {choices.map((c) => (
+                  <button key={c} className={"opd-segbtn" + (ch[panel] === c ? " opd-segbtn-on" : "")}
+                    aria-pressed={ch[panel] === c}
+                    onClick={() => setCh((x) => ({ ...x, [panel]: c }))}>
+                    {t(CHART[c] ?? ("chartBars" as StrKey))}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )
-      ))}
+          )
+        ))}
+      </div>
 
-      <div className="row">
-        <button className="btn" onClick={onClose}>{t("cancel")}</button>
-        <button className="btn btn-primary" disabled={busy}
+      <div className="opd-cust-foot">
+        <button className="opd-cust-ghost" onClick={onClose}>{t("cancel")}</button>
+        <button className="opd-cust-save" disabled={busy}
           onClick={async () => { setBusy(true); await onSave(picked, ch); setBusy(false); }}>
           {t("save")}
         </button>
@@ -439,6 +521,7 @@ function CustomisePanel({ t, available, chosen, charts, chartChoices, onSave, on
     </div>
   );
 }
+
 
 /* ------------------------------------------------------------------ */
 /* behind one repeat-fault row                                        */
@@ -472,18 +555,24 @@ function RepeatDetail({ l, t, riser, object, months, onBack }: {
       {d && (
         <>
           <div className="metrics">
-            <div className="metric">
-              <p className="muted">{t("ticketsWord")}</p>
-              <p className="big mono">{d.total}</p>
-            </div>
-            <div className="metric">
-              <p className="muted">{t("openTickets")}</p>
-              <p className="big mono">{d.openNow}</p>
-            </div>
-            <div className="metric">
-              <p className="muted">{t("roomsAffected")}</p>
-              <p className="big mono">{d.rooms.length}</p>
-            </div>
+            <div className="opd-metric">
+            <span className="opd-metric-label">{t("ticketsWord")}</span>
+            <span className="opd-metric-row">
+              <span className="opd-metric-value">{d.total}</span>
+            </span>
+          </div>
+            <div className="opd-metric">
+            <span className="opd-metric-label">{t("openTickets")}</span>
+            <span className="opd-metric-row">
+              <span className="opd-metric-value">{d.openNow}</span>
+            </span>
+          </div>
+            <div className="opd-metric">
+            <span className="opd-metric-label">{t("roomsAffected")}</span>
+            <span className="opd-metric-row">
+              <span className="opd-metric-value">{d.rooms.length}</span>
+            </span>
+          </div>
           </div>
 
           {/* Eleven tickets across seven rooms is a riser problem; eleven in one
@@ -571,7 +660,13 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
   const [customising, setCustomising] = useState(false);
   const [choices, setChoices] = useState<any>(null);
 
-  const section: OpSection = route.kind === "codes" ? "codes" : "dashboard";
+  const section: OpSection =
+    route.kind === "codes" ? "codes"
+    : route.kind === "buildings" || route.kind === "building" ? "buildings"
+    : route.kind === "staff" ? "staff"
+    : route.kind === "stickers" ? "stickers"
+    : route.kind === "orgs" ? "orgs"
+    : "dashboard";
   const month = route.kind === "month" ? route.bucket : null;
 
   /** Keeps the filters in the query string wherever you are. */
@@ -595,12 +690,33 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
 
   /** Everything that isn't the dashboard, rendered inside the same shell. */
   const inner = () => {
+    /* These four used to render as siblings of this view, which meant the left
+       panel disappeared on them. They're destinations like any other. */
+    if (route.kind === "buildings" || route.kind === "building") {
+      return <BuildingsPage l={l} t={t}
+        openCode={route.kind === "building" ? route.code : null}
+        onOpen={(code) => navigate(code ? { kind: "building", code } : { kind: "buildings" })} />;
+    }
+    if (route.kind === "staff") {
+      return <StaffPage l={l} t={t} me={session.principal.staffId} />;
+    }
+    if (route.kind === "stickers") {
+      return <StickerSheet l={l} t={t} buildings={session.buildings}
+        initialBuilding={route.code ?? null}
+        onPick={(code) => navigate({ kind: "stickers", code: code ?? undefined })} />;
+    }
+    if (route.kind === "orgs" && session.principal.isPlatformAdmin) {
+      return <Platform l={l} t={t} />;
+    }
+
     if (route.kind === "codes" && route.code) {
       const b = (d?.buildings ?? []).find((x: any) => x.code === route.code);
       if (!d) return <p className="muted">…</p>;
       if (!b) return <div className="err">{t("noData")}</div>;
-      return <BuildingCodes l={l} t={t} building={b}
-        onBack={() => go({ kind: "dashboard" })} />;
+      /* No back arrow: the left panel is the way out, and two of them is one
+         too many. Returning to the building picker is what the panel's own
+         Access codes item does. */
+      return <BuildingCodes l={l} t={t} building={b} />;
     }
     if (route.kind === "repeat") {
       return <RepeatDetail l={l} t={t} riser={route.riser} object={route.object}
@@ -616,20 +732,22 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
     if (route.kind === "codes") {
       return (
         <div className="col">
-          <h2>{t("accessCodes")}</h2>
-          <button className="linkback" onClick={() => go({ kind: "dashboard" })}>
-            <ChevronLeft size={16} /> {t("backToDash")}
-          </button>
-          <p className="muted">{t("pickBuilding")}</p>
-          {d.buildings.map((b: any) => (
-            <button className="card cardlink" key={b.id}
-              onClick={() => go({ kind: "codes", code: b.code })}>
-              <div className="rowspread">
-                <span className="cardtitle">{b.name}</span>
-                <span className="plate plate-sm">{b.code}</span>
-              </div>
-            </button>
-          ))}
+          {/* No back arrow: the left panel is the way out. */}
+          <header className="opc-head">
+            <div>
+              <h1 className="opc-title">{t("accessCodes")}</h1>
+              <p className="opc-sub">{t("pickBuilding")}</p>
+            </div>
+          </header>
+          <div className="opc-picklist">
+            {d.buildings.map((b: any) => (
+              <button className="opc-pickrow" key={b.id}
+                onClick={() => go({ kind: "codes", code: b.code })}>
+                <span className="opc-pick-name">{b.name}</span>
+                <span className="opc-pick-code">{b.code}</span>
+              </button>
+            ))}
+          </div>
         </div>
       );
     }
@@ -639,26 +757,6 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
 
   const dashboard = () => (
     <div className="col">
-      <div className="rowspread dashhead">
-        <h2>{t("dashboardWord")}</h2>
-        <div className="row dashctl">
-          <select className="in ctlnarrow" value={months} aria-label={t("period")}
-            onChange={(e) => setFilter({ months: Number(e.target.value) })}>
-            {[1, 3, 6, 12].map((m) => <option key={m} value={m}>{rangeLabel(m)}</option>)}
-          </select>
-          <select className="in ctlnarrow" value={building ?? ""} aria-label={t("buildingLabel")}
-            onChange={(e) => setFilter({ building: e.target.value || null })}>
-            <option value="">{t("allBuildings")}</option>
-            {(d.buildings ?? []).map((b: any) => (
-              <option key={b.code} value={b.code}>{b.name}</option>
-            ))}
-          </select>
-          <button className="btn btn-sm" onClick={() => setCustomising((v) => !v)}>
-            <SlidersHorizontal size={14} aria-hidden /> {t("customise")}
-          </button>
-        </div>
-      </div>
-
       {customising && choices && (
         <CustomisePanel t={t} available={choices.available}
           chosen={d.prefs.metrics} charts={d.prefs.charts} chartChoices={choices.chartChoices}
@@ -669,93 +767,184 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
           }} />
       )}
 
-      <div className="metrics">
+      <header className="opd-head">
+        <h1 className="opd-title">{t("opNavDash")}</h1>
+        <p className="opd-sub">{t("opdSub")}</p>
+      </header>
+
+      {/*
+        A filter that's doing something looks chosen, not merely selected: the
+        label takes a dot and the control an outline. Otherwise an operator
+        reading a filtered dashboard has no way to tell it's filtered.
+      */}
+      <div className="opf-root">
+        <div className="opf-row">
+          <div className={"opf-control" + (months !== 12 ? " opf-control-active" : "")}>
+            <label className={"opf-label" + (months !== 12 ? " opf-label-active" : "")}
+              htmlFor="opf-period">
+              {months !== 12 && <span className="opf-dot" aria-hidden />}
+              <span>{t("period")}</span>
+            </label>
+            <select className={"opf-select" + (months !== 12 ? " opf-select-active" : "")}
+              id="opf-period" value={months}
+              onChange={(e) => setFilter({ months: Number(e.target.value) })}>
+              {[1, 3, 6, 12].map((m) => <option key={m} value={m}>{rangeLabel(m)}</option>)}
+            </select>
+          </div>
+
+          <div className={"opf-control" + (building ? " opf-control-active" : "")}>
+            <label className={"opf-label" + (building ? " opf-label-active" : "")}
+              htmlFor="opf-building">
+              {building && <span className="opf-dot" aria-hidden />}
+              <span>{t("buildingLabel")}</span>
+            </label>
+            <select className={"opf-select" + (building ? " opf-select-active" : "")}
+              id="opf-building" value={building ?? ""}
+              onChange={(e) => setFilter({ building: e.target.value || null })}>
+              <option value="">{t("allBuildings")}</option>
+              {(d.buildings ?? []).map((b: any) => (
+                <option key={b.code} value={b.code}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <button className="opf-customise" onClick={() => setCustomising((v) => !v)}>
+            <SlidersHorizontal className="opf-customise-icon" size={15} aria-hidden />
+            {t("customise")}
+          </button>
+        </div>
+      </div>
+
+      <section className="opd-metrics">
         {/* Always shown: what the screen is for, and the one number that
             surfaces a ticket everybody stopped seeing. */}
-        <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "open" })}>
-          <p className="muted">{t("openTickets")}</p>
-          <p className="big mono">{d.metrics.open}</p>
-          <p className="metrichint">
+        <button className="opd-metric opd-metric-link" onClick={() => go({ kind: "drill", which: "open" })}>
+          <span className="opd-metric-label">{t("openTickets")}</span>
+          <span className="opd-metric-row"><span className="opd-metric-value">{d.metrics.open}</span></span>
+          <span className="opd-metric-hint">
             <Delta value={d.deltas?.open ?? null} goodWhenDown />
             {" "}{t("seeList")} →
-          </p>
+          </span>
         </button>
 
-        <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "open" })}>
-          <p className="muted">{t("oldestOpen")}</p>
-          <p className={"big mono" + ((d.oldestDays ?? 0) >= 14 ? " metricwarn" : "")}>
-            {d.oldestDays ?? "–"}{d.oldestDays !== null ? " d" : ""}
-          </p>
-          <p className="metrichint">
+        <button className="opd-metric opd-metric-link" onClick={() => go({ kind: "drill", which: "open" })}>
+          <span className="opd-metric-label">{t("oldestOpen")}</span>
+          <span className="opd-metric-row">
+            {/* Two weeks is where an open ticket stops being a backlog item and
+                starts being one nobody is looking at. */}
+            <span className={"opd-metric-value"
+              + ((d.oldestDays ?? 0) >= 14 ? " opd-metric-bad" : "")}>
+              {d.oldestDays ?? "–"}{d.oldestDays !== null ? " d" : ""}
+            </span>
+          </span>
+          <span className="opd-metric-hint">
             {d.oldest
               ? `${d.oldest.building_code}-${d.oldest.unit_code} · ${objLabel(d.oldest.object_type, l)}`
               : t("nothingFlagged")}
-          </p>
+          </span>
         </button>
 
         {shows("failedPct") && (
-          <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "failed" })}>
-            <p className="muted">{t("failedVisits")}</p>
-            <p className="big mono">{d.metrics.failedPct}%</p>
-            <p className="metrichint">{d.metrics.failedCount} {t("visits")} →</p>
+          <button className="opd-metric opd-metric-link" onClick={() => go({ kind: "drill", which: "failed" })}>
+            <span className="opd-metric-label">{t("failedVisits")}</span>
+            <span className="opd-metric-row"><span className="opd-metric-value">{d.metrics.failedPct}%</span></span>
+            <span className="opd-metric-hint">{d.metrics.failedCount} {t("visits")} →</span>
           </button>
         )}
 
         {shows("waitingParts") && (
-          <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "parts" })}>
-            <p className="muted">{t("waitingParts")}</p>
-            <p className="big mono">{d.metrics.waitingParts}</p>
-            <p className="metrichint">{t("seeList")} →</p>
+          <button className="opd-metric opd-metric-link" onClick={() => go({ kind: "drill", which: "parts" })}>
+            <span className="opd-metric-label">{t("waitingParts")}</span>
+            <span className="opd-metric-row"><span className="opd-metric-value">{d.metrics.waitingParts}</span></span>
+            <span className="opd-metric-hint">{t("seeList")} →</span>
           </button>
         )}
 
         {shows("external") && (
-          <button className="metric metriclink" onClick={() => go({ kind: "drill", which: "trade" })}>
-            <p className="muted">{t("awaitingTrade")}</p>
-            <p className="big mono">{d.metrics.external}</p>
-            <p className="metrichint">{d.metrics.awaitingCommission} {t("toCommission")} →</p>
+          <button className="opd-metric opd-metric-link" onClick={() => go({ kind: "drill", which: "trade" })}>
+            <span className="opd-metric-label">{t("awaitingTrade")}</span>
+            <span className="opd-metric-row"><span className="opd-metric-value">{d.metrics.external}</span></span>
+            <span className="opd-metric-hint">{d.metrics.awaitingCommission} {t("toCommission")} →</span>
           </button>
         )}
 
         {shows("medianDays") && (
-          <div className="metric">
-            <p className="muted">{t("medianFix")}</p>
-            <p className="big mono">{d.metrics.medianDays} d</p>
-            <p className="metrichint">{d.metrics.closedCount} {t("closedInPeriod")}</p>
+          <div className="opd-metric">
+            <span className="opd-metric-label">{t("medianFix")}</span>
+            <span className="opd-metric-row"><span className="opd-metric-value">{d.metrics.medianDays} d</span></span>
+            <span className="opd-metric-hint">{d.metrics.closedCount} {t("closedInPeriod")}</span>
           </div>
         )}
 
         {shows("closedCount") && (
-          <div className="metric">
-            <p className="muted">{t("closedInPeriod")}</p>
-            <p className="big mono">{d.metrics.closedCount}</p>
+          <div className="opd-metric">
+            <span className="opd-metric-label">{t("closedInPeriod")}</span>
+            <span className="opd-metric-row">
+              <span className="opd-metric-value">{d.metrics.closedCount}</span>
+            </span>
           </div>
         )}
 
         {shows("perRoom") && (
-          <div className="metric">
-            <p className="muted">{t("perRoom")}</p>
-            <p className="big mono">{d.metrics.perRoom ?? "–"}</p>
+          <div className="opd-metric">
+            <span className="opd-metric-label">{t("perRoom")}</span>
+            <span className="opd-metric-row">
+              <span className="opd-metric-value">{d.metrics.perRoom ?? "–"}</span>
+            </span>
           </div>
         )}
 
         {shows("repeatedCount") && (
-          <div className="metric">
-            <p className="muted">{t("repeatedCount")}</p>
-            <p className="big mono">{d.metrics.repeatedCount}</p>
+          <div className="opd-metric">
+            <span className="opd-metric-label">{t("repeatedCount")}</span>
+            <span className="opd-metric-row">
+              <span className="opd-metric-value">{d.metrics.repeatedCount}</span>
+            </span>
           </div>
         )}
-      </div>
+      </section>
 
-      <p className="eyebrow">{t("buildings")}</p>
-      <div className="bgrid">
+      {/*
+        Building cards, from the design export.
+        
+        The grid wraps and nothing is capped: twelve buildings lay out as twelve,
+        rather than scrolling sideways with no sign there's more. And a building
+        with no caretaker says so in amber rather than leaving a blank — the
+        export is explicit that a vacancy is information, not a missing value.
+      */}
+      <section className="opd-buildings">
         {d.buildings.map((b: any) => (
-          <BuildingCard key={b.id} l={l} t={t} b={b}
-            active={building === b.code}
-            onFilter={() => setFilter({ building: building === b.code ? null : b.code })}
-            onChanged={load} />
+          <button className="opd-bcard" key={b.id}
+            aria-pressed={building === b.code}
+            onClick={() => setFilter({ building: building === b.code ? null : b.code })}>
+            <span className="opd-bcard-head">
+              <span className="opd-bcard-name">{b.name}</span>
+              <span className="opd-bcard-code">{b.code}</span>
+            </span>
+            <span className="opd-bcard-figs">
+              <span className="opd-fig">
+                <span className="opd-fig-n">{b.unit_count ?? 0}</span>
+                <span className="opd-fig-l">{t("opdUnits")}</span>
+              </span>
+              <span className="opd-fig">
+                <span className="opd-fig-n">{b.room_count ?? 0}</span>
+                <span className="opd-fig-l">{t("opdRooms")}</span>
+              </span>
+              <span className="opd-fig">
+                <span className={"opd-fig-n"
+                  + ((b.open_count ?? 0) > 0 ? " opd-fig-bad" : " opd-fig-zero")}>
+                  {b.open_count ?? 0}
+                </span>
+                <span className="opd-fig-l">{t("opdOpenShort")}</span>
+              </span>
+            </span>
+            <span className={"opd-bcard-care"
+              + (b.caretaker_names ? "" : " opd-bcard-care-vacant")}>
+              {b.caretaker_names || t("opdVacant")}
+            </span>
+          </button>
         ))}
-      </div>
+      </section>
 
       {/* Side by side on a wide screen, stacked below it. They answer related
           questions, so a scroll between them is a waste of a big monitor. */}
@@ -795,17 +984,28 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
             ))}
           </select>
         </div>
-        {d.byType.length === 0 && <p className="muted">{t("noData")}</p>}
-        {d.byType.map((x: any) => {
-          const max = Math.max(...d.byType.map((y: any) => y.n), 1);
-          return (
-            <div className="typerow" key={x.object_type}>
-              <span className="typename">{objLabel(x.object_type, l)}</span>
-              <div className="typebar"><div style={{ width: `${(x.n / max) * 100}%` }} /></div>
-              <span className="mono typecount">{x.n}</span>
-            </div>
-          );
-        })}
+        {d.byType.length === 0 && <p className="opd-chart-empty">{t("opdNoData")}</p>}
+
+        {/* A horizontal bar list, from the export. Ties keep a stable order —
+            equal bars that reshuffle between polls make the list look unstable
+            when nothing has changed. */}
+        <div className="opd-chart-objects">
+          {[...d.byType]
+            .sort((a: any, b: any) =>
+              b.n - a.n || objLabel(a.object_type, l).localeCompare(objLabel(b.object_type, l)))
+            .map((x: any) => {
+              const max = Math.max(...d.byType.map((y: any) => y.n), 1);
+              return (
+                <div className="opd-objrow" key={x.object_type}>
+                  <span className="opd-obj-label">{objLabel(x.object_type, l)}</span>
+                  <span className="opd-obj-track">
+                    <span className="opd-obj-fill" style={{ width: `${(x.n / max) * 100}%` }} />
+                  </span>
+                  <span className="opd-obj-value">{x.n}</span>
+                </div>
+              );
+            })}
+        </div>
       </div>
 
       <div className="card">
@@ -813,29 +1013,61 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
           <p className="cardtitle">{t("repeatFaults")}</p>
           <span className="muted">{rangeLabel(months)}</span>
         </div>
-        {d.repeats.length === 0 && <p className="muted">{t("nothingFlagged")}</p>}
-        {d.repeats.map((g: any, i: number) => {
-          const flagged = g.systemic >= 3;
-          return (
-            <button key={i} className={"repeat repeatlink" + (flagged ? " repeat-flag" : "")}
-              onClick={() => go({ kind: "repeat", riser: g.riser, object: g.object_type })}>
-              <div className="rowspread">
-                <span className="mono">
-                  {g.building_code} · {g.riser} · {objLabel(g.object_type, l)}
+        {/*
+          Nothing repeated is a flat statement, not an error and not a
+          celebration — and it's only ever true of a timeframe, so the period
+          is named alongside it.
+        */}
+        {d.repeats.length === 0 && (
+          <div className="opr-empty">
+            <p className="opr-empty-line">{t("nothingFlagged")}</p>
+            <p className="opr-empty-sub">{rangeLabel(months)}</p>
+          </div>
+        )}
+
+        <div className={"opr-list" + (d.repeats.length === 1 ? " opr-list-single" : "")}>
+          {d.repeats.map((g: any, i: number) => {
+            /* The alarm: a cause logged as the riser in most of the tickets.
+               That's the same pipe rather than the same tap, which is the whole
+               reason this panel exists. */
+            const flagged = g.systemic >= 3;
+            return (
+              <button key={i} className={"opr-row" + (flagged ? " opr-row-alarm" : "")}
+                onClick={() => go({ kind: "repeat", riser: g.riser, object: g.object_type })}>
+                <span className="opr-rowtop">
+                  <span className="opr-key">
+                    {g.building_code} · {g.riser} · {objLabel(g.object_type, l)}
+                  </span>
+                  <span className="opr-figs">
+                    <span className="opr-fig">
+                      <span className="opr-fig-n">{g.rooms_affected}</span>
+                      <span className="opr-fig-l">{t("roomsAffected")}</span>
+                    </span>
+                    <span className="opr-fig">
+                      <span className={"opr-fig-n" + (flagged ? " opr-fig-alarm" : "")}>
+                        {g.ticket_count}
+                      </span>
+                      <span className="opr-fig-l">{t("ticketsWord")}</span>
+                    </span>
+                    <ChevronRight className="opr-chev" size={15} aria-hidden />
+                  </span>
                 </span>
-                <span className="mono">
-                  {g.rooms_affected} {t("roomsAffected")} · {g.ticket_count} {t("ticketsWord")}
-                  {" "}<ChevronRight size={13} aria-hidden />
-                </span>
-              </div>
-              {flagged && (
-                <p className="muted">
-                  {t("systemicHint")} {g.systemic} {t("ofWord")} {g.ticket_count}
-                </p>
-              )}
-            </button>
-          );
-        })}
+
+                {flagged ? (
+                  <span className="opr-cause">
+                    <AlertTriangle className="opr-cause-icon" size={15} aria-hidden />
+                    <span className="opr-cause-text">
+                      {t("systemicHint")} {g.systemic} {t("ofWord")} {g.ticket_count}
+                    </span>
+                  </span>
+                ) : (
+                  /* No cause recorded reads as "not yet", never as "no problem". */
+                  <span className="opr-nocause">{t("noCauseYet")}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -846,9 +1078,9 @@ export function OperatorView({ l, t, session, route, query, navigate }: {
         personName={session?.principal?.name}
         isPlatformAdmin={session?.principal?.isPlatformAdmin}
         onGo={(next) => {
-          if (next === "codes") { go({ kind: "codes" }); return; }
           navigate(
-            next === "account" ? { kind: "account" }
+            next === "codes" ? { kind: "codes" }
+            : next === "account" ? { kind: "account" }
             : next === "staff" ? { kind: "staff" }
             : next === "orgs" ? { kind: "orgs" }
             : next === "buildings" ? { kind: "buildings" }

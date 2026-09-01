@@ -132,50 +132,55 @@ export function ScannerModal({ t, onClose, onFound }: {
   };
 
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label={t("scanQrTitle")}>
-      <div className="sheetcard">
-        <div className="rowspread">
-          <p className="cardtitle">{t("scanQrTitle")}</p>
-          <button className="iconbtn" onClick={close} aria-label={t("close")}><X size={18} /></button>
-        </div>
+    /*
+      Full screen, not a card in a dialog.
+      
+      A camera in a small box on a dimmed page looks like a preview of a camera.
+      Filling the screen makes it the thing you're doing — and it's how every
+      other scanner a resident has used behaves, so nobody has to work it out.
+    */
+    <div className="scanfull" role="dialog" aria-modal="true" aria-label={t("scanQrTitle")}>
+      <video ref={videoRef} playsInline muted
+        className={status === "scanning" ? "scanvid" : "scanvid hide"} />
+      <canvas ref={canvasRef} className="hide" />
 
-        <div className="viewport">
-          <video ref={videoRef} playsInline muted className={status === "scanning" ? "vid" : "vid hide"} />
-          <canvas ref={canvasRef} className="hide" />
-          {status === "scanning" && <div className="reticle" aria-hidden />}
-          {status !== "scanning" && (
-            <div className="viewportmsg">
-              {["denied", "insecure", "nocamera", "error"].includes(status)
-                ? <AlertTriangle size={26} strokeWidth={1.5} aria-hidden />
-                : <Camera size={26} strokeWidth={1.5} aria-hidden />}
-              <p>{message[status]}</p>
-              {detail && <p className="mono muted">{detail}</p>}
-            </div>
+      {status === "scanning" && (
+        <>
+          {/* The cut-out is four corner marks over a dimmed surround: it says
+              where to aim without a box that fights the QR code's own frame. */}
+          <div className="scanmask" aria-hidden>
+            <span className="scanhole">
+              <i className="c tl" /><i className="c tr" /><i className="c bl" /><i className="c br" />
+              <span className="scanline" />
+            </span>
+          </div>
+          <p className="scanhint">{t("scanHint")}</p>
+        </>
+      )}
+
+      {status !== "scanning" && (
+        <div className="scanmsg">
+          {["denied", "insecure", "nocamera", "error"].includes(status)
+            ? <AlertTriangle size={34} strokeWidth={1.4} aria-hidden />
+            : <Camera size={34} strokeWidth={1.4} aria-hidden />}
+          <p className="scanmsgtitle">{message[status]}</p>
+          {detail && <p className="scanmsgdetail">{detail}</p>}
+
+          {status === "idle" && (
+            <button className="scanstart" onClick={start}>
+              <Camera size={18} /> {t("scanOpen")}
+            </button>
           )}
+          {["denied", "error"].includes(status) && (
+            <button className="scanstart" onClick={start}>{t("scanRetry")}</button>
+          )}
+          <p className="scanmsgdetail">{t("scanFallback")}</p>
         </div>
+      )}
 
-        {status === "idle" && (
-          <button className="btn btn-primary" onClick={start}>
-            <Camera size={16} /> {t("scanOpen")}
-          </button>
-        )}
-        {["denied", "error"].includes(status) && (
-          <button className="btn" onClick={start}>{t("scanRetry")}</button>
-        )}
-        <p className="muted">{t("scanFallback")}</p>
-      </div>
-    </div>
-  );
-}
-
-export function ScanButton({ t, onFound }: { t: T; onFound: (slug: string) => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button className="btn" onClick={() => setOpen(true)}>
-        <Camera size={16} /> {t("scanOpen")}
+      <button className="scanclose" onClick={close} aria-label={t("close")}>
+        <X size={22} />
       </button>
-      {open && <ScannerModal t={t} onClose={() => setOpen(false)} onFound={(s) => { setOpen(false); onFound(s); }} />}
-    </>
+    </div>
   );
 }

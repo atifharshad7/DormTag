@@ -60,65 +60,74 @@ export function SlotPicker({ l, t, rules, onOffer, onCancel }: {
   const atCap = picked.length >= rules.maxOffers;
 
   return (
-    <div className="card">
-      <p className="cardtitle"><Calendar size={15} aria-hidden /> {t("offerSlots")}</p>
+    /* A sheet, so the job it belongs to stays visible above. Days across the
+       top, times as pills beneath: the design's day × time grid. */
+    <>
+      <button className="rz-scrim" aria-label={t("cancel")} onClick={onCancel} />
+      <div className="rz-sheet" role="dialog" aria-modal="true" aria-label={t("offerSlots")}>
+        <div className="rz-sheethead">
+          <p className="rz-cardtitle">
+            <Calendar size={17} aria-hidden /> {t("offerSlots")}
+          </p>
+          <button className="rz-sheetcancel" onClick={onCancel}>{t("cancel")}</button>
+        </div>
 
-      <p className="steplabel">{t("step1Day")}</p>
-      <div className="daystrip">
-        {days.map((d, i) => (
-          <button key={d.ms} className={"daychip" + (i === day ? " daychip-on" : "")}
-            onClick={() => setDay(i)}>
-            <span className="dayname">{fmtDayTZ(d.ms, l, tz).split(" ")[0]}</span>
-            <span className="daynum">{d.day}</span>
-          </button>
-        ))}
-      </div>
+        <div className="rz-day">
+          <div className="rz-dayhead">
+            <span className="rz-daylabel">{t("step1Day")}</span>
+          </div>
+          <div className="rz-times">
+            {days.map((d, i) => (
+              <button key={d.ms} className="rz-time" aria-pressed={i === day}
+                onClick={() => setDay(i)}>
+                {fmtDayTZ(d.ms, l, tz).split(" ")[0]} {d.day}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <p className="steplabel">
-        {t("step2Times")}
-        <span className="stepnote">{t("upToN").replace("{n}", String(rules.maxOffers))}</span>
-      </p>
-      <div className="hourgrid">
-        {rules.hours.map((h) => {
-          const ms = msAtBuildingHour(days[day], h, tz);
-          const past = ms < Date.now();
-          const taken = isBusy(ms);
-          const on = picked.includes(ms);
-          return (
-            <button key={h} disabled={past || taken || (atCap && !on)}
-              className={"hourchip" + (on ? " hourchip-on" : "") + (taken ? " hourchip-busy" : "")}
-              onClick={() => toggle(ms)}>
-              <span>{String(h).padStart(2, "0")}:00</span>
-              {taken && <span className="chipnote">{t("alreadyBooked")}</span>}
-            </button>
-          );
-        })}
-      </div>
+        <div className="rz-day">
+          <div className="rz-dayhead">
+            <span className="rz-daylabel">{t("step2Times")}</span>
+            <span className="rz-small">{t("upToN").replace("{n}", String(rules.maxOffers))}</span>
+          </div>
+          <div className="rz-times">
+            {rules.hours.map((h) => {
+              const ms = msAtBuildingHour(days[day], h, tz);
+              const past = ms < Date.now();
+              const taken = isBusy(ms);
+              const on = picked.includes(ms);
+              return (
+                <button key={h} className="rz-time" aria-pressed={on}
+                  disabled={past || taken || (atCap && !on)}
+                  style={past || taken ? { opacity: .4 } : undefined}
+                  onClick={() => toggle(ms)}>
+                  {String(h).padStart(2, "0")}:00
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-      <div className="hr" />
+        {picked.length === 0 ? (
+          <p className="rz-small">{t("pickAtLeastOne")}</p>
+        ) : (
+          <div className="rz-offered">
+            <p className="rz-overline">{t("youAreOffering")}</p>
+            {picked.map((ms) => (
+              <div className="rz-spread" key={ms}>
+                <span className="rz-offeredtime">
+                  {fmtDayTZ(ms, l, tz)} · {fmtTimeTZ(ms, l, tz)}–{fmtTimeTZ(ms + rules.minutes * 60e3, l, tz)}
+                </span>
+                <button className="rz-sheetcancel" onClick={() => toggle(ms)}
+                  aria-label={t("cancel")}>×</button>
+              </div>
+            ))}
+            <p className="rz-small">{t("residentPicksOne")}</p>
+          </div>
+        )}
 
-      {picked.length === 0 ? (
-        <p className="muted">{t("pickAtLeastOne")}</p>
-      ) : (
-        <>
-          <p className="steplabel">{t("youAreOffering")}</p>
-          {picked.map((ms) => (
-            <div className="offerline" key={ms}>
-              <Check size={14} aria-hidden />
-              <span>{fmtDayTZ(ms, l, tz)}</span>
-              <span className="mono">
-                {fmtTimeTZ(ms, l, tz)}–{fmtTimeTZ(ms + rules.minutes * 60e3, l, tz)}
-              </span>
-              <button className="offerx" onClick={() => toggle(ms)} aria-label={t("cancel")}>×</button>
-            </div>
-          ))}
-          <p className="muted">{t("residentPicksOne")}</p>
-        </>
-      )}
-
-      <div className="row">
-        <button className="btn" onClick={onCancel}>{t("cancel")}</button>
-        <button className="btn btn-primary" disabled={picked.length === 0 || sending}
+        <button className="rz-btn rz-btn-primary" disabled={picked.length === 0 || sending}
           onClick={async () => {
             setSending(true);
             // Always clear: a rejected offer must leave the button usable.
@@ -127,6 +136,6 @@ export function SlotPicker({ l, t, rules, onOffer, onCancel }: {
           {t("sendOffer")}
         </button>
       </div>
-    </div>
+    </>
   );
 }

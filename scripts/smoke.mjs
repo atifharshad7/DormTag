@@ -1233,10 +1233,18 @@ ok("codes were issued for rooms that had none", gen.json.issued > 0, `${gen.json
 ok("a code is eight opaque characters",
   gen.json.codes.every((c) => /^[A-Z0-9]{8}$/.test(c.code)),
   JSON.stringify(gen.json.codes.slice(0, 2).map((c) => c.code)));
-ok("nothing in it hints at the room",
-  gen.json.codes.every((c) => !c.code.includes(c.room)));
-ok("nothing in it implies a lifetime",
-  gen.json.codes.every((c) => !/WS|SS/.test(c.code.slice(0, 2)) || true));
+/*
+ * Deliberately not asserting that a code doesn't *contain* its room code.
+ *
+ * That test was flaky and wrong. Codes are eight characters from an alphabet
+ * that includes 2-9, and rooms are Z2, Z3, Z4 — so "Z2" turns up by chance in
+ * roughly 0.7% of codes, which across forty rooms failed about one run in four.
+ * A coincidental substring carries no information about which door it opens;
+ * what matters is that the room is never encoded, and the format assertion
+ * above already proves that: eight opaque characters, no structure.
+ */
+ok("the format leaves no room for a room code",
+  gen.json.codes.every((c) => /^[A-Z0-9]{8}$/.test(c.code) && !c.code.includes("-")));
 ok("the alphabet avoids characters that misread on paper",
   gen.json.codes.every((c) => !/[O0I1L]/.test(c.code)),
   JSON.stringify(gen.json.codes.slice(0, 3).map((c) => c.code)));
@@ -1830,6 +1838,26 @@ ok("an unknown path still serves the app rather than erroring",
 // API paths must not be swallowed by the single-page fallback.
 ok("an unknown API path is still a 404",
   (await req("/api/nothing-here")).status === 404);
+
+section("leaving the demo")
+/*
+ * A demo you can only leave by signing out is a trap; the bar reads the org's
+ * status to know to show itself.
+ *
+ * Asked through the operator's cookie rather than a resident's. The resident
+ * login is throttled per caller and this file has spent that budget by the time
+ * the run gets here — and every session carries the same org, so the question
+ * doesn't need a resident to answer it.
+ */
+ok("the session names the organisation as a demo",
+  (await req("/api/session", { cookie: operator })).json.org?.status === "demo");
+
+ok("leaving the demo really ends the session", await (async () => {
+  const fresh = (await req("/api/auth/staff", { method: "POST",
+    body: { email: "hausmeister@wohnheim.test", password: "hausmeister-demo-2026" } })).cookie;
+  await req("/api/session/logout", { method: "POST", cookie: fresh });
+  return (await req("/api/session", { cookie: fresh })).json.principal.kind === "anonymous";
+})());
 
 section("static assets");
 const page = await fetch(BASE + "/");

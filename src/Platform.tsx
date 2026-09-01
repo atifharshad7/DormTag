@@ -20,7 +20,7 @@ const TONE: Record<string, string> = {
  * hundred students' repair histories are different powers, and the API refuses
  * the second to this role.
  */
-export function Platform({ l, t, onBack }: { l: Locale; t: T; onBack: () => void }) {
+export function Platform({ l, t, onBack }: { l: Locale; t: T; onBack?: () => void }) {
   const [orgs, setOrgs] = useState<any[] | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
@@ -38,7 +38,9 @@ export function Platform({ l, t, onBack }: { l: Locale; t: T; onBack: () => void
 
   return (
     <div className="col">
-      <button className="linkback" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
+      {onBack && (
+        <button className="rz-btn rz-btn-back" onClick={onBack}><ChevronLeft size={16} /> {t("backToApp")}</button>
+      )}
       <h2>{t("orgsWord")}</h2>
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
       {!orgs && !err && <p className="muted">…</p>}

@@ -1,0 +1,1359 @@
+/*
+ * Type tokens the design assumes.
+ *
+ * The export defines --font-sans and --font-mono; this app sets its fonts on
+ * `body` instead, so every `font:` shorthand below referencing them was invalid
+ * and silently dropped — size, weight and all. Declared once here rather than
+ * rewriting fifty shorthands into longhand.
+ */
+:root {
+  --font-sans: Archivo, system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* The radii live on .rz, but the sheets, the scrim and the landing page sit
+     outside it, so they need them at the root too. Same values. */
+  --r-xs: 6px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-pill: 999px;
+  --border-strong: #d3d9e0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { --border-strong: #39424b; }
+}
+
+/*
+ * resident.css — the redesigned resident screens.
+ *
+ * Scoped entirely to `.rz`, so nothing else in the app is touched and turning it
+ * off is one attribute. Everything here comes from the design export; the tokens
+ * are its values, not mine.
+ *
+ * Two things the export doesn't cover, both deliberate gaps rather than
+ * oversights on my part:
+ *
+ *   - There is no dark palette in it. A caretaker or a resident looking at this
+ *     in a stairwell at night is a real case, so the dark block below is my
+ *     reading of the same design rather than the designer's. It keeps the
+ *     relationships — indigo action, blue-slate ink, elevation by lightness —
+ *     but the exact values want checking.
+ *
+ *   - Only the report flow is designed. The dashboard, the caretaker's queue and
+ *     the admin screens still use the old language, so the app currently speaks
+ *     two.
+ */
+
+.rz {
+  /* brand and action */
+  --primary: #4a4ad8;
+  --primary-press: #2e2ea6;
+  --primary-50: #eeeefc;
+  --on-primary: #ffffff;
+
+  /* ink — a desaturated blue-slate rather than neutral grey, which is most of
+     why this reads warmer than a default dashboard */
+  --fg-1: #1f3f4f;
+  --fg-2: #51616c;
+  --fg-3: #8a929b;
+
+  /* surfaces */
+  --rz-surface: #ffffff;
+  --rz-surface-2: #f5f7f9;
+  --rz-surface-3: #eef1f4;
+  --rz-border: #e4e8ed;
+
+  /* semantic */
+  --rz-success: #1fa971;
+  --rz-success-bg: #e6f6ef;
+  --rz-warning: #e89a2b;
+  --rz-warning-bg: #fcf1df;
+
+  --r-xs: 6px; --r-md: 14px; --r-lg: 18px; --r-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(31, 63, 79, .06);
+  --shadow-md: 0 6px 18px rgba(31, 63, 79, .08);
+  --shadow-cta: 0 10px 24px rgba(74, 74, 216, .32);
+
+  --rz-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  color: var(--fg-1);
+  background: var(--rz-surface-2);
+  /*
+   * Against the viewport, not the parent. `min-height: 100%` resolves against
+   * `main`, which is only as tall as its content — so a short page painted its
+   * surface partway down and the app's own background showed below it, looking
+   * like the page had been cut in half.
+   */
+  min-height: calc(100vh - var(--hdr));
+
+  /*
+   * `main` pads its children, which left a frame of the app's own background
+   * around this surface — visible as an edge on three sides and a seam where
+   * the content ended. The padding is cancelled and reapplied inside, so the
+   * surface reaches the edges and the content keeps its gutters.
+   */
+  margin: -20px -16px -64px;
+  padding: 20px 16px 64px;
+}
+
+@media (min-width: 721px) {
+  .rz { margin: -26px -24px -72px; padding: 26px 24px 72px; }
+}
+
+/* Modals and overlays aren't pages: they must not cancel padding they never
+   had, nor paint a full-height surface behind a dimmed layer. */
+.rz.modal, .rz.lz-modal {
+  margin: 0; padding: 0; min-height: 0; background: rgba(31, 63, 79, .45);
+}
+
+/* The notifications sheet is an overlay, not a page: it must not paint a
+   background of its own behind the dimmed layer. */
+.rz.modal { background: rgba(31, 63, 79, .45); min-height: 0; }
+
+/* --- type ------------------------------------------------------------ */
+
+.rz .rz-display { font: 700 32px/1.15 var(--font-sans); letter-spacing: -.02em; margin: 0; }
+.rz .rz-overline {
+  font: 600 12px/1.3 var(--font-sans); text-transform: uppercase;
+  letter-spacing: .06em; color: var(--fg-3); margin: 0;
+}
+.rz .rz-small { font: 500 13px/1.45 var(--font-sans); color: var(--fg-3); margin: 0; }
+.rz .rz-mono { font: 500 13px/1.5 var(--rz-mono); letter-spacing: .04em; }
+
+/* --- group headings, with a rule filling the gap --------------------- */
+
+.rz .rz-grouphead { display: flex; align-items: center; gap: 10px; margin: 4px 0 0; }
+.rz .rz-rule { flex: 1; height: 1px; background: var(--rz-border); }
+
+/* --- a report card --------------------------------------------------- */
+
+.rz .rz-card {
+  cursor: pointer; text-align: left; width: 100%; border: 0;
+  background: var(--rz-surface); border-radius: var(--r-lg); padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: var(--shadow-md); font: inherit; color: var(--fg-1);
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+.rz .rz-card:active { transform: scale(.99); }
+.rz .rz-card:hover { box-shadow: var(--shadow-cta); }
+.rz .rz-cardtitle {
+  font: 600 18px/1.35 var(--font-sans); letter-spacing: -.01em; color: var(--fg-1);
+}
+/* The one card that needs the resident to act says so, rather than relying on
+   them noticing a status pill. */
+.rz .rz-cardcta {
+  font: 600 14px/1.2 var(--font-sans); color: var(--primary);
+  background: var(--primary-50); border-radius: var(--r-md); padding: 10px 12px;
+}
+.rz .rz-spread { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* --- status pills ---------------------------------------------------- */
+
+.rz .rz-pill {
+  font: 600 11px/1.3 var(--font-sans); text-transform: uppercase;
+  letter-spacing: .06em; padding: 5px 10px; border-radius: var(--r-pill);
+  background: var(--rz-surface-3); color: var(--fg-2); white-space: nowrap;
+}
+.rz .rz-pill-ok   { background: var(--rz-success-bg); color: var(--rz-success); }
+.rz .rz-pill-warn { background: var(--rz-warning-bg); color: var(--rz-warning); }
+.rz .rz-pill-info { background: var(--primary-50); color: var(--primary); }
+
+/* --- the room plate, still mono because it's printed on a door -------- */
+
+.rz .rz-plate {
+  font: 500 13px/1.5 var(--rz-mono); letter-spacing: .04em; color: var(--fg-2);
+  background: var(--rz-surface-3); padding: 6px 10px; border-radius: var(--r-xs);
+}
+
+/* --- the action bar -------------------------------------------------- */
+
+/* Frosted rather than opaque, so the list visibly continues underneath
+   instead of hitting a wall. */
+.rz-actionbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 22px calc(20px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid #e4e8ed;
+}
+.rz-actionmain {
+  flex: 1; min-height: 54px; border: 0; border-radius: 999px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  font: 600 16px/1 var(--font-sans);
+  background: #4a4ad8; color: #fff;
+  box-shadow: 0 10px 24px rgba(74, 74, 216, .32);
+}
+.rz-actionmain:hover { background: #2e2ea6; }
+.rz-actionscan {
+  flex: none; width: 54px; height: 54px; border-radius: 50%; cursor: pointer;
+  display: grid; place-items: center; font: inherit;
+  background: #fff; color: #4a4ad8; border: 1.5px solid #e4e8ed;
+}
+.rz-actionscan:hover { border-color: #4a4ad8; }
+
+.rz .rz-body { padding-bottom: 120px; display: flex; flex-direction: column; gap: 18px; }
+
+@media (min-width: 721px) {
+  .rz-actionbar {
+    left: 50%; transform: translateX(-50%); width: min(560px, 100%);
+  }
+}
+
+/* --- dark ------------------------------------------------------------ */
+
+/* Not in the export. My reading of the same design, keeping the relationships
+   rather than inventing a second palette: indigo still carries the action, ink
+   is still blue-tinted, elevation is still lightness. Worth a designer's eye. */
+@media (prefers-color-scheme: dark) {
+  .rz {
+    --primary: #7b7bf0;
+    --primary-press: #9a9af5;
+    --primary-50: #23233f;
+    --on-primary: #101024;
+
+    --fg-1: #e6edf2;
+    --fg-2: #a8b6c0;
+    --fg-3: #7b8792;
+
+    --rz-surface: #1a2027;
+    --rz-surface-2: #12171c;
+    --rz-surface-3: #232b33;
+    --rz-border: #2b333c;
+
+    --rz-success: #5fcf9c; --rz-success-bg: #16302a;
+    --rz-warning: #e8b45c; --rz-warning-bg: #33280f;
+
+    --shadow-md: 0 6px 18px rgba(0, 0, 0, .34);
+    --shadow-cta: 0 10px 24px rgba(123, 123, 240, .28);
+  }
+  .rz-actionbar { background: rgba(18, 23, 28, .92); border-top-color: #2b333c; }
+  .rz-actionmain { background: #5a5ae0; color: #fff; }
+  .rz-actionmain:hover { background: #7b7bf0; }
+  .rz-actionscan { background: #1a2027; color: #9a9af5; border-color: #2b333c; }
+  .rz-actionscan:hover { border-color: #7b7bf0; }
+}
+
+/* --- the rest of the flow -------------------------------------------- */
+
+/* Room list: a mono code plate, then the name. The code is fixed-width so the
+   names line up, which is what makes a list of eight rooms scannable. */
+.rz .rz-row {
+  cursor: pointer; text-align: left; width: 100%; border: 0; font: inherit;
+  background: var(--rz-surface); color: var(--fg-1);
+  border-radius: var(--r-md); padding: 14px;
+  display: flex; align-items: center; gap: 14px;
+  box-shadow: inset 0 0 0 1.5px var(--rz-border);
+  transition: transform .14s ease;
+}
+.rz .rz-row:active { transform: scale(.985); }
+.rz .rz-rowcode {
+  flex: 0 0 auto; width: 48px; text-align: center;
+  font: 500 13px/1.5 var(--rz-mono); letter-spacing: .04em; color: var(--fg-2);
+  background: var(--rz-surface-3); padding: 7px 0; border-radius: var(--r-xs);
+}
+.rz .rz-rowname { flex: 1; font: 600 18px/1.35 var(--font-sans); letter-spacing: -.01em; }
+
+/* Fixtures: a two-column grid of tiles. Bigger targets than a list, which
+   matters when somebody is holding a phone in one hand in a bathroom. */
+.rz .rz-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rz .rz-tile {
+  cursor: pointer; text-align: left; border: 0; font: inherit;
+  background: var(--rz-surface); color: var(--fg-1);
+  border-radius: var(--r-lg); padding: 16px; min-height: 108px;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 14px;
+  box-shadow: var(--shadow-md); transition: transform .14s ease;
+}
+.rz .rz-tile:active { transform: scale(.97); }
+.rz .rz-tile svg { color: var(--primary); }
+.rz .rz-tilelabel { font: 600 17px/1.2 var(--font-sans); letter-spacing: -.01em; }
+
+/* Symptoms: full-width options with a visible selected state, because the
+   choice has to survive somebody glancing away and back. */
+.rz .rz-option {
+  cursor: pointer; text-align: left; width: 100%; border: 0; font: inherit;
+  background: var(--rz-surface); color: var(--fg-1);
+  border-radius: var(--r-md); padding: 16px;
+  font: 600 18px/1.35 var(--font-sans); letter-spacing: -.01em;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  box-shadow: inset 0 0 0 1.5px var(--rz-border);
+  transition: transform .14s ease;
+}
+.rz .rz-option:active { transform: scale(.985); }
+.rz .rz-option[aria-pressed="true"] {
+  background: var(--primary-50); box-shadow: inset 0 0 0 2px var(--primary);
+}
+.rz .rz-tick { display: none; color: var(--primary); }
+.rz .rz-option[aria-pressed="true"] .rz-tick { display: flex; }
+
+.rz .rz-note {
+  width: 100%; resize: none; font: 400 15px/1.55 var(--font-sans);
+  color: var(--fg-1); background: var(--rz-surface-3);
+  border: 0; border-radius: var(--r-md); padding: 14px;
+}
+
+/* A ticket opens on a coloured hero: the room and the fault, stated once and
+   large, so the rest of the screen is about what happens next. */
+.rz .rz-hero {
+  background: linear-gradient(135deg, #4a4ad8 0%, #2026b0 100%);
+  color: #fff; border-radius: var(--r-lg);
+  padding: 26px 22px 22px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.rz .rz-hero h2 { color: #fff; margin: 0; }
+.rz .rz-herobadge {
+  font: 600 12px/1.3 var(--font-sans); text-transform: uppercase;
+  letter-spacing: .06em; background: rgba(255, 255, 255, .18);
+  padding: 7px 12px; border-radius: var(--r-pill);
+}
+.rz .rz-herometa {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-top: 13px; border-top: 1px solid rgba(255, 255, 255, .24);
+  font: 500 13px/1.45 var(--font-sans); color: rgba(255, 255, 255, .72);
+}
+.rz .rz-herometa .rz-mono { color: #fff; letter-spacing: .08em; }
+
+/* A booked appointment gets the same treatment: it's the answer to the only
+   question the resident had. */
+.rz .rz-appt {
+  background: linear-gradient(135deg, #4a4ad8 0%, #2026b0 100%);
+  color: #fff; border-radius: var(--r-lg); padding: 20px;
+  display: flex; align-items: center; gap: 15px;
+}
+.rz .rz-apptwhen { font: 500 16px/1.5 var(--rz-mono); letter-spacing: .04em; }
+
+/* The history as a numbered ladder rather than a list of timestamps: the most
+   recent step is the one that's coloured, so "where is this" is one glance. */
+.rz .rz-ladder { display: flex; flex-direction: column; }
+.rz .rz-step { display: grid; grid-template-columns: 34px 1fr; gap: 14px; }
+.rz .rz-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.rz .rz-num {
+  width: 34px; height: 34px; border-radius: var(--r-pill);
+  background: var(--rz-surface); color: var(--fg-3);
+  box-shadow: inset 0 0 0 1.5px var(--rz-border);
+  display: grid; place-items: center; font: 600 12px/1 var(--font-sans);
+}
+.rz .rz-line { flex: 1; width: 2px; min-height: 12px; background: var(--rz-border); }
+.rz .rz-stepbody { padding-bottom: 22px; display: flex; flex-direction: column; gap: 4px; }
+.rz .rz-steptitle {
+  font: 600 17px/1.35 var(--font-sans); letter-spacing: -.01em; color: var(--fg-2);
+}
+.rz .rz-step:first-child .rz-num { background: var(--primary); color: var(--on-primary); box-shadow: none; }
+.rz .rz-step:first-child .rz-steptitle { color: var(--fg-1); }
+.rz .rz-step:last-child .rz-line { display: none; }
+
+/* --- buttons --------------------------------------------------------- */
+
+.rz .rz-btn {
+  cursor: pointer; border: 0; border-radius: var(--r-pill);
+  padding: 17px 20px; font: 600 16px/1.2 var(--font-sans);
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+.rz .rz-btn:active { transform: scale(.975); box-shadow: none; }
+.rz .rz-btn-primary {
+  background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow-cta);
+}
+.rz .rz-btn-primary:disabled {
+  background: var(--rz-surface-3); color: var(--fg-3);
+  box-shadow: none; cursor: default; transform: none;
+}
+.rz .rz-btn-ghost {
+  background: var(--rz-surface); color: var(--primary);
+  box-shadow: inset 0 0 0 1.5px var(--primary-50);
+  padding: 11px 18px; font-size: 14px;
+}
+.rz .rz-btn-back {
+  background: none; padding: 0; color: var(--fg-2);
+  font: 600 14px/1.2 var(--font-sans); justify-content: flex-start;
+}
+.rz .rz-btn-back:active { transform: none; }
+
+.rz .rz-linkwell {
+  background: var(--rz-surface-2); border-radius: var(--r-lg); padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.rz .rz-linkurl {
+  font: 500 14px/1.5 var(--rz-mono); color: var(--primary); word-break: break-all;
+}
+
+@media (prefers-color-scheme: dark) {
+  .rz .rz-hero, .rz .rz-appt {
+    background: linear-gradient(135deg, #4a4ad8 0%, #2b2b7a 100%);
+  }
+}
+
+/* --- entry permission ------------------------------------------------ */
+
+/*
+ * A switch, not a disabled-looking row.
+ *
+ * This is the one decision a resident makes about their own front door, and the
+ * previous version — a grey bordered button with a pill — read as something
+ * that wasn't working. The key turns when permission is granted, which is the
+ * only animation in the app and earns it: it's a lock opening.
+ */
+.rz .rz-consent {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 14px; border: 0; cursor: pointer; font: inherit; text-align: left;
+  background: var(--rz-surface); color: var(--fg-1);
+  border-radius: var(--r-lg);
+  box-shadow: inset 0 0 0 1.5px var(--rz-border);
+  transition: box-shadow .2s ease, background .2s ease;
+}
+.rz .rz-consent:disabled { opacity: .55; cursor: not-allowed; }
+.rz .rz-consent-on {
+  background: var(--primary-50);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.rz .rz-keywell {
+  flex: none; width: 44px; height: 44px; border-radius: var(--r-pill);
+  display: grid; place-items: center;
+  background: var(--rz-surface-3); color: var(--fg-3);
+  transition: background .2s ease, color .2s ease;
+}
+.rz .rz-keywell svg { transition: transform .32s cubic-bezier(.34, 1.56, .64, 1); }
+.rz .rz-consent-on .rz-keywell { background: var(--primary); color: var(--on-primary); }
+/* The key turns, as it would in a lock. */
+.rz .rz-consent-on .rz-keywell svg { transform: rotate(90deg); }
+
+.rz .rz-consenttext { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rz .rz-consentlabel { font: 600 16px/1.3 var(--font-sans); letter-spacing: -.01em; }
+.rz .rz-consent-on .rz-small { color: var(--primary); }
+
+.rz .rz-switch {
+  flex: none; width: 48px; height: 28px; border-radius: var(--r-pill);
+  background: var(--rz-surface-3); position: relative;
+  transition: background .2s ease;
+}
+.rz .rz-knob {
+  position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
+  border-radius: var(--r-pill); background: #fff;
+  box-shadow: 0 1px 3px rgba(31, 63, 79, .3);
+  transition: transform .22s cubic-bezier(.34, 1.4, .64, 1);
+}
+.rz .rz-consent-on .rz-switch { background: var(--primary); }
+.rz .rz-consent-on .rz-knob { transform: translateX(20px); }
+
+/* Somebody who has asked for less motion still needs the state, just not the
+   travel. */
+@media (prefers-reduced-motion: reduce) {
+  .rz .rz-keywell svg, .rz .rz-knob, .rz .rz-consent, .rz .rz-switch {
+    transition: none;
+  }
+}
+
+/* --- the scanner, full screen ---------------------------------------- */
+
+/*
+ * A camera in a small box on a dimmed page looks like a preview of a camera.
+ * Full screen makes it the thing you're doing, and matches every other scanner
+ * a resident has used, so there's nothing to work out.
+ *
+ * Not scoped to .rz: the caretaker and the operator scan too.
+ */
+.scanfull {
+  position: fixed; inset: 0; z-index: 40;
+  background: #0b0e10;
+  display: flex; align-items: center; justify-content: center;
+}
+.scanvid { width: 100%; height: 100%; object-fit: cover; }
+
+/* Four corner marks over a dimmed surround, rather than a full box: a box
+   fights the QR code's own frame and makes aiming harder. */
+.scanmask {
+  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+}
+.scanhole {
+  position: relative;
+  width: min(72vw, 300px); aspect-ratio: 1;
+  box-shadow: 0 0 0 9999px rgba(6, 8, 10, .62);
+  border-radius: 22px;
+}
+.scanhole .c {
+  position: absolute; width: 34px; height: 34px;
+  border: 3px solid #fff; border-radius: 4px;
+}
+.scanhole .tl { top: -3px; left: -3px; border-right: 0; border-bottom: 0; border-top-left-radius: 20px; }
+.scanhole .tr { top: -3px; right: -3px; border-left: 0; border-bottom: 0; border-top-right-radius: 20px; }
+.scanhole .bl { bottom: -3px; left: -3px; border-right: 0; border-top: 0; border-bottom-left-radius: 20px; }
+.scanhole .br { bottom: -3px; right: -3px; border-left: 0; border-top: 0; border-bottom-right-radius: 20px; }
+
+/* A sweep, so it's obviously live rather than a frozen frame. */
+.scanline {
+  position: absolute; left: 8%; right: 8%; height: 2px;
+  background: linear-gradient(90deg, transparent, #4a4ad8, transparent);
+  animation: scansweep 2.4s ease-in-out infinite;
+}
+@keyframes scansweep {
+  0%, 100% { top: 12%; opacity: .35; }
+  50% { top: 86%; opacity: 1; }
+}
+
+.scanhint {
+  position: absolute; left: 0; right: 0; bottom: 16vh; margin: 0;
+  text-align: center; color: #fff;
+  font: 500 15px/1.4 var(--font-sans);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, .6);
+}
+
+.scanclose {
+  position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 14px;
+  width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer;
+  display: grid; place-items: center;
+  background: rgba(255, 255, 255, .14); color: #fff;
+  backdrop-filter: blur(8px);
+}
+.scanclose:hover { background: rgba(255, 255, 255, .24); }
+
+.scanmsg {
+  position: relative; z-index: 1; max-width: 320px; padding: 24px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  text-align: center; color: #d7dce0;
+}
+.scanmsgtitle { margin: 0; font: 600 18px/1.35 var(--font-sans); color: #fff; }
+.scanmsgdetail { margin: 0; font: 500 13px/1.5 var(--font-sans); color: #9aa3aa; }
+.scanstart {
+  margin-top: 6px; border: 0; border-radius: 999px; cursor: pointer;
+  padding: 15px 24px; font: 600 15px/1 var(--font-sans);
+  display: flex; align-items: center; gap: 9px;
+  background: #4a4ad8; color: #fff;
+  box-shadow: 0 10px 24px rgba(74, 74, 216, .32);
+}
+.scanstart:hover { background: #2e2ea6; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scanline { animation: none; opacity: .7; top: 50%; }
+}
+
+/* The appointment card holds the way out of it, not just the date. */
+.rz .rz-appt { flex-direction: column; align-items: stretch; gap: 16px; }
+.rz .rz-apptrow { display: flex; align-items: center; gap: 15px; }
+.rz .rz-apptchange {
+  align-self: flex-start; border: 0; cursor: pointer;
+  padding: 10px 16px; border-radius: var(--r-pill);
+  font: 600 14px/1.2 var(--font-sans);
+  background: rgba(255, 255, 255, .18); color: #fff;
+  transition: background .16s ease;
+}
+.rz .rz-apptchange:hover { background: rgba(255, 255, 255, .3); }
+
+/* --- the header, on resident screens only ---------------------------- */
+
+.topbar-rz {
+  background: var(--rz-surface, #fff);
+  color: #1f3f4f;
+  border-bottom: 1px solid #e4e8ed;
+  box-shadow: 0 1px 2px rgba(31, 63, 79, .06);
+}
+.topbar-rz .brandbtn { color: #1f3f4f; font-weight: 600; letter-spacing: -.015em; }
+.topbar-rz .lang,
+.topbar-rz .whobtn {
+  background: #f5f7f9; color: #51616c;
+  border: 1px solid #e4e8ed; border-radius: 999px;
+}
+.topbar-rz .lang:hover,
+.topbar-rz .whobtn:hover { border-color: #4a4ad8; color: #4a4ad8; }
+.topbar-rz .bellbtn { color: #51616c; }
+.topbar-rz .bellcount { background: #4a4ad8; color: #fff; }
+
+@media (prefers-color-scheme: dark) {
+  .topbar-rz {
+    background: #1a2027; color: #e6edf2; border-bottom-color: #2b333c;
+  }
+  .topbar-rz .brandbtn { color: #e6edf2; }
+  .topbar-rz .lang,
+  .topbar-rz .whobtn { background: #232b33; color: #a8b6c0; border-color: #2b333c; }
+  .topbar-rz .lang:hover,
+  .topbar-rz .whobtn:hover { border-color: #7b7bf0; color: #9a9af5; }
+  .topbar-rz .bellbtn { color: #a8b6c0; }
+  .topbar-rz .bellcount { background: #7b7bf0; color: #101024; }
+}
+
+/* The confirm bar overlaps the end of the page, same as the report bar. */
+.rz .rz-body { padding-bottom: 120px; }
+
+/* A selected time keeps its tick aligned with the clock, not the time. */
+.rz .rz-option .rz-tick { margin-left: 4px; }
+
+/* --- shared chrome: header, notifications, account -------------------- */
+
+/*
+ * These three are one component each, used by all three roles. Keeping a second
+ * version for the caretaker and the operator would mean two of everything and
+ * they would drift, so the new language applies to all of them. Their body
+ * screens are still in the old one until they're converted.
+ */
+
+.rz .rz-accountrow {
+  min-height: 56px; gap: 12px;
+}
+.rz .rz-accountrow span:not(.rz-mono) { flex: 1; font: 600 15px/1.35 var(--font-sans); }
+.rz .rz-accountrow svg { flex: none; color: var(--fg-3); }
+.rz .rz-accountout { color: #b4442f; }
+.rz .rz-accountout svg { color: #b4442f; }
+
+/* The notifications sheet, in the same language as everything else. */
+.modal-rz { background: rgba(31, 63, 79, .45); backdrop-filter: blur(3px); }
+.sheetcard-rz {
+  background: var(--rz-surface, #fff);
+  border: 0; border-radius: 20px; padding: 18px;
+  box-shadow: 0 16px 40px rgba(31, 63, 79, .18);
+  gap: 12px;
+}
+.sheetcard-rz .notifrow {
+  border: 0; border-radius: 12px; padding: 13px;
+  background: #f5f7f9; color: #1f3f4f;
+}
+.sheetcard-rz .notifread { background: transparent; box-shadow: inset 0 0 0 1px #e4e8ed; }
+.sheetcard-rz .notifdot { background: #4a4ad8; }
+.sheetcard-rz .iconbtn { color: #51616c; border-radius: 999px; }
+.sheetcard-rz .iconbtn:hover { background: #eef1f4; }
+
+@media (prefers-color-scheme: dark) {
+  .sheetcard-rz { background: #1a2027; box-shadow: 0 16px 40px rgba(0, 0, 0, .5); }
+  .sheetcard-rz .notifrow { background: #232b33; color: #e6edf2; }
+  .sheetcard-rz .notifread { background: transparent; box-shadow: inset 0 0 0 1px #2b333c; }
+  .sheetcard-rz .notifdot { background: #7b7bf0; }
+  .sheetcard-rz .iconbtn { color: #a8b6c0; }
+  .sheetcard-rz .iconbtn:hover { background: #232b33; }
+  .rz .rz-accountout, .rz .rz-accountout svg { color: #e08484; }
+}
+
+/* ==================================================================== */
+/* caretaker                                                            */
+/* ==================================================================== */
+
+/*
+ * Additions on top of the same tokens. The design's own file says as much:
+ * everything below reuses --primary, --fg-*, the radii and the elevation
+ * already defined above, so there is one palette rather than two.
+ */
+
+/* --- search and filter chips ---------------------------------------- */
+
+.rz .rz-search {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--rz-surface-3); border-radius: var(--r-pill); padding: 12px 16px;
+}
+.rz .rz-search svg { flex: none; color: var(--fg-3); }
+.rz .rz-search input {
+  flex: 1; min-width: 0; border: 0; background: none; outline: none;
+  font: 400 15px/1.55 var(--font-sans); color: var(--fg-1);
+}
+.rz .rz-search input::placeholder { color: var(--fg-3); }
+
+.rz .rz-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.rz .rz-chip {
+  cursor: pointer; border: 0; background: var(--rz-surface); color: var(--fg-2);
+  border-radius: var(--r-pill); padding: 9px 15px;
+  font: 600 14px/1.2 var(--font-sans);
+  box-shadow: inset 0 0 0 1.5px var(--rz-border);
+  transition: transform .12s ease;
+}
+.rz .rz-chip:active { transform: scale(.96); }
+.rz .rz-chip[aria-pressed="true"] {
+  background: var(--primary); color: var(--on-primary); box-shadow: none;
+}
+
+/* --- a job in the queue ---------------------------------------------- */
+
+/* The fixture gets an icon in a tinted square, so a caretaker scanning a list
+   of thirty sees "light, light, drain" by shape before reading a word. */
+.rz .rz-jobline { display: flex; align-items: center; gap: 12px; }
+.rz .rz-jobicon {
+  flex: none; width: 40px; height: 40px; border-radius: var(--r-md);
+  background: var(--rz-surface-2); color: var(--primary);
+  display: grid; place-items: center;
+}
+.rz .rz-jobtext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rz .rz-jobtitle { font: 600 18px/1.35 var(--font-sans); letter-spacing: -.01em; }
+
+/* Unaccepted work reads as red: it's the only thing nobody has looked at. */
+.rz .rz-pill-new { background: #fdeceb; color: #e8403a; }
+
+.rz .rz-quote {
+  font: 400 15px/1.55 var(--font-sans); color: var(--fg-2);
+  background: var(--rz-surface-2); border-radius: var(--r-md);
+  padding: 10px 12px; text-wrap: pretty;
+}
+.rz .rz-notewell {
+  background: var(--rz-surface-2); border-radius: var(--r-lg); padding: 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.rz .rz-notebody { font: 400 17px/1.5 var(--font-sans); color: var(--fg-1); text-wrap: pretty; }
+
+.rz .rz-banner {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--rz-surface-2); border-radius: var(--r-lg); padding: 14px 16px;
+  font: 400 15px/1.55 var(--font-sans); color: var(--fg-2);
+}
+.rz .rz-banner svg { flex: none; color: var(--fg-3); }
+.rz .rz-banner-ok svg { color: var(--rz-success); }
+
+/* A part on order, and times already offered: both are states where the job is
+   waiting on somebody else, and both say so in their own colour. */
+.rz .rz-partwell {
+  background: var(--rz-warning-bg); border-radius: var(--r-lg); padding: 16px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.rz .rz-partwhat {
+  font: 600 18px/1.3 var(--font-sans); letter-spacing: -.01em; color: var(--fg-1);
+}
+.rz .rz-offered {
+  background: var(--primary-50); border-radius: var(--r-lg); padding: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.rz .rz-offeredtime { font: 500 14px/1.5 var(--rz-mono); color: var(--fg-1); }
+
+/* --- secondary actions ----------------------------------------------- */
+
+/* One bordered group with hairlines between, rather than a stack of separate
+   buttons: they're variations on "what happened", not five equal choices. */
+.rz .rz-actionlist {
+  display: flex; flex-direction: column; gap: 1px;
+  border-radius: var(--r-lg); overflow: hidden;
+  box-shadow: inset 0 0 0 1.5px var(--rz-border);
+}
+.rz .rz-actionitem {
+  cursor: pointer; text-align: left; width: 100%; border: 0;
+  border-top: 1px solid var(--rz-border);
+  background: var(--rz-surface); padding: 15px 16px;
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+  font: 600 17px/1.35 var(--font-sans); letter-spacing: -.01em; color: var(--fg-1);
+}
+.rz .rz-actionitem:first-child { border-top: 0; }
+.rz .rz-actionitem:active { background: var(--rz-surface-2); }
+.rz .rz-actionitem svg:last-child { color: var(--fg-3); }
+.rz .rz-actionitem-danger { color: #e8403a; }
+
+/* --- bottom sheet ----------------------------------------------------- */
+
+/* Offering times, recording a cause, ordering a part — each is a short task
+   that shouldn't lose the job behind it. A sheet keeps the context visible. */
+.rz-scrim {
+  position: fixed; inset: 0; z-index: 30; border: 0; width: 100%;
+  background: rgba(31, 63, 79, .45); backdrop-filter: blur(2px);
+}
+.rz-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
+  max-height: 82vh; overflow-y: auto;
+  background: var(--rz-surface, #fff);
+  border-radius: 24px 24px 0 0;
+  padding: 22px 22px calc(26px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 16px;
+  animation: rzsheet .24s cubic-bezier(.2, .9, .3, 1) both;
+}
+.rz-sheet::-webkit-scrollbar { width: 0; }
+.rz-sheethead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rz-sheetcancel {
+  cursor: pointer; border: 0; background: none; padding: 0;
+  font: 600 14px/1.2 var(--font-sans); color: var(--fg-3);
+}
+@keyframes rzsheet { from { transform: translateY(101%); } to { transform: none; } }
+
+@media (min-width: 721px) {
+  .rz-sheet { left: 50%; transform: translateX(-50%); width: min(560px, 100%); }
+  @keyframes rzsheet {
+    from { transform: translateX(-50%) translateY(101%); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+/* --- offering times --------------------------------------------------- */
+
+.rz .rz-day { display: flex; flex-direction: column; gap: 8px; }
+.rz .rz-dayhead { display: flex; align-items: baseline; gap: 10px; }
+.rz .rz-daylabel { font: 600 17px/1.35 var(--font-sans); letter-spacing: -.01em; }
+.rz .rz-times { display: flex; gap: 8px; flex-wrap: wrap; }
+.rz .rz-time {
+  cursor: pointer; border: 0; background: var(--rz-surface); color: var(--fg-1);
+  border-radius: var(--r-pill); padding: 11px 15px;
+  font: 500 13px/1.2 var(--rz-mono); letter-spacing: .02em;
+  box-shadow: inset 0 0 0 1.5px var(--rz-border);
+  transition: transform .12s ease;
+}
+.rz .rz-time:active { transform: scale(.96); }
+.rz .rz-time[aria-pressed="true"] {
+  background: var(--primary); color: var(--on-primary); box-shadow: none;
+}
+
+/* --- single-select lists: cause, trade -------------------------------- */
+
+.rz .rz-choices { display: flex; flex-direction: column; gap: 1px; }
+.rz .rz-choice {
+  cursor: pointer; text-align: left; width: 100%; border: 0;
+  border-top: 1px solid var(--rz-border);
+  background: var(--rz-surface); padding: 16px 4px;
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px;
+  font: 600 18px/1.3 var(--font-sans); letter-spacing: -.01em; color: var(--fg-1);
+}
+.rz .rz-choice:active { background: var(--rz-surface-2); }
+.rz .rz-choice[aria-pressed="true"] { background: var(--primary-50); }
+.rz .rz-choicetick { display: none; color: var(--primary); }
+.rz .rz-choice[aria-pressed="true"] .rz-choicetick { display: flex; }
+
+.rz .rz-field { display: flex; flex-direction: column; gap: 6px; }
+.rz .rz-field input {
+  width: 100%; border: 0; background: var(--rz-surface-3);
+  border-radius: var(--r-md); padding: 14px;
+  font: 400 15px/1.55 var(--font-sans); color: var(--fg-1); outline: none;
+}
+.rz .rz-field input:focus {
+  box-shadow: 0 0 0 4px var(--primary-50), inset 0 0 0 1.5px var(--primary);
+}
+
+@media (prefers-color-scheme: dark) {
+  .rz .rz-pill-new { background: #3a1a1f; color: #e8848d; }
+  .rz .rz-actionitem-danger { color: #e08484; }
+  .rz-sheet { background: #1a2027; }
+  .rz-scrim { background: rgba(0, 0, 0, .55); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rz-sheet { animation: none; }
+}
+
+/*
+ * The queue's three dropdowns, shaped like the chips beside them.
+ *
+ * A native select brings its own border, radius and arrow, none of which match,
+ * so appearance is reset and the arrow is drawn as two gradients — cheaper than
+ * a wrapper element and it inherits the text colour, so it stays visible when a
+ * filter is active and the chip inverts.
+ */
+.rz .rz-queuefilters { display: flex; gap: 8px; flex-wrap: wrap; }
+.rz .rz-queuesel {
+  appearance: none; -webkit-appearance: none;
+  padding: 9px 34px 9px 15px; min-height: 40px;
+  font: 600 14px/1.2 var(--font-sans);
+  background-color: var(--rz-surface); color: var(--fg-2);
+  border: 0; border-radius: var(--r-pill); cursor: pointer;
+  box-shadow: inset 0 0 0 1.5px var(--rz-border);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+.rz .rz-queuesel:focus-visible {
+  outline: 0; box-shadow: 0 0 0 4px var(--primary-50), inset 0 0 0 1.5px var(--primary);
+}
+/* An active filter reads as chosen, the same way a pressed chip does. */
+.rz .rz-queuesel.on {
+  background-color: var(--primary); color: var(--on-primary); box-shadow: none;
+}
+.rz .rz-queuesel option { background: var(--rz-surface); color: var(--fg-1); }
+
+/* A disabled action still has to be readable: greying it to near-invisible
+   hides what the caretaker can't do and why. Dimmed, not erased. */
+.rz .rz-actionitem:disabled,
+.rz .rz-btn-ghost:disabled,
+.rz .rz-chip:disabled,
+.rz .rz-time:disabled {
+  opacity: .45; cursor: not-allowed;
+}
+.rz .rz-actionitem:disabled:active { background: var(--rz-surface); }
+
+
+/* ==================================================================== */
+/* the landing page                                                     */
+/* ==================================================================== */
+
+/*
+ * Light, always.
+ *
+ * This is a public marketing page rather than part of the app, and the design
+ * is drawn light. A landing page that follows the system theme would mean
+ * maintaining two versions of something a visitor sees once.
+ */
+
+.lz {
+  /*
+   * The page's geometry, matched to PrintBlock's.
+   *
+   * The block ships its own max-width and gutter, so it centred itself
+   * independently and its panel sat inside a different left edge from the
+   * headings above it. Rather than make the block conform, the page adopts its
+   * numbers: one edge from the nav to the footer, whatever the width.
+   */
+  --lz-max: 1160px;
+  --gutter: 24px;
+  --lz-ink: #1f2a37;
+  --lz-ink-2: #55606d;
+  --lz-ink-3: #8a929b;
+  --lz-page: #fff;
+  --lz-band: #f4f6f8;
+  --lz-card: #fff;
+  --lz-line: #e4e8ed;
+  --lz-indigo: #4a3fe0;
+  --lz-indigo-press: #3a30c4;
+  --lz-indigo-50: #eeecfd;
+
+  background: var(--lz-page);
+  color: var(--lz-ink);
+  min-height: 100%;
+  font-family: var(--font-sans);
+}
+
+.lz .lz-wrap { max-width: var(--lz-max); margin: 0 auto; padding: 0 var(--gutter); }
+/*
+ * Inside the landing page the block sits within a container that already
+ * provides the max-width and the gutter, so it adds neither — otherwise it
+ * would be inset twice and end up narrower than the text above it.
+ */
+.lz .pb-section { max-width: none; padding-inline: 0; margin-inline: 0; }
+.lz .lz-band { background: var(--lz-band); border-block: 1px solid var(--lz-line); }
+/*
+ * padding-block, not the padding shorthand.
+ *
+ * `padding: <v> 0` on an element that also carries .lz-wrap zeroed the gutter
+ * the wrap had just set — same specificity, declared later, so it won. The text
+ * sat flush against the viewport edge while the print block, which brought its
+ * own inset, looked correctly placed. That mismatch is what the whole
+ * alignment problem was.
+ */
+.lz .lz-section { padding-block: clamp(52px, 8vw, 96px); }
+.lz .lz-eyebrow {
+  margin: 0 0 14px; font: 600 12px/1.3 var(--font-sans);
+  letter-spacing: .1em; text-transform: uppercase; color: var(--lz-ink-3);
+}
+.lz .lz-h2 {
+  margin: 0; font: 700 clamp(28px, 4vw, 42px)/1.15 var(--font-sans);
+  letter-spacing: -.03em; max-width: 18em; text-wrap: balance;
+}
+.lz .lz-lede {
+  margin: 16px 0 0; font: 400 clamp(16px, 1.6vw, 18px)/1.6 var(--font-sans);
+  color: var(--lz-ink-2); max-width: 34em; text-wrap: pretty;
+}
+
+/* --- nav --------------------------------------------------------------- */
+
+.lz .lz-nav {
+  position: sticky; top: 0; z-index: 12;
+  background: rgba(255, 255, 255, .88); backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--lz-line);
+}
+.lz .lz-navin {
+  max-width: var(--lz-max); margin: 0 auto; padding: 14px var(--gutter);
+  display: flex; align-items: center; gap: clamp(12px, 2vw, 28px); flex-wrap: wrap;
+}
+.lz .lz-brand {
+  display: flex; align-items: center; gap: 9px;
+  font: 700 20px/1 var(--font-sans); letter-spacing: -.025em; color: var(--lz-ink);
+}
+.lz .lz-navlinks { display: flex; align-items: center; gap: clamp(12px, 1.8vw, 24px); }
+.lz .lz-navlink {
+  border: 0; background: none; cursor: pointer; padding: 0;
+  font: 600 14.5px/1.2 var(--font-sans); color: var(--lz-ink-2); white-space: nowrap;
+}
+.lz .lz-navlink:hover { color: var(--lz-indigo); }
+.lz .lz-navright { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+/* A segmented DE|EN rather than a single toggle: both options visible, so
+   nobody has to press it to find out what it does. */
+.lz .lz-lang {
+  display: flex; background: var(--lz-band); border-radius: 999px; padding: 3px;
+  box-shadow: inset 0 0 0 1px var(--lz-line);
+}
+.lz .lz-langbtn {
+  border: 0; background: none; cursor: pointer; border-radius: 999px;
+  padding: 7px 14px; font: 600 13px/1 var(--font-sans); color: var(--lz-ink-3);
+}
+.lz .lz-langbtn.on { background: var(--lz-card); color: var(--lz-ink); box-shadow: 0 1px 2px rgba(31,42,55,.1); }
+
+/* --- buttons ------------------------------------------------------------ */
+
+.lz .lz-btn {
+  border: 0; cursor: pointer; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  font: 600 15px/1 var(--font-sans); padding: 14px 22px;
+  transition: transform .12s ease, background .16s ease;
+}
+.lz .lz-btn:active { transform: scale(.975); }
+.lz .lz-btn-primary { background: var(--lz-indigo); color: #fff; }
+.lz .lz-btn-primary:hover { background: var(--lz-indigo-press); }
+.lz .lz-btn-outline {
+  background: var(--lz-card); color: var(--lz-ink);
+  box-shadow: inset 0 0 0 1.5px var(--lz-line);
+}
+.lz .lz-btn-outline:hover { box-shadow: inset 0 0 0 1.5px var(--lz-indigo); color: var(--lz-indigo); }
+.lz .lz-btn-sm { padding: 10px 17px; font-size: 14px; }
+.lz .lz-btn-text {
+  border: 0; background: none; cursor: pointer; padding: 0;
+  font: 600 15px/1.2 var(--font-sans); color: var(--lz-indigo);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+
+/* --- hero ---------------------------------------------------------------- */
+
+.lz .lz-hero {
+  max-width: var(--lz-max); margin: 0 auto;
+  padding: clamp(40px, 6vw, 80px) var(--gutter) clamp(48px, 7vw, 88px);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: clamp(36px, 5vw, 72px); align-items: center;
+}
+.lz .lz-pill {
+  display: inline-block; background: var(--lz-indigo-50); color: var(--lz-indigo);
+  border-radius: 999px; padding: 8px 15px;
+  font: 600 12px/1.3 var(--font-sans); letter-spacing: .08em; text-transform: uppercase;
+}
+.lz .lz-h1 {
+  margin: 20px 0 0; font: 700 clamp(36px, 5.4vw, 62px)/1.06 var(--font-sans);
+  letter-spacing: -.035em; text-wrap: balance;
+}
+.lz .lz-ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
+
+/* Three numbers rather than a paragraph of claims: they're checkable. */
+.lz .lz-stats {
+  display: flex; gap: clamp(24px, 4vw, 52px); flex-wrap: wrap;
+  margin-top: 42px; padding-bottom: 4px;
+}
+.lz .lz-stats > div { min-width: 0; }
+.lz .lz-statn {
+  margin: 0; font: 700 clamp(24px, 3vw, 30px)/1 var(--font-sans); letter-spacing: -.03em;
+}
+.lz .lz-statl { margin: 7px 0 0; font: 400 13.5px/1.45 var(--font-sans); color: var(--lz-ink-2); }
+
+/* --- the phone ----------------------------------------------------------- */
+
+.lz .lz-phonecol { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.lz .lz-roletabs {
+  display: flex; background: var(--lz-band); border-radius: 999px; padding: 4px;
+  box-shadow: inset 0 0 0 1px var(--lz-line);
+}
+.lz .lz-roletab {
+  border: 0; background: none; cursor: pointer; border-radius: 999px;
+  padding: 9px 20px; font: 600 14px/1 var(--font-sans); color: var(--lz-ink-3);
+}
+.lz .lz-roletab.on { background: var(--lz-card); color: var(--lz-ink); box-shadow: 0 1px 3px rgba(31,42,55,.12); }
+
+/* The app itself, shrunk. It's the honest way to show what you get: a drawing
+   of a screen would be a promise, this is the screen. */
+.lz .lz-phone {
+  width: 100%; max-width: 320px; background: #12161c;
+  border-radius: 30px; padding: 10px;
+  box-shadow: 0 22px 50px rgba(31, 42, 55, .22);
+}
+.lz .lz-phonebar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 12px 10px; color: #8b9299;
+  font: 600 11px/1 var(--font-mono);
+}
+.lz .lz-phonescreen {
+  background: #171c23; border-radius: 22px; padding: 14px;
+  display: flex; flex-direction: column; gap: 11px; min-height: 430px;
+}
+.lz .lz-phonehead {
+  display: flex; align-items: center; justify-content: space-between;
+  color: #e6edf2; font: 700 13px/1 var(--font-sans); letter-spacing: -.02em;
+}
+.lz .lz-phoneunit { font: 500 11px/1 var(--font-mono); color: #8b9299; letter-spacing: .04em; }
+.lz .lz-phonetitle { margin: 4px 0 0; font: 700 17px/1.2 var(--font-sans); color: #e6edf2; }
+.lz .lz-phonegroup {
+  display: flex; align-items: center; justify-content: space-between;
+  font: 600 8.5px/1.3 var(--font-mono); letter-spacing: .1em;
+  text-transform: uppercase; color: #6b7480; margin-top: 3px;
+}
+.lz .lz-phonecard {
+  background: #1e242c; border-radius: 11px; padding: 11px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.lz .lz-phonemeta {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font: 500 9px/1.3 var(--font-mono); letter-spacing: .04em; color: #8b9299;
+}
+.lz .lz-phonetag {
+  border-radius: 999px; padding: 3px 7px;
+  font: 600 7.5px/1.3 var(--font-mono); letter-spacing: .07em; text-transform: uppercase;
+}
+.lz .lz-tag-info { background: #262a55; color: #a9a4f5; }
+.lz .lz-tag-ok { background: #16302a; color: #5fcf9c; }
+.lz .lz-tag-warn { background: #33280f; color: #e8b45c; }
+.lz .lz-tag-new { background: #3a1a1f; color: #e8848d; }
+.lz .lz-phonefault { font: 600 13px/1.3 var(--font-sans); color: #e6edf2; }
+.lz .lz-phonewhen { font: 400 10.5px/1.4 var(--font-sans); color: #8b9299; }
+.lz .lz-phonecta {
+  background: #262a55; color: #a9a4f5; border-radius: 8px; padding: 8px 10px;
+  font: 600 10.5px/1.2 var(--font-sans); margin-top: 3px;
+}
+.lz .lz-phonebtn {
+  margin-top: auto; background: var(--lz-indigo); color: #fff;
+  border-radius: 999px; padding: 12px; text-align: center;
+  font: 600 12.5px/1 var(--font-sans);
+}
+.lz .lz-caption {
+  margin: 0; max-width: 30ch; text-align: center;
+  font: 400 13.5px/1.5 var(--font-sans); color: var(--lz-ink-3);
+}
+
+/* --- role cards ---------------------------------------------------------- */
+
+.lz .lz-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 20px; margin-top: 40px;
+}
+.lz .lz-card {
+  background: var(--lz-card); border-radius: 18px; padding: 26px;
+  display: flex; flex-direction: column; gap: 13px;
+  box-shadow: 0 1px 2px rgba(31,42,55,.05), 0 8px 24px rgba(31,42,55,.06);
+}
+.lz .lz-cardicon {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: var(--lz-indigo-50); color: var(--lz-indigo);
+  display: grid; place-items: center;
+}
+.lz .lz-card h3 { margin: 0; font: 700 19px/1.3 var(--font-sans); letter-spacing: -.02em; }
+.lz .lz-card p { margin: 0; font: 400 14.5px/1.6 var(--font-sans); color: var(--lz-ink-2); text-wrap: pretty; }
+
+/* --- the four steps ------------------------------------------------------ */
+
+.lz .lz-stephead {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap;
+}
+.lz .lz-steps {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  gap: 22px; margin-top: 40px;
+}
+.lz .lz-step { display: flex; flex-direction: column; gap: 11px; }
+.lz .lz-steprail { display: flex; align-items: center; gap: 12px; }
+.lz .lz-stepn {
+  width: 30px; height: 30px; border-radius: 999px; flex: none;
+  background: var(--lz-band); color: var(--lz-ink-3);
+  display: grid; place-items: center; font: 600 11px/1 var(--font-mono);
+  box-shadow: inset 0 0 0 1px var(--lz-line);
+}
+.lz .lz-step.on .lz-stepn { background: var(--lz-indigo); color: #fff; box-shadow: none; }
+.lz .lz-stepline { flex: 1; height: 1.5px; background: var(--lz-line); }
+.lz .lz-step:last-child .lz-stepline { background: transparent; }
+.lz .lz-step h3 { margin: 0; font: 700 18px/1.3 var(--font-sans); letter-spacing: -.02em; }
+.lz .lz-step p { margin: 0; font: 400 14.5px/1.6 var(--font-sans); color: var(--lz-ink-2); text-wrap: pretty; }
+.lz .lz-stamp { font: 500 12.5px/1.5 var(--font-mono); letter-spacing: .04em; color: var(--lz-indigo); }
+
+/* --- the print sheet ----------------------------------------------------- */
+
+/* Without this the canvases keep their intrinsic width and push out of the
+   card: a grid item's min-width is auto, so 1fr never gets to shrink them. */
+/* White inside the tile, with room around the code. A QR pressed to the edge
+   of a coloured tile is harder for a camera and looks wrong besides. */
+/* The access code goes on the sheet the operator hands over, below a tear line
+   — never on the sticker itself. A credential on a bathroom wall is not a
+   credential. */
+
+/* --- footer -------------------------------------------------------------- */
+
+.lz .lz-footer {
+  max-width: var(--lz-max); margin: 0 auto; padding: 30px var(--gutter);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap;
+  font: 400 13px/1.45 var(--font-sans); color: var(--lz-ink-3);
+}
+.lz .lz-footlinks { display: flex; gap: 22px; }
+.lz .lz-footlinks button {
+  border: 0; background: none; cursor: pointer; padding: 0;
+  font: 500 13px/1.45 var(--font-sans); color: var(--lz-ink-3);
+}
+.lz .lz-footlinks button:hover { color: var(--lz-indigo); }
+
+@media (max-width: 640px) {
+  .lz .lz-navlinks { display: none; }
+
+}
+
+/* --- the operator band and its form ----------------------------------- */
+
+/* Dark, because it's the one section addressed to a different reader: a
+   Studierendenwerk rather than a student. */
+.lz .lz-dark {
+  background: #1e3a47; color: #e8eef2;
+  padding: clamp(52px, 8vw, 96px) 0;
+}
+.lz .lz-dark .lz-eyebrow { color: #7ea3b4; }
+.lz .lz-dark .lz-h2 { color: #fff; }
+.lz .lz-dark .lz-lede { color: #b3c6d0; }
+
+.lz .lz-opgrid {
+  max-width: var(--lz-max); margin: 0 auto; padding: 0 var(--gutter);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: clamp(32px, 5vw, 64px); align-items: start;
+}
+.lz .lz-ticks { list-style: none; margin: 28px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.lz .lz-tick {
+  display: flex; align-items: center; gap: 12px;
+  font: 500 16px/1.5 var(--font-sans); color: #dbe6ec;
+}
+.lz .lz-tickmark {
+  width: 24px; height: 24px; border-radius: 999px; flex: none;
+  background: rgba(255,255,255,.14); color: #a9e0c4;
+  display: grid; place-items: center;
+}
+
+.lz .lz-form {
+  background: #fff; border-radius: 20px; padding: clamp(24px, 3vw, 34px);
+  display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 20px 46px rgba(0,0,0,.22);
+}
+.lz .lz-formh { margin: 0; font: 700 24px/1.25 var(--font-sans); letter-spacing: -.025em; color: var(--lz-ink); }
+.lz .lz-formp { margin: 0; font: 400 14.5px/1.5 var(--font-sans); color: var(--lz-ink-2); }
+.lz .lz-label {
+  display: block; margin-bottom: 7px;
+  font: 600 11px/1.3 var(--font-sans); letter-spacing: .09em;
+  text-transform: uppercase; color: var(--lz-ink-3);
+}
+.lz .lz-input {
+  width: 100%; border: 0; border-radius: 12px; padding: 14px 15px;
+  background: var(--lz-band); color: var(--lz-ink);
+  font: 400 15px/1.4 var(--font-sans); outline: none;
+}
+.lz .lz-input::placeholder { color: #a6afb8; }
+.lz .lz-input:focus { box-shadow: 0 0 0 3px var(--lz-indigo-50), inset 0 0 0 1.5px var(--lz-indigo); }
+.lz .lz-formnote { margin: 0; font: 400 12.5px/1.45 var(--font-sans); color: var(--lz-ink-3); }
+.lz .lz-btn-block { width: 100%; padding: 16px; }
+
+/* --- modals ------------------------------------------------------------- */
+
+/* The modal shell itself now lives in signin.css, which the design export
+   supplied; only the demo picker's own rows are left here. */
+
+
+
+/* One row per role, each saying what you'd be doing rather than only who you'd
+   be. */
+.lz-rolerow {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  border: 0; background: none; cursor: pointer; text-align: left;
+  padding: 14px 4px; border-top: 1px solid #eceff2; font: inherit; color: #1f2a37;
+}
+.lz-rolerow:first-of-type { border-top: 0; }
+.lz-rolerow:hover { color: #4a3fe0; }
+.lz-rolerow:disabled { opacity: .5; cursor: not-allowed; }
+.lz-roleicon {
+  width: 40px; height: 40px; border-radius: 12px; flex: none;
+  background: #eeecfd; color: #4a3fe0; display: grid; place-items: center;
+}
+.lz-roletext { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.lz-rolename { font: 600 16px/1.3 var(--font-sans); letter-spacing: -.015em; }
+.lz-rolewhat { font: 400 13px/1.4 var(--font-sans); color: #55606d; }
+
+.lz-rule { display: flex; align-items: center; gap: 12px; }
+.lz-rule::before, .lz-rule::after { content: ""; flex: 1; height: 1px; background: #eceff2; }
+.lz-rule span {
+  font: 500 11.5px/1.3 var(--font-sans); text-transform: uppercase;
+  letter-spacing: .08em; color: #8a929b; white-space: nowrap;
+}
+
+/* The modal is rendered outside .lz — a sibling of the page, not a child — so
+   the field styles have to be unscoped or the form renders raw. */
+
+
+
+
+/* The demo keeps the page behind it, blurred: it's a decision you make while
+   reading, so losing your place to make it would be the wrong trade. */
+/* Enough to push the page back without turning it into fog: the reader should
+   still recognise where they were. */
+.lz-blur { filter: blur(4px); pointer-events: none; user-select: none; }
+
+
+
+/* The demo rows sit in a .dt-panel inside the export's modal, so they need the
+   row shape restated: the panel is a flex column and they were laying out as
+   items on one line. */
+.dt-panel .lz-rolerow { width: 100%; flex: 0 0 auto; }
+
+/* --- the demo bar ----------------------------------------------------- */
+
+/*
+ * A demo you can only leave by signing out is a trap, and "sign out" is the
+ * wrong word for somebody who never signed in. So: a strip that says what
+ * you're looking at and offers the way out, on every screen.
+ *
+ * Amber rather than indigo. The redesign already uses this colour for "waiting
+ * on a part", so it carries a provisional quality without introducing a new
+ * one — and yellow stays reserved for the sticker.
+ */
+.demobar {
+  /*
+   * Both this and the header are sticky at top: 0, so on scroll they would
+   * land on each other. The bar stays put and the header sticks below it, which
+   * also means the way out never scrolls away.
+   */
+  position: sticky; top: 0; z-index: 7;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px var(--gutter, 18px);
+  background: #fcf1df;
+  border-bottom: 1px solid #f0dfc2;
+  font-family: var(--font-sans);
+}
+.demobar svg { flex: none; color: #b0781a; }
+.demobartext {
+  font: 400 13px/1.4 var(--font-sans); color: #8a5f12;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.demobarorg { font-weight: 600; }
+.demoleave {
+  margin-left: auto; flex: none; cursor: pointer;
+  background: #fff; color: #8a5f12;
+  border: 1.5px solid #eddcb8; border-radius: 999px;
+  padding: 7px 15px; font: 500 12.5px/1 var(--font-sans);
+}
+.demoleave:hover { border-color: #d9bd7a; }
+
+/* On a phone the sentence goes and the label stays: the way out matters more
+   than the explanation, and there isn't room for both. */
+@media (max-width: 520px) {
+  .demobarnote { display: none; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .demobar { background: #33280f; border-bottom-color: #4a3a15; }
+  .demobar svg { color: #e8b45c; }
+  .demobartext { color: #e8d9a8; }
+  .demoleave { background: #1a2027; color: #e8b45c; border-color: #4a3a15; }
+  .demoleave:hover { border-color: #6b5520; }
+}
+
+/* The header sticks below the demo bar rather than under it. 39px is the bar's
+   own height — content plus its border. */
+body:has(.demobar) .topbar { top: 39px; }
+
+/*
+ * The stacked hero.
+ *
+ * Copy full width, devices beneath. Side by side the heading wrapped to four
+ * lines in a narrow column while the phone sat in the other half; stacked it
+ * runs to two, and the laptop tab gets the width it needs.
+ */
+.lz .lz-hero-stacked {
+  display: block;
+  padding-bottom: clamp(56px, 8vw, 96px);
+}
+/*
+ * Centred and filling the width.
+ *
+ * Left-aligned in a column the heading ran to four lines with a ragged edge and
+ * the stats trailed off to one side. Centred, the eye starts in the same place
+ * for every line and the devices below sit under the middle of it.
+ */
+.lz .lz-hero-stacked .lz-herocopy {
+  /* Wide enough to use the space. At 60ch the heading fell to four short lines
+     with empty page either side; this lets it break into two long ones. */
+  max-width: 100%;
+  margin-inline: auto;
+  text-align: center;
+  align-items: center;
+}
+/*
+ * 22ch on the heading, so it breaks after the first clause in both languages.
+ * German runs longer — "ohne Anruf, ohne E-Mail, ohne Büro" against "no phone
+ * call, no email, no office" — so the measure is set by German and English
+ * follows comfortably.
+ */
+.lz .lz-hero-stacked .lz-h1 { max-width: 22ch; margin-inline: auto; }
+.lz .lz-hero-stacked .lz-lede { max-width: 78ch; margin-inline: auto; }
+.lz .lz-hero-stacked .lz-ctas { justify-content: center; }
+.lz .lz-hero-stacked .lz-stats { justify-content: center; }
+.lz .lz-hero-stacked .dp-root { margin-top: clamp(40px, 6vw, 72px); }

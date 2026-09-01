@@ -842,8 +842,8 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   /* The left panel is a desktop shape. On a phone it's four tabs in thumb
      reach, with the rest behind More — rather than a strip that scrolled
      sideways with no sign there was anything off-screen. */
-  .sidebar { display: none; }
-  .opshell { display: block; }
+  /* .sidebar is the old panel, replaced by the export's .opp-root, which
+     collapses to a 64px icon rail at 1024px rather than disappearing. */
   .opmain { padding: 0; }
   main.opview { padding: 14px 14px 78px; }
 
@@ -947,7 +947,13 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   /* The trend and the trade breakdown answer related questions, so on a wide
      screen they belong side by side rather than a scroll apart. */
   .dashpair {
-    display: grid; grid-template-columns: 1.7fr 1fr; gap: 10px; align-items: start;
+    display: grid; grid-template-columns: 1.7fr 1fr; gap: 10px;
+    /*
+     * Stretch, not start: side by side, two cards of different heights read as
+     * one being unfinished. The trend chart is the taller of the two and sets
+     * the row, so the trade panel fills to match.
+     */
+    align-items: stretch;
   }
 }
 .dashpair { display: contents; }
@@ -955,3 +961,4 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 @media (min-width: 1500px) {
   .dashpair { display: grid; }
 }
+

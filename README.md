@@ -286,6 +286,41 @@ setup, accepting an invite, resetting, and changing — so they can't drift apar
 Sign-in gets the toggle but no second field, since you're not setting anything
 there.
 
+## The interface
+
+Every screen is in one visual language, applied from design exports rather than
+invented here. The stylesheets are split by area and each one repeats its own
+tokens on purpose, so none depends on another's load order:
+
+```
+resident.css     resident screens, plus the shared header, notifications, account
+signin.css       the sign-in and demo modals
+printblock.css   the landing page's print-sheet block
+gallery.css      the landing page's phone and laptop mockups
+op-panel.css     the operator's left panel
+op-dashboard.css metrics, buildings, charts, drill-downs, Customise
+op-filters.css   the dashboard's filter row
+op-repeats.css   repeat faults
+op-customise.css the modal variant of Customise, unused for now
+op-buildings.css op-staff.css op-stickers.css op-codes.css op-orgs.css
+```
+
+Three things learned the hard way and worth keeping:
+
+**An invalid `font:` shorthand is dropped whole.** One undefined custom property
+silently removes the size and weight from every heading using it. Every token a
+stylesheet references is defined in that same file.
+
+**A button needs its appearance reset.** Where a design renders a row as `div`,
+`li` or `article` and the app needs it clickable, the browser's default button
+face shows through and the page reads as a stack of boxed controls. Bit us on
+the panel, the chart bars, the building cards and the panel items.
+
+**`QRCode.toCanvas` writes inline width and height.** An inline style outranks a
+class, so a code rendered at its backing-store size and burst out of its box.
+The landing page draws QR codes as SVG for that reason; the printed sheet keeps
+canvas and clears the two properties after drawing.
+
 ## Every page has a URL
 
 The app used to live at `/`, with four link paths and everything else in React
@@ -319,6 +354,35 @@ and isn't. Unknown paths fall back to home rather than an error page,
 and `not_found_handling` is already `single-page-application`, so a deep link
 survives a hard refresh.
 
+## Working on it locally
+
+```
+npm install
+npm run db:local      # applies every migration to a local D1
+npm run dev           # builds, then serves through wrangler on :8787
+```
+
+`npm run dev` builds first, which is what production does, so it's the honest
+check — but it means a full rebuild after every edit. For actual work, two
+terminals:
+
+```
+npm run worker        # wrangler on :8787, the API and the database
+npm run watch         # vite on :5173, with hot reload
+```
+
+Then open **:5173**. A saved component or stylesheet appears in under a second.
+Vite proxies `/api` to the Worker, along with `/r`, `/t`, `/setup` and `/reset`,
+which are real server paths rather than client routes — a scanned sticker has to
+reach the Worker.
+
+Worker changes still need the first terminal restarted, since that's a separate
+process. Frontend changes don't.
+
+```
+npm run smoke         # 532 assertions, against a running `npm run dev`
+```
+
 ## Retention
 
 Closed tickets are **never deleted**. The room-and-cause history is the entire reason the operator dashboard is worth anything, and once the reporter link is gone, "the drain in C-204 blocked twice" isn't personal data.
@@ -343,7 +407,7 @@ Residents see finished reports for 90 days, then they collapse behind *Show olde
 * **Auth:** own sessions. Staff use email and password (PBKDF2-SHA256, per-user salt, 100k iterations); residents use an access code. Session tokens are stored hashed, so a database dump doesn't hand over live sessions.
 * **QR:** [`qrcode`](https://github.com/soldair/node-qrcode) to generate the sticker sheets, native `BarcodeDetector` with [`jsQR`](https://github.com/cozmo/jsQR) as a fallback for in-app scanning.
 * **Housekeeping:** a Cron Trigger runs retention and appointment reminders daily.
-* **Tests:** 532 end-to-end assertions in a plain Node script, no test framework.
+* **Tests:** 533 end-to-end assertions in a plain Node script, no test framework.
 * **Hosting:** Cloudflare Workers, auto-deploying from `main`.
 
 ## Project structure

@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React from "react";
 import { LayoutGrid, Building2, Users, QrCode, KeyRound, ShieldCheck, User,
-  MoreHorizontal, X } from "lucide-react";
+} from "lucide-react";
 import { type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -9,106 +9,69 @@ export type OpSection =
   | "dashboard" | "buildings" | "staff" | "stickers" | "codes" | "orgs" | "account";
 
 /**
- * The operator's left panel.
+ * The operator's left panel, built from the design export.
  *
- * Only for operators: the resident and caretaker views are phone-first and keep
- * the header. Building it as a panel is what let the building cards shed four
- * buttons each — the actions became destinations, so the card is a summary again.
+ * 240px fixed — never fluid, never a percentage — sticky under the app bar, and
+ * scrolling independently so a long list can't push Konto out of reach.
  *
- * On a narrow screen it lays out as a horizontal strip rather than disappearing,
- * because an operator checking something on a phone still needs to get around.
+ * The organisation name wraps to two or three lines rather than truncating. The
+ * export is explicit about why: an operator may run several Studierendenwerke
+ * and needs to see the city, so an ellipsis would remove the one word that
+ * distinguishes them.
+ *
+ * Below 1024px it collapses to a 64px icon rail rather than disappearing —
+ * the export's own answer, and better than the bottom strip I had: the panel
+ * stays where it is and only sheds its words, so nothing moves.
  */
 export function Sidebar({ t, section, onGo, isPlatformAdmin, orgName, personName }: {
   t: T; section: OpSection; onGo: (s: OpSection) => void;
   isPlatformAdmin?: boolean; orgName?: string; personName?: string;
 }) {
-  const Item = ({ id, Icon, label }: { id: OpSection; Icon: any; label: string }) => (
-    <button className={"sbnav" + (section === id ? " sbnav-on" : "")}
+  const Item = ({ id, Icon, label, badge }: {
+    id: OpSection; Icon: any; label: string; badge?: number;
+  }) => (
+    <button className={"opp-item" + (section === id ? " opp-item-active" : "")}
       aria-current={section === id ? "page" : undefined}
-      onClick={() => { setMore(false); onGo(id); }}>
-      <Icon size={15} strokeWidth={1.75} aria-hidden />
-      <span>{label}</span>
+      onClick={() => onGo(id)}
+      /* Below 1024px the panel is icons only, so the label becomes the tooltip
+         and the accessible name. */
+      title={label} aria-label={label}>
+      <Icon className="opp-icon" size={19} strokeWidth={1.75} aria-hidden />
+      <span className="opp-label">{label}</span>
+      {badge !== undefined && badge > 0 && <span className="opp-badge">{badge}</span>}
     </button>
   );
 
-  const [more, setMore] = useState(false);
-
-  /*
-   * Two shapes, one component.
-   *
-   * On a phone the panel is a bottom tab bar: four destinations in thumb reach
-   * and the rest behind More. A horizontal scrolling strip hid items with no
-   * indication there were any, which was the worst property of the first
-   * attempt.
-   */
-  const Tab = ({ id, Icon, label }: { id: OpSection; Icon: any; label: string }) => (
-    <button className={"tabbtn" + (section === id ? " tabbtn-on" : "")}
-      aria-current={section === id ? "page" : undefined}
-      onClick={() => { setMore(false); onGo(id); }}>
-      <Icon size={19} strokeWidth={1.75} aria-hidden />
-      <span>{label}</span>
-    </button>
+  /* Organisations is platform-admin only, so it isn't in the design's list. */
+  const main = (
+    <>
+      <Item id="dashboard" Icon={LayoutGrid} label={t("opNavDash")} />
+      <Item id="buildings" Icon={Building2} label={t("buildings")} />
+      <Item id="staff" Icon={Users} label={t("staff")} />
+      <Item id="stickers" Icon={QrCode} label={t("stickers")} />
+      <Item id="codes" Icon={KeyRound} label={t("accessCodes")} />
+      {isPlatformAdmin && <Item id="orgs" Icon={ShieldCheck} label={t("orgsWord")} />}
+    </>
   );
 
   return (
     <>
-    <nav className="tabbar" aria-label={t("dashboardWord")}>
-      <Tab id="dashboard" Icon={LayoutGrid} label={t("dashboardWord")} />
-      <Tab id="buildings" Icon={Building2} label={t("buildings")} />
-      <Tab id="staff" Icon={Users} label={t("staffWord")} />
-      <button className={"tabbtn" + (more ? " tabbtn-on" : "")}
-        aria-expanded={more} onClick={() => setMore((v) => !v)}>
-        {more ? <X size={19} aria-hidden /> : <MoreHorizontal size={19} aria-hidden />}
-        <span>{t("moreWord")}</span>
-      </button>
-    </nav>
-
-    {more && (
-      <div className="tabsheet" role="dialog" aria-label={t("moreWord")}>
-        {orgName && (
-          <div className="sborg">
-            <p className="mono sborgrole">{t("operator")}</p>
-            <p className="sborgname">{orgName}</p>
-            {personName && <p className="sborgperson">{personName}</p>}
-          </div>
-        )}
-        <Item id="stickers" Icon={QrCode} label={t("stickers")} />
-        <Item id="codes" Icon={KeyRound} label={t("accessCodes")} />
-        {isPlatformAdmin && <Item id="orgs" Icon={ShieldCheck} label={t("orgsWord")} />}
-        <Item id="account" Icon={User} label={t("account")} />
-      </div>
-    )}
-
-    <nav className="sidebar" aria-label={t("dashboardWord")}>
-      {/* No logo or name here: the header two centimetres above already says
-          DormTag, and repeating it cost a whole block of vertical space. */}
-      {/* The organisation and the person, because the header no longer carries
-          either: it showed the same name twice over. Knowing which account
-          you're in matters when you hold more than one. */}
-      {orgName && (
-        <div className="sborg">
-          <p className="mono sborgrole">{t("operator")}</p>
-          <p className="sborgname">{orgName}</p>
-          {personName && <p className="sborgperson">{personName}</p>}
+      <nav className="opp-root" aria-label={t("operator")}>
+        <div className="opp-org">
+          <span className="opp-org-eyebrow">{t("opPanelOperator")}</span>
+          {/* Wraps rather than truncates: the city is what tells two
+              Studierendenwerke apart. */}
+          <span className="opp-org-name">{orgName ?? t("appName")}</span>
+          {personName && <span className="opp-org-sub">{personName}</span>}
         </div>
-      )}
 
-      <Item id="dashboard" Icon={LayoutGrid} label={t("dashboardWord")} />
-      <Item id="buildings" Icon={Building2} label={t("buildings")} />
-      <Item id="staff" Icon={Users} label={t("staffWord")} />
-      <Item id="stickers" Icon={QrCode} label={t("stickers")} />
-      <Item id="codes" Icon={KeyRound} label={t("accessCodes")} />
+        <ul className="opp-list">{main}</ul>
 
-      {isPlatformAdmin && (
-        <div className="sbsplit">
-          <Item id="orgs" Icon={ShieldCheck} label={t("orgsWord")} />
+        <div className="opp-foot">
+          <Item id="account" Icon={User} label={t("account")} />
         </div>
-      )}
+      </nav>
 
-      <div className="sbfoot">
-        <Item id="account" Icon={User} label={t("account")} />
-      </div>
-    </nav>
     </>
   );
 }
