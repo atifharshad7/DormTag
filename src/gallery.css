@@ -369,15 +369,6 @@
  * part of. Zoom works — index.html sets no maximum-scale — and the stage scrolls
  * sideways, so anyone who wants the detail can get it.
  */
-@media (max-width: 640px) {
-  /* Momentum scrolling, and no scrollbar sitting across the mockup. */
-  .dp-stage { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  .dp-stage::-webkit-scrollbar { display: none; }
-
-  /* A hairline of the next slide showing is what says "there is more this way".
-     Without it a cropped frame just looks broken. */
-  .dp-stage { padding-inline: 12px; }
-}
 
 /* Fixed stage height on small screens: the phone at .7179 is still 606px tall,
    so the stage keeps 640px and only the laptop gets more empty space. */

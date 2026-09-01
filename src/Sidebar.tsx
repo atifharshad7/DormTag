@@ -83,6 +83,63 @@ export function Sidebar({ t, section, onGo, isPlatformAdmin, orgName, personName
         </div>
       </nav>
 
+      {/*
+        Below 640px, a bottom bar instead of the rail.
+
+        A 64px icon rail is the export's answer and it suits a landscape tablet,
+        but on a phone it spends horizontal space there isn't any of and drops
+        the labels — six unlabelled icons is not navigation. The bar is where a
+        thumb already is.
+
+        Four items: Dashboard, Buildings, Staff, More. Five gets cramped at
+        360px, and "Zugangscodes" is long.
+      */}
+      <nav className="opp-bar" aria-label={t("operator")}>
+        <BarItem id="dashboard" Icon={LayoutGrid} label={t("opNavDash")} />
+        <BarItem id="buildings" Icon={Building2} label={t("buildings")} />
+        <BarItem id="staff" Icon={Users} label={t("staff")} />
+        <button className={"opp-baritem" + (more ? " opp-baritem-on" : "")}
+          aria-expanded={more} onClick={() => setMore((v) => !v)}>
+          {more ? <X size={20} strokeWidth={1.9} aria-hidden />
+                : <MoreHorizontal size={20} strokeWidth={1.9} aria-hidden />}
+          <span className="opp-barlabel">{t("moreWord")}</span>
+        </button>
+      </nav>
+
+      {more && (
+        <>
+          <button className="opp-sheetscrim" aria-label={t("close")}
+            onClick={() => setMore(false)} />
+          <div className="opp-sheet" role="dialog" aria-modal="true">
+            <SheetItem id="stickers" Icon={QrCode} label={t("stickers")} />
+            <SheetItem id="codes" Icon={KeyRound} label={t("accessCodes")} />
+            {isPlatformAdmin && <SheetItem id="orgs" Icon={ShieldCheck} label={t("orgsWord")} />}
+            <SheetItem id="account" Icon={User} label={t("account")} />
+          </div>
+        </>
+      )}
     </>
   );
+
+  /* Icon above label. No badge: there is no room for one at this size. */
+  function BarItem({ id, Icon, label }: { id: OpSection; Icon: any; label: string }) {
+    return (
+      <button className={"opp-baritem" + (section === id ? " opp-baritem-on" : "")}
+        aria-current={section === id ? "page" : undefined}
+        onClick={() => { setMore(false); onGo(id); }}>
+        <Icon size={20} strokeWidth={1.9} aria-hidden />
+        <span className="opp-barlabel">{label}</span>
+      </button>
+    );
+  }
+
+  function SheetItem({ id, Icon, label }: { id: OpSection; Icon: any; label: string }) {
+    return (
+      <button className={"opp-sheetitem" + (section === id ? " opp-sheetitem-on" : "")}
+        onClick={() => { setMore(false); onGo(id); }}>
+        <Icon size={19} strokeWidth={1.8} aria-hidden />
+        <span>{label}</span>
+      </button>
+    );
+  }
 }
