@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import {
   User, Wrench, ArrowRight, Database, QrCode, Printer, ChevronLeft, Copy, Check,
-  LayoutDashboard, HelpCircle, Eye, EyeOff,
+  LayoutDashboard, HelpCircle, Eye, EyeOff, Package,
 } from "lucide-react";
 import {
   api, roomLabel, objLabel, objIcon, symptomLabel, SYMPTOMS_FOR,
@@ -221,70 +221,88 @@ export function ScanLanding({ l, t, slug, principal, onSignIn, onDone }: {
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
+  const ready = !!objectId && !!symptom && !(symptom === "OTHER" && !note.trim());
+
   return (
-    <div className="col">
-      <div className="scanned">
-        <QrCode size={20} strokeWidth={1.5} aria-hidden />
-        <span className="plate">
-          {room.building_code}-{room.unit_code} · {roomLabel(room.room_type, l)}
-        </span>
+    /*
+      The first screen a new resident ever sees, so it says where they are
+      before it asks anything: the room comes off the sticker, not from them.
+    */
+    <div className="rz">
+      <div className="col rz-body">
+        <div>
+          <span className="rz-plate">
+            {room.building_code}-{room.unit_code} · {roomLabel(room.room_type, l)}
+          </span>
+          <h2 className="rz-display" style={{ marginTop: 10 }}>
+            {needsAuth ? t("signInToReport") : t("whatBroken")}
+          </h2>
+        </div>
+
+        {needsAuth ? (
+          <button className="rz-btn rz-btn-primary" onClick={onSignIn}>
+            {t("signInBtn")} <ArrowRight size={17} aria-hidden />
+          </button>
+        ) : (
+          <>
+            <div className="rz-tiles">
+              {data.siblings.map((s: any) => {
+                const Icon = objIcon(s.object_type) ?? Package;
+                const many = data.siblings
+                  .filter((x: any) => x.object_type === s.object_type).length > 1;
+                return (
+                  <button key={s.id} className="rz-tile"
+                    aria-pressed={objectId === s.id}
+                    style={objectId === s.id
+                      ? { boxShadow: "inset 0 0 0 2px var(--primary)", background: "var(--primary-50)" }
+                      : undefined}
+                    onClick={() => { setObjectId(s.id); setSymptom(null); }}>
+                    <Icon size={28} strokeWidth={1.6} aria-hidden />
+                    <span className="rz-tilelabel">
+                      {objLabel(s.object_type, l)}{many ? ` ${s.ordinal}` : ""}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {current && (
+              <>
+                <div className="rz-grouphead">
+                  <p className="rz-overline">{t("whatWrong")}</p>
+                  <span className="rz-rule" />
+                </div>
+                <div className="col" style={{ gap: 8 }}>
+                  {syms.map((sy) => (
+                    <button key={sy} className="rz-option" aria-pressed={symptom === sy}
+                      onClick={() => setSymptom(sy)}>
+                      {symptomLabel(sy, l)}
+                      <Check className="rz-tick" size={19} strokeWidth={2.4} aria-hidden />
+                    </button>
+                  ))}
+                </div>
+
+                <textarea className="rz-note" rows={3}
+                  placeholder={symptom === "OTHER" ? t("noteWanted") : t("noteOptional")}
+                  value={note} onChange={(e) => setNote(e.target.value)} />
+              </>
+            )}
+
+            {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
+          </>
+        )}
       </div>
 
-      {needsAuth ? (
-        <>
-          <p className="muted">{t("signInToReport")}</p>
-          <button className="btn btn-primary" onClick={onSignIn}>{t("signInBtn")}</button>
-        </>
-      ) : (
-        <>
-          <h2>{t("whatBroken")}</h2>
-          <div className="grid2">
-            {data.siblings.map((s: any) => {
-              const Icon = objIcon(s.object_type);
-              return (
-                <button key={s.id}
-                  className={"tile" + (objectId === s.id ? " tile-on" : "")}
-                  onClick={() => { setObjectId(s.id); setSymptom(null); }}>
-                  {Icon && <Icon size={26} strokeWidth={1.5} aria-hidden />}
-                  <span>
-                    {objLabel(s.object_type, l)}
-                    {data.siblings.filter((x: any) => x.object_type === s.object_type).length > 1
-                      ? ` ${s.ordinal}` : ""}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {current && (
-            <>
-              <h2>{t("whatWrong")}</h2>
-              <div className="grid2">
-                {syms.map((s) => (
-                  <button key={s} className={"tile tile-text" + (symptom === s ? " tile-on" : "")}
-                    onClick={() => setSymptom(s)}>
-                    <span>{symptomLabel(s, l)}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {current && (
-            <textarea className="ta" rows={2}
-              placeholder={symptom === "OTHER" ? t("noteWanted") : t("noteOptional")}
-              value={note} onChange={(e) => setNote(e.target.value)} />
-          )}
-
-          {err && <div className="err">{err}</div>}
-          {/* "Something else" carries no information on its own, so the note
-              stops being optional when it's chosen. */}
-          <button className="btn btn-primary"
-            disabled={!objectId || !symptom || busy || (symptom === "OTHER" && !note.trim())}
+      {/* Only once there's something to send. "Something else" carries no
+          information on its own, so the note stops being optional with it. */}
+      {!needsAuth && current && (
+        <div className="rz-actionbar">
+          <button className="rz-actionmain" disabled={!ready || busy}
+            style={!ready ? { background: "var(--rz-surface-3)", color: "var(--fg-3)", boxShadow: "none" } : undefined}
             onClick={send}>
-            {t("send")} <ArrowRight size={16} />
+            {t("send")} <ArrowRight size={17} aria-hidden />
           </button>
-        </>
+        </div>
       )}
     </div>
   );
@@ -295,20 +313,47 @@ export function ReportDone({ t, token, onHome }: { t: T; token?: string; onHome:
   const [copied, setCopied] = useState(false);
   const url = token ? `${location.origin}/t/${token}` : null;
   return (
-    <div className="col">
-      <div className="flash">{t("reportSent")}</div>
-      {url && (
-        <div className="card">
-          <p className="muted">{t("saveLink")}</p>
-          <p className="mono breakall">{url}</p>
-          <button className="btn" onClick={async () => {
-            try { await navigator.clipboard.writeText(url); setCopied(true); } catch { /* ignore */ }
-          }}>
-            {copied ? <><Check size={16} /> {t("copied")}</> : <><Copy size={16} /> {t("copyLink")}</>}
-          </button>
+    /*
+      An anonymous report has no account behind it, so this link is the only way
+      the person ever sees their own report again. It gets the whole screen
+      rather than a line in a card.
+    */
+    <div className="rz">
+      <div className="col rz-body">
+        <div className="rz-appt" style={{ alignItems: "flex-start" }}>
+          <Check size={22} strokeWidth={2.2} aria-hidden />
+          <div>
+            <p className="rz-apptwhen">{t("reportSent")}</p>
+          </div>
         </div>
-      )}
-      <button className="btn" onClick={onHome}>{t("backToApp")}</button>
+
+        {url && (
+          <>
+            <div className="rz-grouphead">
+              <p className="rz-overline">{t("saveLink")}</p>
+              <span className="rz-rule" />
+            </div>
+
+            <div className="rz-notewell">
+              <p className="rz-mono" style={{ wordBreak: "break-all" }}>{url}</p>
+            </div>
+
+            <button className="rz-btn rz-btn-primary" style={{ alignSelf: "flex-start" }}
+              onClick={async () => {
+                try { await navigator.clipboard.writeText(url); setCopied(true); } catch { /* ignore */ }
+              }}>
+              {copied
+                ? <><Check size={17} aria-hidden /> {t("copied")}</>
+                : <><Copy size={17} aria-hidden /> {t("copyLink")}</>}
+            </button>
+          </>
+        )}
+
+        <button className="rz-btn rz-btn-ghost" style={{ alignSelf: "flex-start" }}
+          onClick={onHome}>
+          {t("backToApp")}
+        </button>
+      </div>
     </div>
   );
 }
@@ -320,12 +365,23 @@ export function ReportDone({ t, token, onHome }: { t: T; token?: string; onHome:
 function Qr({ text, size = 132 }: { text: string; size?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    if (!ref.current) return;
-    QRCode.toCanvas(ref.current, text, {
-      width: size,
+    const el = ref.current;
+    if (!el) return;
+    QRCode.toCanvas(el, text, {
+      width: size,          // the backing store, so print and 3x screens stay sharp
       margin: 1,
       errorCorrectionLevel: "Q",
       color: { dark: "#000000", light: "#ffffff" },
+    }).then(() => {
+      /*
+       * The encoder writes style.width and style.height onto the canvas, and an
+       * inline style outranks a class rule — so `.qr { width: 66px }` never
+       * applied and the code rendered at its full backing size, squeezing the
+       * label column until "Bathroom" became "Bathr". Clearing them hands
+       * sizing back to the stylesheet.
+       */
+      el.style.removeProperty("width");
+      el.style.removeProperty("height");
     }).catch(() => {});
   }, [text, size]);
   return <canvas ref={ref} width={size} height={size} className="qr" />;
