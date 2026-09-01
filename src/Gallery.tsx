@@ -74,7 +74,7 @@ const TRACKS: Record<Role, Slide[]> = {
                     <div className="dp-phone-surface">
                       <div className="dp-status"><span className="dp-status-time">9:41</span><span className="dp-status-icons" ><i className="dp-status-pill" /><i className="dp-status-batt" /></span></div>
                       <div className="dp-appbar">
-                        <span className="dp-brand"><i className="dp-brand-mark"  /><span className="dp-brand-name">DormTag</span></span>
+                        <span className="dp-brand"><span className="dp-brand-mark"><Logo size={20} /></span><span className="dp-brand-name">DormTag</span></span>
                         <span className="dp-unit-chip">B-312</span>
                       </div>
                       <div className="dp-phone-body">
@@ -135,7 +135,7 @@ const TRACKS: Record<Role, Slide[]> = {
                 </div>
                 <div className="dp-appbar">
                   <span className="dp-brand">
-                    <i className="dp-brand-mark" /><span className="dp-brand-name">DormTag</span>
+                    <span className="dp-brand-mark"><Logo size={20} /></span><span className="dp-brand-name">DormTag</span>
                   </span>
                   <span className="dp-unit-chip">B-312</span>
                 </div>
@@ -189,7 +189,7 @@ const TRACKS: Record<Role, Slide[]> = {
                     <div className="dp-phone-surface">
                       <div className="dp-status"><span className="dp-status-time">9:41</span><span className="dp-status-icons" ><i className="dp-status-pill" /><i className="dp-status-batt" /></span></div>
                       <div className="dp-appbar">
-                        <span className="dp-brand"><i className="dp-brand-mark"  /><span className="dp-brand-name">DormTag</span></span>
+                        <span className="dp-brand"><span className="dp-brand-mark"><Logo size={20} /></span><span className="dp-brand-name">DormTag</span></span>
                         <span className="dp-unit-chip">B-312</span>
                       </div>
                       <div className="dp-phone-body">
@@ -221,7 +221,7 @@ const TRACKS: Record<Role, Slide[]> = {
                     <div className="dp-phone-surface">
                       <div className="dp-status"><span className="dp-status-time">9:41</span><span className="dp-status-icons" ><i className="dp-status-pill" /><i className="dp-status-batt" /></span></div>
                       <div className="dp-appbar">
-                        <span className="dp-brand"><i className="dp-brand-mark"  /><span className="dp-brand-name">DormTag</span></span>
+                        <span className="dp-brand"><span className="dp-brand-mark"><Logo size={20} /></span><span className="dp-brand-name">DormTag</span></span>
                         <span className="dp-unit-chip">B-312</span>
                       </div>
                       <div className="dp-phone-body">
@@ -248,7 +248,7 @@ const TRACKS: Record<Role, Slide[]> = {
                     <div className="dp-phone-surface">
                       <div className="dp-status"><span className="dp-status-time">9:41</span><span className="dp-status-icons" ><i className="dp-status-pill" /><i className="dp-status-batt" /></span></div>
                       <div className="dp-appbar">
-                        <span className="dp-brand"><i className="dp-brand-mark"  /><span className="dp-brand-name">DormTag</span></span>
+                        <span className="dp-brand"><span className="dp-brand-mark"><Logo size={20} /></span><span className="dp-brand-name">DormTag</span></span>
                         <span className="dp-unit-chip">B-312</span>
                       </div>
                       <div className="dp-phone-body">
@@ -295,7 +295,7 @@ const TRACKS: Record<Role, Slide[]> = {
                     <div className="dp-phone-surface">
                       <div className="dp-status"><span className="dp-status-time">9:41</span><span className="dp-status-icons" ><i className="dp-status-pill" /><i className="dp-status-batt" /></span></div>
                       <div className="dp-appbar">
-                        <span className="dp-brand"><i className="dp-brand-mark"  /><span className="dp-brand-name">DormTag</span></span>
+                        <span className="dp-brand"><span className="dp-brand-mark"><Logo size={20} /></span><span className="dp-brand-name">DormTag</span></span>
                         <span className="dp-unit-chip">B-312</span>
                       </div>
                       <div className="dp-phone-body">
@@ -338,7 +338,7 @@ const TRACKS: Record<Role, Slide[]> = {
                     <div className="dp-phone-surface">
                       <div className="dp-status"><span className="dp-status-time">9:41</span><span className="dp-status-icons" ><i className="dp-status-pill" /><i className="dp-status-batt" /></span></div>
                       <div className="dp-appbar">
-                        <span className="dp-brand"><i className="dp-brand-mark"  /><span className="dp-brand-name">DormTag</span></span>
+                        <span className="dp-brand"><span className="dp-brand-mark"><Logo size={20} /></span><span className="dp-brand-name">DormTag</span></span>
                         <span className="dp-unit-chip">B-312</span>
                       </div>
                       <div className="dp-phone-body">
@@ -370,7 +370,7 @@ const TRACKS: Record<Role, Slide[]> = {
                     <div className="dp-phone-surface">
                       <div className="dp-status"><span className="dp-status-time">9:41</span><span className="dp-status-icons" ><i className="dp-status-pill" /><i className="dp-status-batt" /></span></div>
                       <div className="dp-appbar">
-                        <span className="dp-brand"><i className="dp-brand-mark"  /><span className="dp-brand-name">DormTag</span></span>
+                        <span className="dp-brand"><span className="dp-brand-mark"><Logo size={20} /></span><span className="dp-brand-name">DormTag</span></span>
                         <span className="dp-unit-chip">B-312</span>
                       </div>
                       <div className="dp-phone-body">
@@ -408,7 +408,7 @@ const TRACKS: Record<Role, Slide[]> = {
                     <div className="dp-phone-surface">
                       <div className="dp-status"><span className="dp-status-time">9:41</span><span className="dp-status-icons" ><i className="dp-status-pill" /><i className="dp-status-batt" /></span></div>
                       <div className="dp-appbar">
-                        <span className="dp-brand"><i className="dp-brand-mark"  /><span className="dp-brand-name">DormTag</span></span>
+                        <span className="dp-brand"><span className="dp-brand-mark"><Logo size={20} /></span><span className="dp-brand-name">DormTag</span></span>
                         <span className="dp-unit-chip">B-312</span>
                       </div>
                       <div className="dp-phone-body">
@@ -442,6 +442,11 @@ const TRACKS: Record<Role, Slide[]> = {
                       <div className="dp-laptop-surface">
                         <div className="dp-op-panel">
                           <div className="dp-op-org">
+                        {/* The export leaves the laptop's panel without a mark;
+                            every other surface in the app carries one. */}
+                        <span className="dp-op-brand">
+                          <Logo size={18} /><span className="dp-op-brandname">DormTag</span>
+                        </span>
                             <span className="dp-op-eyebrow">{l === "de" ? 'Verwaltung' : 'Operator'}</span>
                             <span className="dp-op-orgname">Studierendenwerk (Demo)</span>
                             <span className="dp-op-orgsub">Studierendenwerk</span>
@@ -516,6 +521,11 @@ const TRACKS: Record<Role, Slide[]> = {
                       <div className="dp-laptop-surface">
                         <div className="dp-op-panel">
                           <div className="dp-op-org">
+                        {/* The export leaves the laptop's panel without a mark;
+                            every other surface in the app carries one. */}
+                        <span className="dp-op-brand">
+                          <Logo size={18} /><span className="dp-op-brandname">DormTag</span>
+                        </span>
                             <span className="dp-op-eyebrow">{l === "de" ? 'Verwaltung' : 'Operator'}</span>
                             <span className="dp-op-orgname">Studierendenwerk (Demo)</span>
                             <span className="dp-op-orgsub">Studierendenwerk</span>
@@ -561,6 +571,11 @@ const TRACKS: Record<Role, Slide[]> = {
                       <div className="dp-laptop-surface">
                         <div className="dp-op-panel">
                           <div className="dp-op-org">
+                        {/* The export leaves the laptop's panel without a mark;
+                            every other surface in the app carries one. */}
+                        <span className="dp-op-brand">
+                          <Logo size={18} /><span className="dp-op-brandname">DormTag</span>
+                        </span>
                             <span className="dp-op-eyebrow">{l === "de" ? 'Verwaltung' : 'Operator'}</span>
                             <span className="dp-op-orgname">Studierendenwerk (Demo)</span>
                             <span className="dp-op-orgsub">Studierendenwerk</span>
@@ -619,6 +634,11 @@ const TRACKS: Record<Role, Slide[]> = {
                       <div className="dp-laptop-surface">
                         <div className="dp-op-panel">
                           <div className="dp-op-org">
+                        {/* The export leaves the laptop's panel without a mark;
+                            every other surface in the app carries one. */}
+                        <span className="dp-op-brand">
+                          <Logo size={18} /><span className="dp-op-brandname">DormTag</span>
+                        </span>
                             <span className="dp-op-eyebrow">{l === "de" ? 'Verwaltung' : 'Operator'}</span>
                             <span className="dp-op-orgname">Studierendenwerk (Demo)</span>
                             <span className="dp-op-orgsub">Studierendenwerk</span>
@@ -669,6 +689,11 @@ const TRACKS: Record<Role, Slide[]> = {
                       <div className="dp-laptop-surface">
                         <div className="dp-op-panel">
                           <div className="dp-op-org">
+                        {/* The export leaves the laptop's panel without a mark;
+                            every other surface in the app carries one. */}
+                        <span className="dp-op-brand">
+                          <Logo size={18} /><span className="dp-op-brandname">DormTag</span>
+                        </span>
                             <span className="dp-op-eyebrow">{l === "de" ? 'Verwaltung' : 'Operator'}</span>
                             <span className="dp-op-orgname">Studierendenwerk (Demo)</span>
                             <span className="dp-op-orgsub">Studierendenwerk</span>

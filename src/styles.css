@@ -962,3 +962,9 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   .dashpair { display: grid; }
 }
 
+
+@media (max-width: 640px) {
+  /* The panel is a fixed bottom bar at this width, so the shell has nothing to
+     lay out beside the content. */
+  .opshell { display: block; }
+}

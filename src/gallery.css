@@ -358,6 +358,27 @@
   .dp-laptop { min-width: 380px; }
 }
 
+/*
+ * On a phone the laptop is scaled to about a quarter, so the headings read and
+ * the small print doesn't. That's the right trade for a marketing page — nobody
+ * needs to read individual ticket rows in a mockup, and the caption underneath
+ * carries the meaning in words.
+ *
+ * The frame is a little wider than the viewport by design, so a fringe of it
+ * shows past the edge and the screen reads as something you're looking at a
+ * part of. Zoom works — index.html sets no maximum-scale — and the stage scrolls
+ * sideways, so anyone who wants the detail can get it.
+ */
+@media (max-width: 640px) {
+  /* Momentum scrolling, and no scrollbar sitting across the mockup. */
+  .dp-stage { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .dp-stage::-webkit-scrollbar { display: none; }
+
+  /* A hairline of the next slide showing is what says "there is more this way".
+     Without it a cropped frame just looks broken. */
+  .dp-stage { padding-inline: 12px; }
+}
+
 /* Fixed stage height on small screens: the phone at .7179 is still 606px tall,
    so the stage keeps 640px and only the laptop gets more empty space. */
 @media (max-width: 470px) {
@@ -572,3 +593,24 @@
   color: #fff;
 }
 .dp-toggle-icon > svg { width: 18px; height: 18px; display: block; }
+
+/* The real mark, in both frames. The export draws the phone's as an empty
+   rounded square and gives the laptop none at all — but the mark is on every
+   sticker in the building, so a mockup without it shows a different product. */
+.dp-brand-mark {
+  background: none;
+  box-shadow: none;
+  display: grid;
+  place-items: center;
+}
+.dp-brand-mark > svg { width: 100%; height: 100%; display: block; }
+
+.dp-op-brand { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+.dp-op-brandname {
+  font-family: var(--dp-font-sans);
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: -.02em;
+  color: var(--dp-mock-ink, #e6edf2);
+}

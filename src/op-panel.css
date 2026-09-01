@@ -250,3 +250,77 @@
   .opp-badge { display: none; }
   .opp-item { justify-content: center; padding: 12px 0; }
 }
+
+/* ==================================================================== */
+/* three widths                                                         */
+/* ==================================================================== */
+
+/*
+ * Above 1024px  full 240px panel, labels and the organisation name
+ * 640–1024px    64px icon rail, the export's own collapse
+ * below 640px   a bottom bar
+ *
+ * The rail suits a landscape tablet, which has the horizontal room. A phone
+ * doesn't, and a rail there spends width on chrome and drops the labels — six
+ * unlabelled icons is not navigation. The bar is where a thumb already is.
+ */
+
+.opp-bar { display: none; }
+.opp-sheet, .opp-sheetscrim { display: none; }
+
+@media (max-width: 640px) {
+  .opp-root { display: none; }
+
+  .opp-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 8;
+    display: flex; align-items: stretch;
+    background: var(--op-surface);
+    border-top: 1px solid var(--op-border);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .opp-baritem {
+    appearance: none; -webkit-appearance: none;
+    flex: 1 1 0; min-width: 0;
+    border: 0; background: none; cursor: pointer;
+    padding: 9px 4px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    color: var(--op-fg-3);
+    font-family: var(--op-font-sans);
+  }
+  .opp-baritem-on { color: var(--op-primary); }
+
+  /* The label is what makes this navigation rather than a row of glyphs, so it
+     stays even at 360px — hence 10.5px, and the ellipsis for Zugangscodes. */
+  .opp-barlabel {
+    font-weight: 600; font-size: 10.5px; line-height: 1.2;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* More opens upward, over the content it isn't replacing. */
+  .opp-sheetscrim {
+    display: block; position: fixed; inset: 0; z-index: 9;
+    border: 0; width: 100%; background: var(--op-overlay, rgba(31, 63, 79, .45));
+  }
+  .opp-sheet {
+    display: flex; flex-direction: column;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    background: var(--op-surface);
+    border-radius: 20px 20px 0 0;
+    padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+    box-shadow: 0 -12px 32px rgba(31, 63, 79, .18);
+  }
+  .opp-sheetitem {
+    appearance: none; -webkit-appearance: none;
+    border: 0; background: none; cursor: pointer; text-align: left;
+    display: flex; align-items: center; gap: 13px;
+    padding: 14px 12px; border-radius: var(--op-r-sm);
+    color: var(--op-fg-1);
+    font-family: var(--op-font-sans); font-weight: 600; font-size: 15px; line-height: 1.3;
+  }
+  .opp-sheetitem-on { background: var(--op-surface-3); color: var(--op-primary); }
+
+  /* So the last row of a list isn't hidden under the bar — the same thing the
+     resident's action bar needed. */
+  .opshell, .opmain { padding-bottom: 76px; }
+}

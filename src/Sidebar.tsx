@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { LayoutGrid, Building2, Users, QrCode, KeyRound, ShieldCheck, User,
-} from "lucide-react";
+  MoreHorizontal, X } from "lucide-react";
 import { type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -19,20 +19,29 @@ export type OpSection =
  * and needs to see the city, so an ellipsis would remove the one word that
  * distinguishes them.
  *
- * Below 1024px it collapses to a 64px icon rail rather than disappearing —
- * the export's own answer, and better than the bottom strip I had: the panel
- * stays where it is and only sheds its words, so nothing moves.
+ * Three layouts, because a phone and a laptop want different things:
+ *
+ *   above 1024px   the full 240px panel
+ *   640–1024px     a 64px icon rail — the export's answer, and right for a
+ *                  landscape tablet, which has the horizontal room
+ *   below 640px    a bottom bar, because a rail on a phone costs width there
+ *                  isn't any of and leaves six unlabelled icons
+ *
+ * The bar carries three destinations plus More; six across a phone would be
+ * unreadable, and the three are what an operator opens daily.
  */
 export function Sidebar({ t, section, onGo, isPlatformAdmin, orgName, personName }: {
   t: T; section: OpSection; onGo: (s: OpSection) => void;
   isPlatformAdmin?: boolean; orgName?: string; personName?: string;
 }) {
+  /* Only the phone's More sheet uses this. */
+  const [more, setMore] = useState(false);
   const Item = ({ id, Icon, label, badge }: {
     id: OpSection; Icon: any; label: string; badge?: number;
   }) => (
     <button className={"opp-item" + (section === id ? " opp-item-active" : "")}
       aria-current={section === id ? "page" : undefined}
-      onClick={() => onGo(id)}
+      onClick={() => { setMore(false); onGo(id); }}
       /* Below 1024px the panel is icons only, so the label becomes the tooltip
          and the accessible name. */
       title={label} aria-label={label}>
@@ -53,6 +62,8 @@ export function Sidebar({ t, section, onGo, isPlatformAdmin, orgName, personName
       {isPlatformAdmin && <Item id="orgs" Icon={ShieldCheck} label={t("orgsWord")} />}
     </>
   );
+
+  /* Only the bar needs this; the panel and the rail show everything. */
 
   return (
     <>
