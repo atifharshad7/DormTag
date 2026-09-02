@@ -343,38 +343,50 @@
    a ResizeObserver: screenEl.clientWidth / 1400 (exact at every width).
    The laptop SHRINKS; it never crops and never becomes a phone.
    -------------------------------------------------------------------------- */
-@media (max-width: 1120px) { :root { --dp-laptop-scale: 0.66; } }
-@media (max-width: 940px)  { :root { --dp-laptop-scale: 0.58; } }
-@media (max-width: 820px)  { :root { --dp-laptop-scale: 0.50; } }
-@media (max-width: 700px)  { :root { --dp-laptop-scale: 0.42; } }
-@media (max-width: 580px)  { :root { --dp-laptop-scale: 0.34; } }
-@media (max-width: 470px)  { :root { --dp-laptop-scale: 0.28; } }
-
-/* Below 380px the surface would scale under .26 and the dashboard type stops
-   being legible, so the frame stops shrinking and the stage pans instead. */
-@media (max-width: 380px) {
-  :root { --dp-laptop-scale: 0.26; }
-  .dp-stage { overflow-x: auto; justify-content: flex-start; }
-  .dp-laptop { min-width: 380px; }
-}
-
 /*
- * On a phone the laptop is scaled to about a quarter, so the headings read and
- * the small print doesn't. That's the right trade for a marketing page — nobody
- * needs to read individual ticket rows in a mockup, and the caption underneath
- * carries the meaning in words.
+ * The laptop's scale, one rung every 40px.
  *
- * The frame is a little wider than the viewport by design, so a fringe of it
- * shows past the edge and the screen reads as something you're looking at a
- * part of. Zoom works — index.html sets no maximum-scale — and the stage scrolls
- * sideways, so anyone who wants the detail can get it.
+ * Two earlier attempts were wrong and both are worth recording.
+ *
+ * The export's own ladder set each rung to the scale that fits at the TOP of
+ * its band, so anywhere below that the frame was too wide — cropped from about
+ * 432 to 543, and again from 584 up. Each rung here is sized for the NARROWEST
+ * width in its band instead, so it can only ever have slack, never overflow.
+ *
+ * Then I tried computing it: `calc((100vw - 68px) / 1400)`. That divides a
+ * length by a number, which yields a length — 0.23px, not a ratio — so
+ * `scale(0.23px)` was invalid, the declaration was dropped, and the frame
+ * rendered at its full 1400px. CSS has no way to divide a length by a length,
+ * so rungs it is.
+ *
+ * The 68px is what the frame needs beyond the screen: the page's 24px gutters
+ * either side plus the lid's 10px of bezel, and 4px of slack so rounding can't
+ * leave it sitting exactly on the edge.
+ *
+ * Verified at every pixel from 320 to 1400.
  */
-
-/* Fixed stage height on small screens: the phone at .7179 is still 606px tall,
-   so the stage keeps 640px and only the laptop gets more empty space. */
-@media (max-width: 470px) {
-  .dp-root { gap: 14px; }
-}
+@media (max-width: 1200px) { :root { --dp-laptop-scale: 0.7429; } }
+@media (max-width: 1160px) { :root { --dp-laptop-scale: 0.7429; } }
+@media (max-width: 1120px) { :root { --dp-laptop-scale: 0.7207; } }
+@media (max-width: 1080px) { :root { --dp-laptop-scale: 0.6921; } }
+@media (max-width: 1040px) { :root { --dp-laptop-scale: 0.6636; } }
+@media (max-width: 1000px) { :root { --dp-laptop-scale: 0.635; } }
+@media (max-width: 960px) { :root { --dp-laptop-scale: 0.6064; } }
+@media (max-width: 920px) { :root { --dp-laptop-scale: 0.5779; } }
+@media (max-width: 880px) { :root { --dp-laptop-scale: 0.5493; } }
+@media (max-width: 840px) { :root { --dp-laptop-scale: 0.5207; } }
+@media (max-width: 800px) { :root { --dp-laptop-scale: 0.4921; } }
+@media (max-width: 760px) { :root { --dp-laptop-scale: 0.4636; } }
+@media (max-width: 720px) { :root { --dp-laptop-scale: 0.435; } }
+@media (max-width: 680px) { :root { --dp-laptop-scale: 0.4064; } }
+@media (max-width: 640px) { :root { --dp-laptop-scale: 0.3779; } }
+@media (max-width: 600px) { :root { --dp-laptop-scale: 0.3493; } }
+@media (max-width: 560px) { :root { --dp-laptop-scale: 0.3207; } }
+@media (max-width: 520px) { :root { --dp-laptop-scale: 0.2921; } }
+@media (max-width: 480px) { :root { --dp-laptop-scale: 0.2636; } }
+@media (max-width: 440px) { :root { --dp-laptop-scale: 0.235; } }
+@media (max-width: 400px) { :root { --dp-laptop-scale: 0.2064; } }
+@media (max-width: 360px) { :root { --dp-laptop-scale: 0.1771; } }
 
 /* The QR fills its box: an SVG with its own width and height stripped needs the
    box to say how big it is. */
@@ -605,3 +617,7 @@
   letter-spacing: -.02em;
   color: var(--dp-mock-ink, #e6edf2);
 }
+
+/* The fluid stage still needs its vertical rhythm: without the fixed height,
+   the frame would sit flush against the tabs above and the dots below. */
+.dp-stage-fluid { padding-block: 14px; }

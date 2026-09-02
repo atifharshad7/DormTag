@@ -1271,7 +1271,12 @@ export default function App() {
       </header>
       )}
 
-      <main className={operatorOwnView || fullBleed ? "opview" : wideView ? "wide" : "narrow"}>
+      <main className={
+        (operatorOwnView || fullBleed ? "opview" : wideView ? "wide" : "narrow")
+        /* The landing page runs edge to edge and owns its gutters, so it opts
+           out of the narrow-screen padding the operator's screens want. */
+        + (fullBleed ? " lzview" : "")
+      }>
         {/*
           One switch on the route, rather than a chain testing two overlapping
           pieces of state. Every screen has a URL now, so back, forward and

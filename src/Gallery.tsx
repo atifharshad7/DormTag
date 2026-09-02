@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { Logo } from "./Logo";
-import { LaptopNarrow } from "./LaptopNarrow";
 import { type Locale, type StrKey } from "./lib";
 
 type T = (k: StrKey) => string;
@@ -63,7 +62,7 @@ function SlugQR({ className, slug = "b312-ba-shower" }: {
 type Role = "resident" | "caretaker" | "operator";
 type Slide = { body: (l: Locale) => React.ReactNode; de: string; en: string };
 
-const TRACKS: Record<Role, Slide[]> = {
+const SLIDES: Record<Role, Slide[]> = {
   resident: [
     {
       de: 'Alles Offene zuerst, und genau eine Karte, die dich braucht.',
@@ -734,7 +733,7 @@ export function Gallery({ l, t }: { l: Locale; t: T }) {
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
 
-  const slides = TRACKS[role];
+  const slides = SLIDES[role];
   const count = slides.length;
   const go = useCallback((n: number) => setI(((n % count) + count) % count), [count]);
 
@@ -764,13 +763,6 @@ export function Gallery({ l, t }: { l: Locale; t: T }) {
     return () => q.removeEventListener("change", on);
   }, []);
 
-  /*
-   * One screen rather than a deck.
-   *
-   * The export draws a single dashboard at this width, so the paging controls
-   * and the caption are hidden — they'd promise four screens that don't exist.
-   */
-  const oneScreen = role === "operator" && narrow;
 
   const TABS: [Role, StrKey][] = [
     ["resident", "tenant"], ["caretaker", "staff"], ["operator", "operator"],
@@ -790,8 +782,16 @@ export function Gallery({ l, t }: { l: Locale; t: T }) {
         ))}
       </div>
 
-      {/* Fixed height across all three tabs, so the page doesn't jump. */}
-      <div className="dp-stage"
+      {/*
+        Fixed height on a wide screen, so switching tabs doesn't make the page
+        jump. On a phone it sizes to the content instead: the laptop is 214px
+        tall there against a 640px stage, and 426px of empty space below a
+        mockup is worse than a little movement when you change tab.
+        
+        `.dp-stage-fluid` is the export's own provision for this, with a 260ms
+        height transition so the change reads as deliberate.
+      */}
+      <div className={"dp-stage" + (narrow ? " dp-stage-fluid" : "")}
         onTouchStart={(e) => { touch.current = e.touches[0].clientX; setPaused(true); }}
         onTouchEnd={(e) => {
           if (touch.current === null) return;
@@ -799,16 +799,12 @@ export function Gallery({ l, t }: { l: Locale; t: T }) {
           if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
           touch.current = null;
         }}>
-        {oneScreen ? (
-          <LaptopNarrow l={l} />
-        ) : (
-          <div className="dp-track dp-track-on"
-            style={{ transform: `translateX(${-100 * i}%)` }}>
-            {slides.map((s, n) => (
-              <React.Fragment key={`${role}-${n}`}>{s.body(l)}</React.Fragment>
-            ))}
-          </div>
-        )}
+        <div className="dp-track dp-track-on"
+          style={{ transform: `translateX(${-100 * i}%)` }}>
+          {slides.map((s, n) => (
+            <React.Fragment key={`${role}-${n}`}>{s.body(l)}</React.Fragment>
+          ))}
+        </div>
       </div>
 
       {/*
@@ -818,7 +814,6 @@ export function Gallery({ l, t }: { l: Locale; t: T }) {
         readable — where the desktop tab has five slides. Leaving the dots and
         arrows would promise four screens that aren't there.
       */}
-      {!oneScreen && (
       <div className="dp-nav">
         <button className="dp-arrow" aria-label="←"
           onClick={() => { setPaused(true); go(i - 1); }}>‹</button>
@@ -832,11 +827,16 @@ export function Gallery({ l, t }: { l: Locale; t: T }) {
         <button className="dp-arrow" aria-label="→"
           onClick={() => { setPaused(true); go(i + 1); }}>›</button>
       </div>
-      )}
 
-      {!oneScreen && (
-        <p className="dp-caption dp-caption-on">{l === "de" ? slide.de : slide.en}</p>
-      )}
+      {/*
+        The caption stays even for the one-screen laptop.
+        
+        The dots and arrows go because they'd promise four more screens, but the
+        caption describes the one that's there — and at this size the dashboard
+        is recognisable rather than readable, so the words are doing most of the
+        work.
+      */}
+      <p className="dp-caption dp-caption-on">{l === "de" ? slide.de : slide.en}</p>
     </div>
   );
 }

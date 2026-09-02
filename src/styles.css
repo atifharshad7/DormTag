@@ -845,7 +845,16 @@ h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   /* .sidebar is the old panel, replaced by the export's .opp-root, which
      collapses to a 64px icon rail at 1024px rather than disappearing. */
   .opmain { padding: 0; }
-  main.opview { padding: 14px 14px 78px; }
+
+  /*
+   * Only the operator's own screens get this padding.
+   *
+   * `main.opview` is shared with the landing page, which manages its own
+   * gutters and runs edge to edge — so on a phone it was framed by 14px of the
+   * app's background on the sides and 78px at the bottom. The 78px was for the
+   * old tab bar; the panel's bottom bar now reserves its own space.
+   */
+  main.opview:not(.lzview) { padding: 14px 14px 78px; }
 
   .tabbar {
     display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
