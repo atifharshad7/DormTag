@@ -335,66 +335,87 @@ function BuildingDetail({ l, t, building, onBack }: any) {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="col">
+    /* Opening a building was still the old design — a page inside a card,
+       inside the panel. It's a destination like any other. */
+    <div className="opb-root">
       {onBack && (
-        <button className="rz-btn rz-btn-back" onClick={onBack}><ChevronLeft size={16} /> {t("backToDash")}</button>
+        <button className="opb-back" onClick={onBack}>
+          <ChevronLeft size={16} aria-hidden /> {t("backToDash")}
+        </button>
       )}
-      <div className="rowspread">
-        <h2>{building.name}</h2>
-        <span className="plate plate-sm">{building.code}</span>
-      </div>
+
+      <header className="opb-dhead">
+        <div className="opb-head-text">
+          <h1 className="opb-title">{building.name}</h1>
+          {data && (
+            <p className="opb-count">
+              {data.units.length} {t("unitsWord")} ·{" "}
+              {data.units.reduce((n: number, u: any) => n + u.rooms.length, 0)} {t("roomsWord")}
+            </p>
+          )}
+        </div>
+        <span className="opb-row-code">{building.code}</span>
+      </header>
+
       {err && <div className="err" onClick={() => setErr("")}>{err}</div>}
 
       {mode === "idle" && (
-        <div className="row">
-          <button className="btn" onClick={() => setMode("edit")}>
-            <Pencil size={15} /> {t("editBuilding")}
+        <div className="opb-actions">
+          <button className="opb-action" onClick={() => setMode("edit")}>
+            <Pencil size={15} aria-hidden /> {t("editBuilding")}
           </button>
-          <button className="btn btn-primary" onClick={() => setMode("bulk")}>
-            <Plus size={16} /> {t("addManyUnits")}
+          <button className="opb-cta" onClick={() => setMode("bulk")}>
+            <Plus size={16} aria-hidden /> {t("addManyUnits")}
           </button>
-          <button className="btn" onClick={() => setMode("unit")}>
+          <button className="opb-action" onClick={() => setMode("unit")}>
             {t("addUnit")}
           </button>
         </div>
       )}
 
       {mode === "edit" && (
-        <div className="card">
+        <div className="opb-form">
           <BuildingEditForm l={l} t={t} building={building}
             onDone={() => { setMode("idle"); load(); }} onCancel={() => setMode("idle")} />
         </div>
       )}
       {mode === "unit" && (
-        <div className="card">
+        <div className="opb-form">
           <AddUnitForm l={l} t={t} building={building}
             onDone={() => { setMode("idle"); load(); }} onCancel={() => setMode("idle")} />
         </div>
       )}
       {mode === "bulk" && (
-        <div className="card">
+        <div className="opb-form">
           <BulkUnitsForm l={l} t={t} building={building}
             onDone={() => { setMode("idle"); load(); }} onCancel={() => setMode("idle")} />
         </div>
       )}
 
-      {!data && !err && <p className="muted">…</p>}
-      {data?.units.length === 0 && <div className="empty"><p className="muted">{t("noUnits")}</p></div>}
+      {!data && !err && <p className="opb-hint">…</p>}
+      {data?.units.length === 0 && (
+        <div className="opb-empty"><p className="opb-empty-line">{t("noUnits")}</p></div>
+      )}
 
-      {data?.units.map((u: any) => (
-        <div className="card" key={u.id}>
-          <div className="rowspread">
-            <span className="plate plate-sm">{building.code}-{u.code}</span>
-            <span className="muted mono">
+      <div className="opb-units">
+        {data?.units.map((u: any) => (
+        <div className="opb-unit" key={u.id}>
+          <div className="opb-unit-head">
+            <span className="opb-unit-code">{building.code}-{u.code}</span>
+            <span className="opb-unit-meta">
               {t("floorShort")}{u.floor} · {u.kind === "wg" ? t("wg") : t("studio")}
               {u.is_common ? ` · ${t("commonShort")}` : ""}
             </span>
           </div>
           {u.rooms.map((r: any) => (
-            <div className="unitroom" key={r.id}>
-              <span className="mono">{r.code}</span>
-              <span>{r.label || roomLabel(r.room_type, l)}</span>
-              <span className="muted mono">{r.qr_slug}</span>
+            <div className="opb-room" key={r.id}>
+              <span className="opb-room-tag">{r.code}</span>
+              <span className="opb-room-name">{r.label || roomLabel(r.room_type, l)}</span>
+              {/* A room with no sticker printed yet reads differently from one
+                  that has a slug — the export gives it its own class. */}
+              <span className={"opb-room-slug" + (r.qr_slug ? "" : " opb-room-slug-none")}>
+                {r.qr_slug || t("noSticker")}
+              </span>
               {editRoom === r.id ? (
                 <div className="row">
                   <input className="in" value={labelDraft} maxLength={40}
@@ -414,7 +435,8 @@ function BuildingDetail({ l, t, building, onBack }: any) {
             </div>
           ))}
         </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

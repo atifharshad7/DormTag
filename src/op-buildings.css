@@ -412,3 +412,21 @@
 .opq-cta:focus-visible, .opc-cta:focus-visible, .opb-cta:focus-visible {
   outline: 2px solid var(--op-primary); outline-offset: 2px;
 }
+
+/* A building with no units yet: a statement, not an error. The export has no
+   empty state for the detail view — buildings always have units in the mock. */
+.opb-empty { padding: 26px 4px 30px; display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; }
+.opb-empty-line { margin: 0; font-family: var(--op-font-sans); font-weight: 600; font-size: 15px; line-height: 1.45; color: var(--op-fg-2); }
+
+/*
+ * The page doesn't paint its own surface.
+ *
+ * Each export assumes it IS the page, so its root sets --op-surface-2 and caps
+ * at 1180px. Inside this app the shell already provides the background, so that
+ * combination drew a slab that stopped short of the right edge with the app's
+ * own background beyond it — which read as one card wrapping the whole screen.
+ *
+ * The dashboard has no such wrapper, which is why it looked right and these
+ * didn't. Width stays capped for line length; only the fill goes.
+ */
+.opb-root { background: none; }

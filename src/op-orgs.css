@@ -146,3 +146,16 @@
 .opo-org-on { box-shadow: inset 0 0 0 2px var(--op-primary); }
 .opo-org-name { font-family: var(--op-font-sans); font-weight: 500; font-size: 14px; line-height: 1.4; color: var(--op-fg-1); overflow-wrap: break-word; text-wrap: pretty; }
 .opo-org-meta { font-family: var(--op-font-mono); font-weight: 400; font-size: 11px; line-height: 1.4; color: var(--op-fg-3); }
+
+/*
+ * The page doesn't paint its own surface.
+ *
+ * Each export assumes it IS the page, so its root sets --op-surface-2 and caps
+ * at 1180px. Inside this app the shell already provides the background, so that
+ * combination drew a slab that stopped short of the right edge with the app's
+ * own background beyond it — which read as one card wrapping the whole screen.
+ *
+ * The dashboard has no such wrapper, which is why it looked right and these
+ * didn't. Width stays capped for line length; only the fill goes.
+ */
+.opo-root { background: none; }

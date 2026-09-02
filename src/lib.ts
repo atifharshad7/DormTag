@@ -139,6 +139,7 @@ export const T = {
   ticketsWord:   { de: "Meldungen",                       en: "tickets" },
   /* German and English both inflect here, and "1 Meldungen" reads as a bug. */
   ticketWord:    { de: "Meldung",                          en: "ticket" },
+  noSticker:     { de: "kein Aufkleber",                   en: "no sticker" },
   roomsAffected: { de: "Zimmer betroffen",                en: "rooms affected" },
   systemicHint:  { de: "Ursache Strang/Leitung in",       en: "Cause logged as riser in" },
   ofWord:        { de: "von",                             en: "of" },

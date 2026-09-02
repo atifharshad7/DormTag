@@ -245,3 +245,16 @@
 .opq-cta:focus-visible, .opc-cta:focus-visible, .opb-cta:focus-visible {
   outline: 2px solid var(--op-primary); outline-offset: 2px;
 }
+
+/*
+ * The page doesn't paint its own surface.
+ *
+ * Each export assumes it IS the page, so its root sets --op-surface-2 and caps
+ * at 1180px. Inside this app the shell already provides the background, so that
+ * combination drew a slab that stopped short of the right edge with the app's
+ * own background beyond it — which read as one card wrapping the whole screen.
+ *
+ * The dashboard has no such wrapper, which is why it looked right and these
+ * didn't. Width stays capped for line length; only the fill goes.
+ */
+.opc-root { background: none; }
